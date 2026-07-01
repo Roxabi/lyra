@@ -1,8 +1,9 @@
 """Tests for Discord adapter inbound path and Hub-side auth gate (C3).
 
 After C3 (trust re-resolution #456), adapters forward all messages with
-trust_level=PUBLIC to the bus; the Hub resolves trust and TrustGuardMiddleware
-drops BLOCKED users. These tests verify the adapter-side half of that contract.
+trust_level=PUBLIC to the bus; the Hub resolves identity and
+ResolveIdentityMiddleware drops BLOCKED users. These tests verify the
+adapter-side half of that contract.
 """
 
 from __future__ import annotations
@@ -224,33 +225,35 @@ class TestHubTrustResolution:
 
 
 # ---------------------------------------------------------------------------
-# C3: TrustGuardMiddleware drops BLOCKED users
+# C3: ResolveIdentityMiddleware drops BLOCKED users
 # ---------------------------------------------------------------------------
 
 
-class TestTrustGuardMiddleware:
-    """TrustGuardMiddleware drops messages from BLOCKED users."""
+class TestResolveIdentityMiddleware:
+    """ResolveIdentityMiddleware drops messages from BLOCKED users."""
 
     @pytest.mark.asyncio
     async def test_blocked_message_dropped(self) -> None:
-        """Message with BLOCKED trust level is dropped; next() not called."""
+        """Message resolved to BLOCKED trust level is dropped; next() not called."""
+        import dataclasses
         from unittest.mock import AsyncMock
 
         from factory.core.hub.middleware import PipelineContext
-        from factory.core.hub.middleware.middleware_stages import TrustGuardMiddleware
+        from factory.core.hub.middleware.middleware_stages import (
+            ResolveIdentityMiddleware,
+        )
         from factory.core.hub.pipeline.message_pipeline import _DROP
-        from factory.core.messaging.message import InboundMessage
+        from tests.factories.messages import make_inbound_message
 
-        mw = TrustGuardMiddleware()
+        mw = ResolveIdentityMiddleware()
         next_fn = AsyncMock()
         ctx = MagicMock(spec=PipelineContext)
         ctx.emit = MagicMock()
+        ctx.hub = MagicMock()
 
-        msg = MagicMock(spec=InboundMessage)
-        msg.trust_level = TrustLevel.BLOCKED
-        msg.user_id = "tg:user:42"
-        msg.platform = "telegram"
-        msg.id = "test-id"
+        msg = make_inbound_message(user_id="tg:user:42")
+        blocked = dataclasses.replace(msg, trust_level=TrustLevel.BLOCKED)
+        ctx.hub._resolve_message_trust.return_value = blocked
 
         result = await mw(msg, ctx, next_fn)
 
@@ -259,25 +262,27 @@ class TestTrustGuardMiddleware:
 
     @pytest.mark.asyncio
     async def test_non_blocked_message_passes_through(self) -> None:
-        """Message with PUBLIC/TRUSTED trust level passes to next middleware."""
+        """Resolved PUBLIC/TRUSTED identity passes to next middleware."""
+        import dataclasses
         from unittest.mock import AsyncMock
 
         from factory.core.hub.middleware import PipelineContext
-        from factory.core.hub.middleware.middleware_stages import TrustGuardMiddleware
-        from factory.core.messaging.message import InboundMessage
+        from factory.core.hub.middleware.middleware_stages import (
+            ResolveIdentityMiddleware,
+        )
+        from tests.factories.messages import make_inbound_message
 
-        mw = TrustGuardMiddleware()
+        mw = ResolveIdentityMiddleware()
         sentinel = object()
         next_fn = AsyncMock(return_value=sentinel)
         ctx = MagicMock(spec=PipelineContext)
         ctx.emit = MagicMock()
+        ctx.hub = MagicMock()
 
         for trust in (TrustLevel.PUBLIC, TrustLevel.TRUSTED, TrustLevel.OWNER):
-            msg = MagicMock(spec=InboundMessage)
-            msg.trust_level = trust
-            msg.user_id = "tg:user:42"
-            msg.platform = "telegram"
-            msg.id = f"test-id-{trust}"
+            msg = make_inbound_message(user_id="tg:user:42")
+            resolved = dataclasses.replace(msg, trust_level=trust)
+            ctx.hub._resolve_message_trust.return_value = resolved
 
             result = await mw(msg, ctx, next_fn)
 

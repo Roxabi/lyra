@@ -107,14 +107,14 @@ describe("AgentsListPage", () => {
     await waitFor(() => expect(screen.getByText("Lyra")).toBeTruthy());
     expect(screen.getByPlaceholderText("Rechercher un agent…")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: /Vue tableau/i }));
+    await user.click(screen.getByRole("radio", { name: /Vue tableau/i }));
     expect(screen.getByRole("columnheader", { name: "Tagline" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Harness" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Telegram" })).toBeTruthy();
     expect(screen.getByText("Oui")).toBeTruthy();
     expect(screen.getAllByText("Éditer").length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("button", { name: /Vue cartes/i }));
+    await user.click(screen.getByRole("radio", { name: /Vue cartes/i }));
     expect(screen.getByText("Clipool")).toBeTruthy();
   });
 });

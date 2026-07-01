@@ -1,3 +1,4 @@
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -6,7 +7,6 @@ import { HarnessPicker } from "@/components/HarnessPicker";
 import { ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 import { createAgentConfig } from "@/lib/agents-api";
 import { bffErrorMessage } from "@/lib/bff-errors";
@@ -80,53 +80,33 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
           createMut.mutate();
         }}
       >
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor="create-agent-name">
-            {t("createName")}
-          </label>
-          <Input
-            id="create-agent-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t("createNamePlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-            className="font-mono text-sm"
-          />
-          {!slugValid && slug.length > 0 ? (
-            <p className="text-xs text-destructive">{t("createNameInvalid")}</p>
-          ) : (
-            <p className="text-xs text-muted-foreground">{t("createNameHint")}</p>
-          )}
-        </div>
+        <TextInput
+          label={t("createName")}
+          value={name}
+          onChange={(v) => setName(v)}
+          placeholder={t("createNamePlaceholder")}
+          width="100%"
+          description={slugValid || slug.length === 0 ? t("createNameHint") : undefined}
+          status={
+            !slugValid && slug.length > 0
+              ? { type: "error", message: t("createNameInvalid") }
+              : undefined
+          }
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label
-              className="text-xs font-medium text-muted-foreground"
-              htmlFor="create-agent-display"
-            >
-              {t("displayName")}
-            </label>
-            <Input
-              id="create-agent-display"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <label
-              className="text-xs font-medium text-muted-foreground"
-              htmlFor="create-agent-tagline"
-            >
-              {t("tagline")}
-            </label>
-            <Input
-              id="create-agent-tagline"
-              value={tagline}
-              onChange={(e) => setTagline(e.target.value)}
-            />
-          </div>
+          <TextInput
+            label={t("displayName")}
+            value={displayName}
+            onChange={(v) => setDisplayName(v)}
+            width="100%"
+          />
+          <TextInput
+            label={t("tagline")}
+            value={tagline}
+            onChange={(v) => setTagline(v)}
+            width="100%"
+          />
         </div>
 
         <div className="flex flex-wrap gap-4">

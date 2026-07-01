@@ -22,6 +22,12 @@ import typer
 from nats.aio.client import Client as NATS
 
 from factory.cli.ops_audit import emit_drift_report
+from factory.cli.ops_nats import (
+    default_hub_seed,
+    default_nats_url,
+    inbox_prefix_for_seed,
+    seed_path_for,
+)
 from factory.paths import factory_data_dir
 from roxabi_contracts.verify import verify_deny
 from roxabi_nats.connect import _build_tls_context
@@ -116,11 +122,6 @@ def _expand_subject(subject: str) -> str:
     )
 
 
-def _inbox_prefix_for_seed(seed_path: Path) -> str:
-    """Derive ADR-051 inbox prefix from seed filename (hub.seed → _inbox.hub)."""
-    return f"_inbox.{seed_path.stem}"
-
-
 def _read_seed(seed_path: Path) -> str:
     """Read an nkey seed from *seed_path* with the same hardening as roxabi-nats.
 
@@ -174,7 +175,7 @@ async def _identity_connection(
         "nkeys_seed_str": seed,
         # JetStream PubAck and $JS.API.* need an inbox sub matching ACL
         # (_inbox.<identity>.>, not nats-py default _INBOX.<random>.>).
-        "inbox_prefix": _inbox_prefix_for_seed(seed_path),
+        "inbox_prefix": inbox_prefix_for_seed(seed_path),
     }
     tls_ctx = _build_tls_context()
     if tls_ctx:
@@ -290,25 +291,12 @@ def verify(
     raise typer.Exit(max(exit_code, 1 if drift else 0))
 
 
-def _seed_path_for(seeds_dir: Path, name: str) -> Path:
-    """Resolve and validate that ``{seeds_dir}/{name}.seed`` stays inside *seeds_dir*.
-
-    Defends against malicious identity names from a tampered matrix file
-    (``../etc/passwd``, absolute paths, …).
-    """
-    candidate = (seeds_dir / f"{name}.seed").resolve()
-    base = seeds_dir.resolve()
-    if not candidate.is_relative_to(base):
-        raise typer.BadParameter(f"identity name {name!r} resolves outside seeds-dir")
-    return candidate
-
-
 async def _verify_all(
     nats_url: str, identities: dict[str, dict], seeds_dir: Path
 ) -> list[IdentityResult]:
     out: list[IdentityResult] = []
     for name, spec in identities.items():
-        seed_path = _seed_path_for(seeds_dir, name)
+        seed_path = seed_path_for(seeds_dir, name)
         out.append(await _verify_identity(nats_url, name, spec, seed_path))
     return out
 
@@ -339,15 +327,6 @@ def _print_report(results: list[IdentityResult]) -> int:
     return 1 if failed or skipped else 0
 
 
-def _default_nats_url() -> str:
-    return os.environ.get("NATS_URL", _DEFAULT_NATS_URL).strip() or _DEFAULT_NATS_URL
-
-
-def _default_hub_seed(seeds_dir: Path) -> Path:
-    # Disk SSoT per deploy/secrets-policy.toml → factory-nats-hub ← nkeys/hub.seed
-    return seeds_dir / "hub.seed"
-
-
 @ops_app.command("publish-host-event")
 def publish_host_event_cmd(
     kind: str = typer.Argument(..., help="Event kind, e.g. converge.completed"),
@@ -375,7 +354,7 @@ def publish_host_event_cmd(
     )
 
     host = machine.strip() or resolve_host_machine()
-    seed_path = _default_hub_seed(seeds_dir.expanduser())
+    seed_path = default_hub_seed(seeds_dir.expanduser())
     if not seed_path.is_file():
         raise typer.BadParameter(f"hub seed not found: {seed_path}")
 
@@ -389,7 +368,7 @@ def publish_host_event_cmd(
 
     async def _run() -> bool:
         async with _identity_connection(
-            _default_nats_url(), seed_path, []
+            default_nats_url(), seed_path, []
         ) as nc:
             return await publish_host_event(
                 nc,

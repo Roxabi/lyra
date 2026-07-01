@@ -7,14 +7,10 @@ import * as adminApi from "@/lib/admin-api";
 import * as agentsApi from "@/lib/agents-api";
 import { BffApiError } from "@/lib/bff-api";
 
-const toastSuccess = vi.fn();
-const toastError = vi.fn();
+const showToast = vi.fn();
 
-vi.mock("@/components/ui/sonner", () => ({
-  toast: {
-    success: (...args: unknown[]) => toastSuccess(...args),
-    error: (...args: unknown[]) => toastError(...args),
-  },
+vi.mock("@astryxdesign/core/Toast", () => ({
+  useToast: () => showToast,
 }));
 
 function renderDialog(props?: Partial<Parameters<typeof UserFormDialog>[0]>) {
@@ -32,8 +28,7 @@ function renderDialog(props?: Partial<Parameters<typeof UserFormDialog>[0]>) {
 
 describe("UserFormDialog", () => {
   beforeEach(() => {
-    toastSuccess.mockReset();
-    toastError.mockReset();
+    showToast.mockReset();
     vi.spyOn(agentsApi, "fetchAgentsConfigList").mockResolvedValue({
       agents: [
         {
@@ -81,7 +76,7 @@ describe("UserFormDialog", () => {
         agents: ["lyra"],
       });
     });
-    expect(toastSuccess).toHaveBeenCalledWith("Utilisateur créé.");
+    expect(showToast).toHaveBeenCalledWith({ body: "Utilisateur créé.", type: "info" });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -97,7 +92,10 @@ describe("UserFormDialog", () => {
     await user.click(screen.getByRole("button", { name: /créer/i }));
 
     await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith("Cet email est déjà enregistré.");
+      expect(showToast).toHaveBeenCalledWith({
+        body: "Cet email est déjà enregistré.",
+        type: "error",
+      });
     });
   });
 
@@ -114,9 +112,10 @@ describe("UserFormDialog", () => {
     await user.click(screen.getByRole("button", { name: /créer/i }));
 
     await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith(
-        "Cette identité plateforme est déjà liée à un autre utilisateur.",
-      );
+      expect(showToast).toHaveBeenCalledWith({
+        body: "Cette identité plateforme est déjà liée à un autre utilisateur.",
+        type: "error",
+      });
     });
   });
 
@@ -139,7 +138,10 @@ describe("UserFormDialog", () => {
     await user.click(screen.getByRole("button", { name: /enregistrer/i }));
 
     await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith("Cet email est déjà enregistré.");
+      expect(showToast).toHaveBeenCalledWith({
+        body: "Cet email est déjà enregistré.",
+        type: "error",
+      });
     });
   });
 

@@ -1,12 +1,12 @@
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { useToast } from "@astryxdesign/core/Toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { toast } from "@/components/ui/sonner";
 import { type AdminUserAccess, createAdminUser, patchAdminUser } from "@/lib/admin-api";
 import { fetchAgentsConfigList } from "@/lib/agents-api";
 import { bffErrorMessage } from "@/lib/bff-errors";
@@ -22,6 +22,7 @@ interface UserFormDialogProps {
 export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps) {
   const { t } = useTranslation("admin");
   const qc = useQueryClient();
+  const showToast = useToast();
   const isEdit = Boolean(user);
 
   const [displayName, setDisplayName] = useState("");
@@ -83,13 +84,13 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
       return createAdminUser(body);
     },
     onSuccess: () => {
-      toast.success(isEdit ? t("editSuccess") : t("createSuccess"));
+      showToast({ body: isEdit ? t("editSuccess") : t("createSuccess"), type: "info" });
       void qc.invalidateQueries({ queryKey: ["admin-access"] });
       onOpenChange(false);
       reset();
     },
     onError: (err) => {
-      toast.error(bffErrorMessage(err, t, isEdit ? "edit" : "create"));
+      showToast({ body: bffErrorMessage(err, t, isEdit ? "edit" : "create"), type: "error" });
     },
   });
 

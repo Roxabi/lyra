@@ -1,5 +1,6 @@
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { useToast } from "@astryxdesign/core/Toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -7,7 +8,6 @@ import { useTranslation } from "react-i18next";
 import { HarnessPicker } from "@/components/HarnessPicker";
 import { ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/sonner";
 import { createAgentConfig } from "@/lib/agents-api";
 import { bffErrorMessage } from "@/lib/bff-errors";
 import type { HarnessKind } from "@/lib/chats-storage";
@@ -23,6 +23,7 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
   const { t } = useTranslation("agents");
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const showToast = useToast();
 
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -51,14 +52,14 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
         tagline: tagline.trim(),
       }),
     onSuccess: (cfg) => {
-      toast.success(t("createSuccess", { name: cfg.name }));
+      showToast({ body: t("createSuccess", { name: cfg.name }), type: "info" });
       void qc.invalidateQueries({ queryKey: ["agents-config"] });
       onOpenChange(false);
       reset();
       void navigate({ to: "/agents/$name", params: { name: cfg.name } });
     },
     onError: (err) => {
-      toast.error(bffErrorMessage(err, t, "create"));
+      showToast({ body: bffErrorMessage(err, t, "create"), type: "error" });
     },
   });
 

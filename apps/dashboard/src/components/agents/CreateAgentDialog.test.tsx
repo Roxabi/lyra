@@ -6,15 +6,11 @@ import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
 import * as agentsApi from "@/lib/agents-api";
 import { BffApiError } from "@/lib/bff-api";
 
-const toastSuccess = vi.fn();
-const toastError = vi.fn();
+const showToast = vi.fn();
 const navigate = vi.fn();
 
-vi.mock("@/components/ui/sonner", () => ({
-  toast: {
-    success: (...args: unknown[]) => toastSuccess(...args),
-    error: (...args: unknown[]) => toastError(...args),
-  },
+vi.mock("@astryxdesign/core/Toast", () => ({
+  useToast: () => showToast,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -36,8 +32,7 @@ function renderDialog() {
 
 describe("CreateAgentDialog", () => {
   beforeEach(() => {
-    toastSuccess.mockReset();
-    toastError.mockReset();
+    showToast.mockReset();
     navigate.mockReset();
   });
 
@@ -67,7 +62,7 @@ describe("CreateAgentDialog", () => {
         tagline: "",
       });
     });
-    expect(toastSuccess).toHaveBeenCalledWith("Agent scout créé.");
+    expect(showToast).toHaveBeenCalledWith({ body: "Agent scout créé.", type: "info" });
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(navigate).toHaveBeenCalledWith({
       to: "/agents/$name",
@@ -86,7 +81,10 @@ describe("CreateAgentDialog", () => {
     await user.click(screen.getByRole("button", { name: /^créer$/i }));
 
     await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith("Un agent avec cet identifiant existe déjà.");
+      expect(showToast).toHaveBeenCalledWith({
+        body: "Un agent avec cet identifiant existe déjà.",
+        type: "error",
+      });
     });
   });
 

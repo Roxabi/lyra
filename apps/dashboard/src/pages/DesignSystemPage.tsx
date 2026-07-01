@@ -5,6 +5,7 @@ import { ClickableCard } from "@astryxdesign/core/ClickableCard";
 import { Selector } from "@astryxdesign/core/Selector";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Stack } from "@astryxdesign/core/Stack";
+import { Table, TableHeader, TableHeaderCell, TableRow } from "@astryxdesign/core/Table";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
@@ -286,20 +287,14 @@ export function DesignSystemPage() {
           title="Aucun agent"
           hint="Les agents apparaissent ici une fois configurés."
         />
-        <table className="w-full max-w-md text-left text-sm">
-          <thead>
-            <tr className="border-b border-border/50 text-xs">
-              <SortableTableHeader
-                label="Agent"
-                active
-                direction="asc"
-                onClick={() => {}}
-                className="px-2 py-2"
-              />
-              <th className="py-2 font-medium text-muted-foreground">Statut</th>
-            </tr>
-          </thead>
-        </table>
+        <Table className="max-w-md" dividers="rows" hasHover>
+          <TableHeader>
+            <TableRow isHeaderRow>
+              <SortableTableHeader label="Agent" active direction="asc" onClick={() => {}} />
+              <TableHeaderCell scope="col">Statut</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+        </Table>
         <Button
           type="button"
           variant="secondary"

@@ -1,3 +1,5 @@
+import { Badge } from "@astryxdesign/core/Badge";
+import { Banner } from "@astryxdesign/core/Banner";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
@@ -8,8 +10,6 @@ import { AgentsListPanel } from "@/components/agents/AgentsListPanel";
 import { HarnessPicker } from "@/components/HarnessPicker";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { ModelPicker } from "@/components/ModelPicker";
-import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -154,7 +154,7 @@ export function AgentDetailPage() {
   }
 
   if (configQ.isError) {
-    return <Alert variant="destructive">{t("loadError")}</Alert>;
+    return <Banner status="error" title={t("loadError")} />;
   }
 
   return (
@@ -171,15 +171,12 @@ export function AgentDetailPage() {
       <Card className="dashboard-surface border-border/60 shadow-none">
         <CardContent className="flex flex-wrap items-center gap-3 p-4 text-sm">
           <span className="font-medium text-muted-foreground">{t("defaultsTitle")}</span>
-          <Badge variant="secondary" className="font-mono">
-            {cfg?.backend ?? harness}
-          </Badge>
-          <Badge variant="secondary" className="font-mono">
-            {cfg?.model ?? model}
-          </Badge>
-          <Badge variant={hasSoulBlob ? "success" : "warning"}>
-            {t("soulSource", { source: t(soulSourceKey) })}
-          </Badge>
+          <Badge variant="neutral" className="font-mono" label={cfg?.backend ?? harness} />
+          <Badge variant="neutral" className="font-mono" label={cfg?.model ?? model} />
+          <Badge
+            variant={hasSoulBlob ? "success" : "warning"}
+            label={t("soulSource", { source: t(soulSourceKey) })}
+          />
           {cfg?.updated_at ? (
             <span className="text-xs text-muted-foreground">
               {t("updatedAt", { date: cfg.updated_at })}
@@ -188,13 +185,13 @@ export function AgentDetailPage() {
         </CardContent>
       </Card>
 
-      {soulQ.isError ? <Alert variant="destructive">{t("soulLoadError")}</Alert> : null}
+      {soulQ.isError ? <Banner status="error" title={t("soulLoadError")} /> : null}
 
       {!soulQ.isError && !hasSectionContent ? (
-        <Alert variant="warning">{t("noSoulContent")}</Alert>
+        <Banner status="warning" title={t("noSoulContent")} />
       ) : null}
 
-      {dirty ? <Alert variant="warning">{t("unsavedChanges")}</Alert> : null}
+      {dirty ? <Banner status="warning" title={t("unsavedChanges")} /> : null}
 
       <Card className="dashboard-surface border-border/60 shadow-none">
         <CardContent className="space-y-4 p-6">
@@ -254,10 +251,15 @@ export function AgentDetailPage() {
           <CardTitle className="text-sm font-semibold">Soul</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Alert variant="warning">
-            {t("sessionLagPrefix")} <strong>{t("sessionLagStrong")}</strong>
-            {t("sessionLagSuffix")}
-          </Alert>
+          <Banner
+            status="warning"
+            title={
+              <>
+                {t("sessionLagPrefix")} <strong>{t("sessionLagStrong")}</strong>
+                {t("sessionLagSuffix")}
+              </>
+            }
+          />
           <div className="flex flex-wrap gap-1 border-b border-border/40 pb-2">
             {SOUL_SECTIONS.map((s) => (
               <Button
@@ -281,7 +283,7 @@ export function AgentDetailPage() {
             rows={12}
           />
           <p className="text-xs text-muted-foreground">{t("documentSize", { bytes: docBytes })}</p>
-          {secretWarning ? <Alert variant="destructive">{secretWarning}</Alert> : null}
+          {secretWarning ? <Banner status="error" title={secretWarning} /> : null}
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => previewMut.mutate()}>
               {t("previewCompose")}

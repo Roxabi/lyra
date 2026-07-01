@@ -1,3 +1,4 @@
+import { Badge } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Robot } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -6,7 +7,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListToolbar, ListToolbarHeader, ListToolbarSearch } from "@/components/ui/list-toolbar";
@@ -130,9 +130,10 @@ export function OpsPage() {
                 <CardTitle className="text-sm text-muted-foreground">{engine.label}</CardTitle>
               </CardHeader>
               <CardContent>
-                <Badge variant={engine.reachable ? "success" : "destructive"}>
-                  {engine.reachable ? tc("status.online") : tc("status.offline")}
-                </Badge>
+                <Badge
+                  variant={engine.reachable ? "success" : "error"}
+                  label={engine.reachable ? tc("status.online") : tc("status.offline")}
+                />
                 {engine.detail ? (
                   <p className="mt-2 truncate text-xs text-muted-foreground">{engine.detail}</p>
                 ) : null}
@@ -157,9 +158,10 @@ export function OpsPage() {
             <CardTitle className="text-sm text-muted-foreground">{t("harness.clipool")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <Badge variant={clipoolUp ? "success" : "destructive"}>
-              {clipoolUp ? tc("status.online") : tc("status.offline")}
-            </Badge>
+            <Badge
+              variant={clipoolUp ? "success" : "error"}
+              label={clipoolUp ? tc("status.online") : tc("status.offline")}
+            />
           </CardContent>
         </Card>
         <Card className="dashboard-surface border-border/60 shadow-none">
@@ -167,9 +169,10 @@ export function OpsPage() {
             <CardTitle className="text-sm text-muted-foreground">{t("harness.omp")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <Badge variant={ompUp ? "success" : "destructive"}>
-              {ompUp ? tc("status.online") : tc("status.offline")}
-            </Badge>
+            <Badge
+              variant={ompUp ? "success" : "error"}
+              label={ompUp ? tc("status.online") : tc("status.offline")}
+            />
           </CardContent>
         </Card>
       </div>
@@ -276,12 +279,22 @@ export function OpsPage() {
               >
                 <AgentIdentity agentId={s.agent} avatarSize="sm" />
                 <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                  <Badge variant={s.in_roster ? "success" : "secondary"}>
-                    {t("agents.roster")} {s.in_roster ? "✓" : "✗"}
-                  </Badge>
-                  <Badge variant={s.harness_reachable ? "success" : "destructive"}>
-                    {t("agents.harness")} {s.harness_reachable ? "✓" : "✗"}
-                  </Badge>
+                  <Badge
+                    variant={s.in_roster ? "success" : "neutral"}
+                    label={
+                      <>
+                        {t("agents.roster")} {s.in_roster ? "✓" : "✗"}
+                      </>
+                    }
+                  />
+                  <Badge
+                    variant={s.harness_reachable ? "success" : "error"}
+                    label={
+                      <>
+                        {t("agents.harness")} {s.harness_reachable ? "✓" : "✗"}
+                      </>
+                    }
+                  />
                 </div>
               </div>
             ))}

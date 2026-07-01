@@ -11,8 +11,8 @@
 # Requires: yq (https://github.com/mikefarah/yq) — checked in tools/dev-setup.sh
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STACK="${REPO_ROOT}/.claude/stack.yml"
+REPO_ROOT="${QG_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+STACK="${QG_STACK:-${REPO_ROOT}/.claude/stack.yml}"
 
 BUN_HINT="bun not installed — https://bun.sh (see package.json packageManager)"
 TRUFFLEHOG_HINT="trufflehog not installed — https://github.com/trufflesecurity/trufflehog/releases"
@@ -87,8 +87,9 @@ changed_files() {
 
 files_match_pattern() {
   local pattern="$1"
+  shift
   local f match_rc
-  while IFS= read -r f; do
+  for f in "$@"; do
     [[ -n "$f" ]] || continue
     set +e
     [[ "$f" =~ $pattern ]]
@@ -225,7 +226,13 @@ run_gate() {
     return 0
   fi
 
-  if ! should_run_gate "$gate" "${stage_filter:-ci}" "${changed[@]}"; then
+  local run_decision=0
+  should_run_gate "$gate" "${stage_filter:-ci}" "${changed[@]}"
+  run_decision=$?
+  if [[ "$run_decision" -eq 2 ]]; then
+    return 2
+  fi
+  if [[ "$run_decision" -ne 0 ]]; then
     echo "==> ${gate} (skipped — no matching files)"
     return 0
   fi

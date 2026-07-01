@@ -9,6 +9,11 @@ Session lifecycle:
   - acquire(None)          → new_session() + get_state() to mint the .jsonl path.
   - release(worker)        → return to the free set; semaphore slot released.
 
+System prompt (persona/soul):
+  omp_rpc only accepts ``append_system_prompt`` at RpcClient construction — there is
+  no runtime setter. When the opaque soul string changes, the pool respawns the worker
+  subprocess with the new prompt baked in (clipool parity).
+
 Usage::
 
     pool = OmpPool()
@@ -59,14 +64,6 @@ class _PoolWorker:
     bridge: Any  # RpcBridge(_client=client), attached to nc
     session_file: str | None = None
     system_prompt: str = ""
-
-
-def _apply_omp_system_prompt(client: Any, system_prompt: str) -> None:
-    if not system_prompt:
-        return
-    setter = getattr(client, "set_system_prompt", None)
-    if callable(setter):
-        setter(system_prompt)
 
 
 class OmpPool:
@@ -131,41 +128,40 @@ class OmpPool:
         else new_session + get_state to mint the .jsonl path.
         """
         await self._sem.acquire()
+        respawned_for_prompt = False
         try:
-            worker = self._free.pop() if self._free else await self._start_worker()
+            worker = self._free.pop() if self._free else None
+            if worker is None:
+                worker = await self._start_worker(system_prompt=system_prompt)
+            elif system_prompt != worker.system_prompt:
+                await self._dispose_worker(worker)
+                worker = await self._start_worker(system_prompt=system_prompt)
+                respawned_for_prompt = True
         except BaseException:
             self._sem.release()  # never leak a slot if cold-start failed
             raise
         self._checked_out.add(id(worker))
         try:
-            prompt_changed = system_prompt != worker.system_prompt
-            if prompt_changed and system_prompt:
+            if respawned_for_prompt:
                 await asyncio.to_thread(worker.client.new_session)
                 state = await asyncio.to_thread(worker.client.get_state)
                 worker.session_file = getattr(state, "session_file", None)
-                _apply_omp_system_prompt(worker.client, system_prompt)
-                worker.system_prompt = system_prompt
                 log.debug(
-                    "[omp_pool] system_prompt changed — new session %s",
+                    "[omp_pool] system_prompt changed — respawned, new session %s",
                     worker.session_file,
                 )
             elif session_file is not None:
                 await asyncio.to_thread(worker.client.switch_session, session_file)
                 worker.session_file = session_file
-                if system_prompt and system_prompt != worker.system_prompt:
-                    _apply_omp_system_prompt(worker.client, system_prompt)
-                    worker.system_prompt = system_prompt
                 log.debug("[omp_pool] acquire with session %s", session_file)
             else:
                 await asyncio.to_thread(worker.client.new_session)
                 state = await asyncio.to_thread(worker.client.get_state)
                 worker.session_file = getattr(state, "session_file", None)
-                if system_prompt:
-                    _apply_omp_system_prompt(worker.client, system_prompt)
-                    worker.system_prompt = system_prompt
                 log.debug(
                     "[omp_pool] acquire new session, minted %s", worker.session_file
                 )  # noqa: E501
+            worker.system_prompt = system_prompt
             return worker
         except BaseException:
             self._checked_out.discard(id(worker))
@@ -199,7 +195,18 @@ class OmpPool:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _start_worker(self) -> _PoolWorker:
+    async def _dispose_worker(self, worker: _PoolWorker) -> None:
+        """Stop a worker and remove it from pool bookkeeping."""
+        if worker in self._free:
+            self._free.remove(worker)
+        if worker in self._all:
+            self._all.remove(worker)
+        try:
+            await asyncio.to_thread(worker.client.stop)
+        except (OSError, RuntimeError):
+            log.warning("[omp_pool] dispose client.stop raised", exc_info=True)
+
+    async def _start_worker(self, system_prompt: str = "") -> _PoolWorker:
         """Construct, start, and attach a fresh digest-pinned worker."""
         # Deferred import — omp_rpc is a container image dep (absent from pyproject).
         import omp_rpc  # type: ignore[import-not-found]
@@ -223,15 +230,18 @@ class OmpPool:
             if self._request_timeout is not None
             else _read_request_timeout()
         )
+        client_kwargs: dict[str, Any] = {
+            "executable": str(self._omp_bin),
+            "provider": self._provider,
+            "model": resolved_model,
+            "no_session": False,
+            "request_timeout": resolved_timeout,
+        }
+        if system_prompt:
+            client_kwargs["append_system_prompt"] = system_prompt
         client: Any = None
         try:
-            client = omp_rpc.RpcClient(
-                executable=str(self._omp_bin),
-                provider=self._provider,
-                model=resolved_model,
-                no_session=False,
-                request_timeout=resolved_timeout,
-            )
+            client = omp_rpc.RpcClient(**client_kwargs)
             await asyncio.to_thread(client.start)
             # RpcBridge(_client=): skips digest (done) + no own ctor.
             bridge = RpcBridge(
@@ -243,7 +253,9 @@ class OmpPool:
             # attach() wires callbacks + stores nc/loop; no start, no new_session.
             # (we started it above; acquire() owns session selection).
             await bridge.attach(self._nc, self._loop)
-            worker = _PoolWorker(client=client, bridge=bridge)
+            worker = _PoolWorker(
+                client=client, bridge=bridge, system_prompt=system_prompt
+            )
             self._all.append(worker)
             return worker
         except BaseException:

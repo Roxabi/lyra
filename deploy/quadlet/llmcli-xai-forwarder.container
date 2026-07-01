@@ -22,11 +22,10 @@ Environment=LLMCLI_FORWARDER_PROVIDER=xai
 Environment=LLMCLI_FORWARDER_PORT=18645
 UserNS=keep-id:uid=1502,gid=1502
 Exec=forwarder
-# Single-quote outer / double-quote inner: podman 5.7.0 (quadlet, M₁ Ubuntu)
-# truncates a HealthCmd value that ENDS in an escaped double-quote, producing
-# `sh: Unterminated quoted string` -> permanent unhealthy. Ending in the outer
-# single quote sidesteps the bug; verified via `quadlet -dryrun` on 5.7.0 + 5.8.2.
-HealthCmd=python -c 'import urllib.request; urllib.request.urlopen("http://localhost:18645/health", timeout=5)'
+# HealthCmd carries NO double-quotes: factory's quadlet-lint forbids them (the
+# Quadlet generator strips a closing double-quote → unterminated shell string).
+# The URL is passed as an unquoted argv so the -c body needs single-quotes only.
+HealthCmd=python -c 'import urllib.request,sys; urllib.request.urlopen(sys.argv[1], timeout=5)' http://localhost:18645/health || exit 1
 HealthInterval=30s
 HealthStartPeriod=15s
 NoNewPrivileges=true

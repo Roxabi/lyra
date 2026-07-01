@@ -32,6 +32,22 @@ _do_converge() {
         exit 0
     fi
 
+    # code-only drift: git HEAD advanced but no tracked artifact changed. Skip the full-fleet
+    # restart ONLY when the commit range touches purely non-runtime files (docs/tests/ci/*.md);
+    # a runtime-relevant path — or any undecidable diff — falls through to a structural converge
+    # (fail-safe: over-restart, never silently under-restart). Fixes "a docs commit restarts
+    # the whole fleet" (audit 2026-07-01, lot 4b) — paired with content-addressed images (4a).
+    if [ "${_drift_kind}" = "code-only" ]; then
+        if _code_change_is_inert "${_last}" "${_current}"; then
+            op_log converge_skip drift=code-only reason=non_runtime_paths
+            echo "Only non-runtime files changed (docs/tests/ci) — recording stamp, no restart."
+            write_convergence_state "${_current}"
+            exit 0
+        fi
+        echo "==> code-only drift touched runtime paths — treating as structural."
+        _drift_kind=structural
+    fi
+
     op_log converge_start drift="${_drift_kind}"
     echo "==> Convergence drift detected (${_drift_kind}) — beginning deploy..."
 

@@ -70,6 +70,13 @@ jobs:
         with:
           files: docker-bake.hcl
           push: true
+          # bake-action auto-injects `--set *.attest=type=provenance,mode=max` on GHA push events,
+          # which OVERRIDES docker-bake.hcl's `provenance = false` and re-adds a per-build attestation
+          # manifest whose metadata churns the pushed OCI index digest — defeating lot 4a (the digest
+          # must be content-addressed so a docs-only commit does not move fingerprint fields 4/5).
+          # These action-level inputs are what actually disable it (audit 2026-07-01, lot 4a fix).
+          provenance: false
+          sbom: false
           set: |
             ${{ steps.tags.outputs.bake_set }}
             *.labels.org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

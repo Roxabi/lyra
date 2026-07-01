@@ -56,6 +56,25 @@ async def test_create_profile_user_rejects_duplicate_email(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
+async def test_delete_profile_user_removes_user_and_identities(tmp_path: Path) -> None:
+    store = UserStore(db_path=tmp_path / "auth.db")
+    await store.connect()
+    try:
+        user = await store.create_profile_user(
+            display_name="Ops",
+            email="ops@example.com",
+        )
+        await store.set_platform_identity(user.id, "telegram", "12345")
+        assert await store.delete_profile_user(user.id) is True
+        assert await store.get_user(user.id) is None
+        assert await store.list_platform_identities(user.id) == ()
+        assert store.resolve_user_id("tg:user:12345") is None
+        assert await store.delete_profile_user(user.id) is False
+    finally:
+        await store.close()
+
+
+@pytest.mark.asyncio
 async def test_set_platform_identity_links_and_clears(tmp_path: Path) -> None:
     store = UserStore(db_path=tmp_path / "auth.db")
     await store.connect()

@@ -1,5 +1,8 @@
 import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
+import { Card } from "@astryxdesign/core/Card";
+import { Stack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
@@ -11,7 +14,6 @@ import { HarnessPicker } from "@/components/HarnessPicker";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 import {
@@ -168,21 +170,23 @@ export function AgentDetailPage() {
         <p className="text-sm text-muted-foreground">{t("detailSubtitle", { name })}</p>
       </div>
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardContent className="flex flex-wrap items-center gap-3 p-4 text-sm">
-          <span className="font-medium text-muted-foreground">{t("defaultsTitle")}</span>
-          <Badge variant="neutral" className="font-mono" label={cfg?.backend ?? harness} />
-          <Badge variant="neutral" className="font-mono" label={cfg?.model ?? model} />
-          <Badge
-            variant={hasSoulBlob ? "success" : "warning"}
-            label={t("soulSource", { source: t(soulSourceKey) })}
-          />
-          {cfg?.updated_at ? (
-            <span className="text-xs text-muted-foreground">
-              {t("updatedAt", { date: cfg.updated_at })}
-            </span>
-          ) : null}
-        </CardContent>
+      <Card>
+        <Stack gap={4}>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="font-medium text-muted-foreground">{t("defaultsTitle")}</span>
+            <Badge variant="neutral" className="font-mono" label={cfg?.backend ?? harness} />
+            <Badge variant="neutral" className="font-mono" label={cfg?.model ?? model} />
+            <Badge
+              variant={hasSoulBlob ? "success" : "warning"}
+              label={t("soulSource", { source: t(soulSourceKey) })}
+            />
+            {cfg?.updated_at ? (
+              <span className="text-xs text-muted-foreground">
+                {t("updatedAt", { date: cfg.updated_at })}
+              </span>
+            ) : null}
+          </div>
+        </Stack>
       </Card>
 
       {soulQ.isError ? <Banner status="error" title={t("soulLoadError")} /> : null}
@@ -198,8 +202,8 @@ export function AgentDetailPage() {
 
       {dirty ? <Banner status="warning" title={t("unsavedChanges")} /> : null}
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardContent className="space-y-4 p-6">
+      <Card>
+        <Stack gap={4}>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <label
@@ -248,66 +252,72 @@ export function AgentDetailPage() {
               }}
             />
           </div>
-        </CardContent>
+        </Stack>
       </Card>
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Soul</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Banner
-            status="warning"
-            role="status"
-            title={t("sessionLagTitle")}
-            description={
-              <>
-                {t("sessionLagPrefix")} <strong>{t("sessionLagStrong")}</strong>
-                {t("sessionLagSuffix")}
-              </>
-            }
-          />
-          <div className="flex flex-wrap gap-1 border-b border-border/40 pb-2">
-            {SOUL_SECTIONS.map((s) => (
-              <Button
-                key={s}
-                type="button"
-                size="sm"
-                variant={tab === s ? "default" : "ghost"}
-                onClick={() => setTab(s)}
-              >
-                {s}
+      <Card>
+        <Stack gap={4}>
+          <Text type="label" as="h3">
+            Soul
+          </Text>
+          <Stack gap={4}>
+            <Banner
+              status="warning"
+              role="status"
+              title={t("sessionLagTitle")}
+              description={
+                <>
+                  {t("sessionLagPrefix")} <strong>{t("sessionLagStrong")}</strong>
+                  {t("sessionLagSuffix")}
+                </>
+              }
+            />
+            <div className="flex flex-wrap gap-1 border-b border-border/40 pb-2">
+              {SOUL_SECTIONS.map((s) => (
+                <Button
+                  key={s}
+                  type="button"
+                  size="sm"
+                  variant={tab === s ? "default" : "ghost"}
+                  onClick={() => setTab(s)}
+                >
+                  {s}
+                </Button>
+              ))}
+            </div>
+            <TextArea
+              label={t("soulSectionEditor", { section: tab })}
+              isLabelHidden
+              size="sm"
+              data-mono
+              value={sections[tab] ?? ""}
+              onChange={(next) => onSectionChange(tab, next)}
+              rows={12}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("documentSize", { bytes: docBytes })}
+            </p>
+            {secretWarning ? <Banner status="error" title={secretWarning} /> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={() => previewMut.mutate()}>
+                {t("previewCompose")}
               </Button>
-            ))}
-          </div>
-          <TextArea
-            label={t("soulSectionEditor", { section: tab })}
-            isLabelHidden
-            size="sm"
-            data-mono
-            value={sections[tab] ?? ""}
-            onChange={(next) => onSectionChange(tab, next)}
-            rows={12}
-          />
-          <p className="text-xs text-muted-foreground">{t("documentSize", { bytes: docBytes })}</p>
-          {secretWarning ? <Banner status="error" title={secretWarning} /> : null}
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" onClick={() => previewMut.mutate()}>
-              {t("previewCompose")}
-            </Button>
-            <Button
-              type="button"
-              disabled={saveMut.isPending || docBytes > 49152}
-              loading={saveMut.isPending}
-              onClick={() => saveMut.mutate()}
-            >
-              {t("save")}
-            </Button>
-          </div>
-          {preview ? (
-            <pre className="max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs">{preview}</pre>
-          ) : null}
-        </CardContent>
+              <Button
+                type="button"
+                disabled={saveMut.isPending || docBytes > 49152}
+                loading={saveMut.isPending}
+                onClick={() => saveMut.mutate()}
+              >
+                {t("save")}
+              </Button>
+            </div>
+            {preview ? (
+              <pre className="max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs">
+                {preview}
+              </pre>
+            ) : null}
+          </Stack>
+        </Stack>
       </Card>
     </div>
   );

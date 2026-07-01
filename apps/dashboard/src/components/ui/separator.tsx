@@ -1,23 +1,13 @@
-import * as SeparatorPrimitive from "@radix-ui/react-separator";
-import * as React from "react";
-import { cn } from "@/lib/utils";
+import { Divider } from "@astryxdesign/core/Divider";
+import type { ComponentProps } from "react";
 
-const Separator = React.forwardRef<
-  React.ComponentRef<typeof SeparatorPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>
->(({ className, orientation = "horizontal", decorative = true, ...props }, ref) => (
-  <SeparatorPrimitive.Root
-    ref={ref}
-    decorative={decorative}
-    orientation={orientation}
-    className={cn(
-      "shrink-0 bg-border",
-      orientation === "horizontal" ? "h-px w-full" : "h-full w-px",
-      className,
-    )}
-    {...props}
-  />
-));
-Separator.displayName = SeparatorPrimitive.Root.displayName;
+/**
+ * Separator — thin wrapper over Astryx Divider (slice 0, #2088). Keeps the
+ * `@/components/ui/separator` import path stable for existing consumers; Divider
+ * renders `<div role="separator" aria-orientation>` like the former Radix impl.
+ */
+function Separator({ orientation = "horizontal", ...props }: ComponentProps<typeof Divider>) {
+  return <Divider orientation={orientation} {...props} />;
+}
 
 export { Separator };

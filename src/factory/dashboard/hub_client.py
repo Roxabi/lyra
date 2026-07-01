@@ -30,6 +30,7 @@ from roxabi_contracts.dashboard import (
     DashboardJobsListResponse,
     DashboardJobsSteerRequest,
     DashboardJobsSteerResponse,
+    DashboardPipelineResponse,
     DashboardSessionsListRequest,
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
@@ -243,6 +244,10 @@ class DashboardHubClient:
     async def fleet_list(self) -> DashboardFleetResponse:
         raw = await self._request(SUBJECTS.fleet_list, {})
         return DashboardFleetResponse.model_validate(raw)
+
+    async def pipeline_list(self) -> DashboardPipelineResponse:
+        raw = await self._request(SUBJECTS.pipeline_list, {})
+        return DashboardPipelineResponse.model_validate(raw)
 
     async def list_connector_installations(
         self, connector: str, *, factory_tenant: str

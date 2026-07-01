@@ -51,6 +51,10 @@ describe("JobsPage", () => {
       accepted: true,
       message: "steer published",
     });
+    vi.spyOn(api, "cancelJob").mockResolvedValue({
+      accepted: true,
+      message: "cancel published",
+    });
   });
 
   it("renders live jobs table and launch form", async () => {
@@ -80,6 +84,18 @@ describe("JobsPage", () => {
         prompt: "run diagnostics",
         job_name: "omp",
       });
+    });
+  });
+
+  it("submits cancel mutation", async () => {
+    const user = userEvent.setup();
+    renderJobs();
+    await waitFor(() => {
+      expect(screen.getByText("job-abc")).toBeTruthy();
+    });
+    await user.click(screen.getByRole("button", { name: "Annuler" }));
+    await waitFor(() => {
+      expect(api.cancelJob).toHaveBeenCalledWith("job-abc");
     });
   });
 });

@@ -25,6 +25,8 @@ from roxabi_contracts.dashboard import (
     DashboardConnectorInstallationsListResponse,
     DashboardConnectorInstallationUpsertRequest,
     DashboardFleetResponse,
+    DashboardJobsCancelRequest,
+    DashboardJobsCancelResponse,
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
@@ -139,6 +141,11 @@ class DashboardHubClient:
         req = DashboardJobsSteerRequest(job_id=job_id, text=text)
         raw = await self._request(SUBJECTS.jobs_steer, req.model_dump())
         return DashboardJobsSteerResponse.model_validate(raw)
+
+    async def cancel_job(self, job_id: str) -> DashboardJobsCancelResponse:
+        req = DashboardJobsCancelRequest(job_id=job_id)
+        raw = await self._request(SUBJECTS.jobs_cancel, req.model_dump())
+        return DashboardJobsCancelResponse.model_validate(raw)
 
     async def list_turns(
         self, session_id: str, *, limit: int = 200

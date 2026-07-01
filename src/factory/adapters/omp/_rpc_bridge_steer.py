@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from roxabi_contracts.jobs.subjects import jobs_steer
+from roxabi_contracts.jobs.subjects import JOB_CANCEL_STEER_TOKEN, jobs_steer
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NatsClient
@@ -30,6 +30,9 @@ class RpcBridgeSteerMixin:
                 log.debug("rpc_bridge: steer message dropped — no active job")
                 return
             text = msg.data.decode("utf-8", errors="replace")
+            if text == JOB_CANCEL_STEER_TOKEN:
+                await asyncio.to_thread(self._client.stop)
+                return
             await asyncio.to_thread(self._client.steer, text)
 
         return await nc.subscribe(jobs_steer(job_id), cb=_handle_steer_msg)

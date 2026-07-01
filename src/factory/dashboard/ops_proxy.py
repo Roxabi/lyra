@@ -70,7 +70,7 @@ def build_ops_log_query(
 _ENGINE_LABELS: dict[str, str] = {
     "loki": "Loki",
     "langfuse": "Langfuse",
-    "otel-collector": "OTel Collector",
+    "otel": "Factory OTel",
 }
 
 
@@ -86,8 +86,8 @@ def langfuse_url() -> str:
     return _env_url("FACTORY_LANGFUSE_URL", "http://127.0.0.1:3000")
 
 
-def otel_health_url() -> str:
-    return _env_url("FACTORY_OTEL_HEALTH_URL", "http://127.0.0.1:13133")
+def otel_service_url() -> str:
+    return _env_url("FACTORY_OTEL_URL", "http://factory-otel:8450")
 
 
 async def _probe(
@@ -120,21 +120,38 @@ async def _probe(
         )
 
 
+def _langfuse_deferred() -> bool:
+    return os.environ.get("FACTORY_LANGFUSE_DEFERRED", "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 async def fetch_ops_health() -> DashboardOpsHealthResponse:
     async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_S) as client:
-        engines = [
-            await _probe(client, engine="loki", url=loki_url(), path="/ready"),
-            await _probe(
+        if _langfuse_deferred():
+            langfuse_health = OpsEngineHealth(
+                engine="langfuse",
+                label=_ENGINE_LABELS["langfuse"],
+                reachable=False,
+                detail="deferred (otel-raw v1)",
+            )
+        else:
+            langfuse_health = await _probe(
                 client,
                 engine="langfuse",
                 url=langfuse_url(),
                 path="/api/public/health",
-            ),
+            )
+        engines = [
+            await _probe(client, engine="loki", url=loki_url(), path="/ready"),
+            langfuse_health,
             await _probe(
                 client,
-                engine="otel-collector",
-                url=otel_health_url(),
-                path="/",
+                engine="otel",
+                url=otel_service_url(),
+                path="/healthz",
             ),
         ]
     return DashboardOpsHealthResponse(engines=engines)

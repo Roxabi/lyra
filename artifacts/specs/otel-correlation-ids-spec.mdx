@@ -1,0 +1,84 @@
+---
+title: "OTel correlation IDs — Factory wire ↔ OTel trace mapping"
+issue: 2069
+status: approved
+tier: F-lite
+date: 2026-06-30
+source:
+  adr: docs/architecture/adr/097-otel-raw-telemetry-store.mdx
+  job_model: docs/architecture/adr/084-workenvelope-job-id-invariant.mdx
+---
+
+## Context
+
+Factory messages carry `trace_id` (UUID string) and `job_id` (32-char hex). OTel uses 128-bit trace IDs (32 hex chars) and 64-bit span IDs. Hub codecs previously reminted `trace_id` per hop, breaking correlation.
+
+## Goal
+
+Single SSoT for envelope field minting and a fixed mapping to OTel so spans, logs, and turns.db join cleanly.
+
+## Factory semantics (ADR-084)
+
+| ID | Semantics | Scope |
+|----|-----------|-------|
+| `trace_id` | Request tree root — one per user turn / ingress dispatch | All `ContractEnvelope` subclasses |
+| `job_id` | Run identity — one per NATS work unit | `WorkEnvelope` subclasses |
+| `parent_job_id` | Composite child link | Optional on `WorkEnvelope` |
+| `pool_id` | Session mailbox ≈ conversation | Optional on `WorkEnvelope` (Option A, #2069) |
+
+## Hub SSoT: `mint_work_envelope_fields()`
+
+Location: `src/factory/nats/envelope_fields.py`
+
+```python
+mint_work_envelope_fields(
+    trace_id: str | None = None,   # default: TraceContext.get_trace_id()
+    job_id: str | None = None,     # default: caller-supplied or new_job_id()
+    parent_job_id: str | None = None,
+    pool_id: str | None = None,   # default: TraceContext.get_pool_id()
+) -> dict[str, Any]
+```
+
+**Rules:**
+
+1. Hub work-path codecs **must** call this helper — no local `uuid4()` for `trace_id`
+2. `trace_id` resolution order: explicit arg → `TraceContext` → **forbidden** on hub work paths (tests assert context set)
+3. `job_id` resolution: explicit `root_job_id` from ingress (#1620) → `new_job_id()` only for non-correlated test paths
+4. `pool_id`: propagate when present on wire; omit when absent (no synthetic pool)
+
+## OTel mapping
+
+| Factory field | Span attribute | OTel native |
+|---------------|----------------|-------------|
+| `trace_id` (UUID wire) | `roxabi.trace_id` (verbatim wire) | Trace ID = `uuid4.hex` (strip hyphens, lowercase 32 hex) |
+| `job_id` | `roxabi.job_id` | Span name suffix or attr |
+| `parent_job_id` | `roxabi.parent_job_id` | Parent link via `parent_job_id` attr (v1 sibling spans OK) |
+| `pool_id` | `roxabi.pool_id` | Also maps to `session.id` when present |
+
+### Trace ID conversion
+
+```python
+def factory_trace_to_otel(factory_trace_id: str) -> str:
+    return factory_trace_id.replace("-", "").lower()
+```
+
+Reverse for dashboard display: re-insert hyphens only when wire form is UUID-shaped; store wire form in `roxabi.trace_id` attr always.
+
+## Clipool dual-layer
+
+Clipool emits **two** span families:
+
+1. **NATS hook span** — `NatsAdapterBase` / `MessageLifecycleHooks` on `JobEnvelope` dispatch; carries wire `roxabi.trace_id`, `roxabi.job_id`, `roxabi.pool_id`
+2. **Claude Code OTel** — subprocess spans via `CLAUDE_CODE_ENABLE_TELEMETRY` (existing)
+
+**v1 correlation minimum:** both families share the same `roxabi.trace_id` wire value (from `JobEnvelope.trace_id`). Dashboard filters on `trace_id` return both sibling spans. Parent-child nesting between NATS job span and Claude root span is **documented as siblings** until #1623.
+
+## llmcli HTTP (out of band)
+
+LiteLLM proxy OTLP (`LITELLM_OTEL_V2`) does not pass through `NatsAdapterBase`. Correlation to hub jobs is via temporal + `gen_ai.request.model` attrs; explicit `roxabi.job_id` injection is a future hub proxy header (#1623).
+
+## Verification
+
+- Grep hub codecs: no `trace_id=str(uuid4())` on work encode paths
+- `InMemorySpanRecorder` test: clipool envelope `trace_id` == exported `roxabi.trace_id` attr
+- E2E paper: Telegram ingress `trace_id` == STT request `trace_id` on wire

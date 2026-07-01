@@ -40,6 +40,7 @@ class RpcBridgeCallbacksMixin:
     _loop: asyncio.AbstractEventLoop | None
     _last_agent_end_event: Any | None
     _current_job_id: str | None
+    _current_trace_id: str | None
 
     def _derive_assistant_text(self, turn: Any) -> str:
         """Assistant text for the result: ``turn.assistant_text``, falling back to
@@ -65,7 +66,10 @@ class RpcBridgeCallbacksMixin:
                 job_id,
                 ctx.turn_error.code,
             )
-            payload = make_result(job_id, status="error", error=ctx.turn_error)
+            trace_id = getattr(self, "_current_trace_id", None)
+            payload = make_result(
+                job_id, trace_id=trace_id, status="error", error=ctx.turn_error
+            )
             await nc.publish(jobs_result(job_id), payload)
             return
 
@@ -77,7 +81,10 @@ class RpcBridgeCallbacksMixin:
                 message="EmptyResponse",
                 retryable=False,
             )
-            payload = make_result(job_id, status="error", error=empty_error)
+            trace_id = getattr(self, "_current_trace_id", None)
+            payload = make_result(
+                job_id, trace_id=trace_id, status="error", error=empty_error
+            )
             await nc.publish(jobs_result(job_id), payload)
             return
 
@@ -86,7 +93,8 @@ class RpcBridgeCallbacksMixin:
             data["model_fallback"] = ctx.model_fallback
         if ctx.session_file is not None:
             data["session_file"] = ctx.session_file
-        payload = make_result(job_id, status="success", data=data)
+        trace_id = getattr(self, "_current_trace_id", None)
+        payload = make_result(job_id, trace_id=trace_id, status="success", data=data)
         await nc.publish(jobs_result(job_id), payload)
 
     def _schedule_publish(self, subject: str, payload: bytes) -> None:
@@ -122,8 +130,10 @@ class RpcBridgeCallbacksMixin:
         if job_id is None:
             return
         partial_text = getattr(event, "text", None)
+        trace_id = getattr(self, "_current_trace_id", None)
         payload = make_progress(
             job_id,
+            trace_id=trace_id,
             step="message_update",
             event_type="message_update",
             partial_text=partial_text,
@@ -139,8 +149,10 @@ class RpcBridgeCallbacksMixin:
         tool_name = getattr(event, "tool_name", None)
         tool_id = getattr(event, "tool_id", None)
         # tool_input NOT published — may contain credentials/file fragments (ADR-073)
+        trace_id = getattr(self, "_current_trace_id", None)
         payload = make_progress(
             job_id,
+            trace_id=trace_id,
             step="tool_start",
             event_type="tool_start",
             tool_name=tool_name,

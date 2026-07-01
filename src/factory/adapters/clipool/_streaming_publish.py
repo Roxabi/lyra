@@ -18,6 +18,7 @@ async def publish_streaming_job(
     *,
     job_id: str,
     iterator: AsyncIterator[Any],
+    trace_id: str | None = None,
     resumed: bool | None = None,
 ) -> None:
     """Map pool LlmEvents to JobProgress publishes; terminal JobResult at end."""
@@ -30,6 +31,7 @@ async def publish_streaming_job(
                 jobs_progress(job_id),
                 make_progress(
                     job_id,
+                    trace_id=trace_id,
                     step="text",
                     event_type="text",
                     partial_text=event.text,
@@ -41,6 +43,7 @@ async def publish_streaming_job(
                 jobs_progress(job_id),
                 make_progress(
                     job_id,
+                    trace_id=trace_id,
                     step="tool",
                     event_type="tool_use",
                     tool_name=event.tool_name,
@@ -52,6 +55,7 @@ async def publish_streaming_job(
             await _publish_terminal(
                 nc,
                 job_id=job_id,
+                trace_id=trace_id,
                 is_error=event.is_error,
                 text=None,
                 session_id=event.session_id,
@@ -60,7 +64,9 @@ async def publish_streaming_job(
             )
             return
 
-    await _publish_terminal(nc, job_id=job_id, is_error=False, text="", session_id=None)
+    await _publish_terminal(
+        nc, job_id=job_id, trace_id=trace_id, is_error=False, text="", session_id=None
+    )
 
 
 async def publish_blocking_result(
@@ -68,6 +74,7 @@ async def publish_blocking_result(
     *,
     job_id: str,
     result: CliResult,
+    trace_id: str | None = None,
     resumed: bool | None = None,
 ) -> None:
     """Publish a single JobResult for a non-streaming clipool turn."""
@@ -77,6 +84,7 @@ async def publish_blocking_result(
     await _publish_terminal(
         nc,
         job_id=job_id,
+        trace_id=trace_id,
         is_error=bool(result.error),
         text=result.result or None,
         session_id=result.session_id or None,
@@ -90,6 +98,7 @@ async def publish_job_failure(
     *,
     job_id: str,
     exc: BaseException,
+    trace_id: str | None = None,
 ) -> None:
     """Publish JobResult(status=error) for an unhandled worker failure."""
     from factory.adapters.clipool.error_classifier import classify_exception
@@ -97,7 +106,7 @@ async def publish_job_failure(
     worker_error = classify_exception(exc)
     await nc.publish(
         jobs_result(job_id),
-        make_result(job_id, status="error", error=worker_error),
+        make_result(job_id, trace_id=trace_id, status="error", error=worker_error),
     )
 
 
@@ -105,6 +114,7 @@ async def _publish_terminal(  # noqa: PLR0913
     nc: Any,
     *,
     job_id: str,
+    trace_id: str | None,
     is_error: bool,
     text: str | None,
     session_id: str | None = None,
@@ -119,7 +129,7 @@ async def _publish_terminal(  # noqa: PLR0913
         )
         await nc.publish(
             jobs_result(job_id),
-            make_result(job_id, status="error", error=validated),
+            make_result(job_id, trace_id=trace_id, status="error", error=validated),
         )
         return
 
@@ -133,5 +143,5 @@ async def _publish_terminal(  # noqa: PLR0913
 
     await nc.publish(
         jobs_result(job_id),
-        make_result(job_id, status="success", data=data or None),
+        make_result(job_id, trace_id=trace_id, status="success", data=data or None),
     )

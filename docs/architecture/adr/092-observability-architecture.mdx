@@ -59,6 +59,17 @@ Because agents bypass the LiteLLM proxy, LiteLLM telemetry alone is blind to age
 
 The trace plane (OTel / Langfuse) is **not** gated on the distributed harness (**#1490**). Only **cross-NATS span nesting** (#1623) stays harness-gated; single-process traces ship independently.
 
+### 6. Amendment (ADR-097, #2069) — trace plane v1 = otel-raw
+
+| v1 (2026-06-30) | Choice |
+|---|---|
+| **Sink** | JSONL `~/.local/state/factory/otel/` + SQLite index `otel-raw.db` — see [ADR-097](097-otel-raw-telemetry-store.mdx) |
+| **Langfuse** | **Optional / deferred** — not required for collector startup or dashboard v1 |
+| **Instrumentation** | `MessageLifecycleHooks` in `NatsAdapterBase` + `roxabi-otel` package — OTel SDK **not** in `roxabi-nats` |
+| **Dashboard** | BFF raw spans viewer — not Langfuse UI proxy |
+
+Engine topology diagram below still lists Langfuse as a *possible* headless engine; v1 factory ships **otel-raw** as the active trace sink. Langfuse may return as an optional drill-down engine later.
+
 ### Engine topology (push vs pull)
 
 ```

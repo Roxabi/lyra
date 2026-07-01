@@ -40,6 +40,16 @@ factory-dashboard (HTTP, Tailnet)
 
 Observability composition (ADR-092) stays **headless engine query** — not hub chat routing.
 
+### 5. Amendment (ADR-097, #2069) — otel-raw BFF engine
+
+| Engine | v1 dashboard access |
+|---|---|
+| **otel-raw** | `GET /api/bff/spans` — paginated raw JSON from SQLite index + JSONL archive |
+| **Langfuse** | Health probe may report `deferred` — not required for trace viewing in v1 |
+| **Loki / Prom** | Unchanged — existing ops proxy |
+
+Raw span viewer is a reduced #1774 panel — filters `pool_id`, `job_id`, `component`; full JSON on row expand. No Langfuse iframe.
+
 ### 3. Phased migration
 
 | Phase | Scope | NATS / identity |

@@ -25,13 +25,35 @@ def test_promtail_config_targets_loki_and_sources() -> None:
     assert jobs == {"factory-operator", "factory-journal"}
 
 
-def test_otel_collector_config_exports_to_langfuse() -> None:
+def test_otel_collector_config_exports_jsonl() -> None:
     data = yaml.safe_load((OBS_DIR / "otel-collector-config.yml").read_text())
     assert data["receivers"]["otlp"]["protocols"]["grpc"]["endpoint"] == "0.0.0.0:4317"
-    exporter = data["exporters"]["otlphttp/langfuse"]
-    assert exporter["endpoint"] == "http://factory-langfuse-web:3000/api/public/otel"
-    assert exporter["headers"]["x-langfuse-ingestion-version"] == "4"
+    assert data["exporters"]["file"]["path"] == "/otel-data/spans.jsonl"
+    assert "otlphttp/langfuse" not in data.get("exporters", {})
     assert "health_check" in data["extensions"]
+
+
+def test_quadlet_toml_otel_collector_disabled() -> None:
+    text = QUADLET_TOML.read_text()
+    start = text.index("[component.otel-collector]")
+    block = text[start : text.find("\n[", start + 1)]
+    assert "disabled = true" in block
+
+
+def test_quadlet_toml_langfuse_components_disabled() -> None:
+    text = QUADLET_TOML.read_text()
+    for name in (
+        "langfuse-postgres",
+        "langfuse-clickhouse",
+        "langfuse-redis",
+        "langfuse-minio",
+        "langfuse-worker",
+        "langfuse-web",
+    ):
+        section = f"[component.{name}]"
+        start = text.index(section)
+        block = text[start : text.find("\n[", start + 1)]
+        assert "disabled = true" in block
 
 
 def test_quadlet_units_exist() -> None:
@@ -39,6 +61,7 @@ def test_quadlet_units_exist() -> None:
         "factory-loki.container",
         "factory-promtail.container",
         "factory-loki-data.volume",
+        "factory-otel.container",
         "factory-otel-collector.container",
         "factory-langfuse-web.container",
         "factory-langfuse-worker.container",
@@ -57,7 +80,8 @@ def test_quadlet_toml_declares_observability_stack() -> None:
     for fragment in (
         'container = "factory-loki.container"',
         'container = "factory-promtail.container"',
-        'container = "factory-otel-collector.container"',
+        'container = "factory-otel.container"',
+        'disabled = true',
         'container = "factory-langfuse-web.container"',
         'volume = "factory-langfuse-postgres-data.volume"',
     ):

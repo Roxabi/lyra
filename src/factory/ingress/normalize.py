@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
 
+from factory.nats.envelope_fields import wire_trace_id_hex
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.event.models import LyraEvent
 
@@ -68,7 +68,7 @@ def build_lyra_event(  # noqa: PLR0913 — envelope field bundle
 ) -> LyraEvent:
     return LyraEvent(
         contract_version=CONTRACT_VERSION,
-        trace_id=trace_id or uuid4().hex,
+        trace_id=wire_trace_id_hex(trace_id),
         issued_at=datetime.now(tz=UTC),
         service=service,
         kind=kind,

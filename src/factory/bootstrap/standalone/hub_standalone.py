@@ -329,8 +329,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             cli_nats_driver=cli_nats_driver,
             nats_llm_client=nats_llm_client,
         )
-        # #1797 drives open()/close(); #1795 JobResult close trigger deferred
-        # (no hub-side factory.job.*.result sub yet)
+        # Pool run lifecycle drives open()/close() via PoolContext (#1772);
+        # #1799 adds steer, #1798 the sub-job facets.  TTL heals a missed close.
         await _active_jobs_coord.stop()
         await _dlq_router.stop()
 

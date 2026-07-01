@@ -1,3 +1,4 @@
+import { ToastViewport } from "@astryxdesign/core/Toast";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
@@ -32,9 +33,11 @@ function renderAgentsList() {
   });
   void router.load();
   return render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <ToastViewport>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ToastViewport>,
   );
 }
 
@@ -55,11 +58,13 @@ function renderAgentDetail() {
   });
   void router.load();
   return render(
-    <QueryClientProvider client={queryClient}>
-      <ShellTitleProvider>
-        <RouterProvider router={router} />
-      </ShellTitleProvider>
-    </QueryClientProvider>,
+    <ToastViewport>
+      <QueryClientProvider client={queryClient}>
+        <ShellTitleProvider>
+          <RouterProvider router={router} />
+        </ShellTitleProvider>
+      </QueryClientProvider>
+    </ToastViewport>,
   );
 }
 
@@ -180,6 +185,8 @@ describe("AgentDetailPage", () => {
       expect(agentsApi.patchAgentConfig).toHaveBeenCalled();
       expect(agentsApi.putAgentSoul).toHaveBeenCalled();
     });
+    // Success toast renders through the real ToastViewport (info → role=status).
+    expect(await screen.findByText(/Enregistré\./)).toBeTruthy();
   });
 
   it("shows secret lint warning when soul text matches token patterns", async () => {

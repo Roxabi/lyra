@@ -53,6 +53,13 @@ export const roxabiTheme = defineTheme({
 
   // No `icons` here on purpose (#2091): Astryx's <Theme> re-registers
   // `theme.icons` on every render, which would override the app's global
-  // Phosphor registry. Icons are owned by `registerAppIcons()` (src/lib/
-  // astryx-icons.tsx), called once at boot in src/main.tsx.
+  // Phosphor registry. Icons are owned by `registerAppIcons()`
+  // (src/lib/astryx-icons.tsx), called once at boot in src/main.tsx.
+  //
+  // ⚠ Inert ONLY because the app imports the *built* module (built/roxabi.js),
+  // whose `icons` is derived by `astryx theme build`'s regex scan of THIS
+  // source (no `icons:` key → none emitted). At RUNTIME, `defineTheme({extends:
+  // neutralTheme})` still resolves `icons = neutralTheme.icons`, so importing
+  // this .ts source directly (test / storybook / inline defineTheme) would
+  // re-clobber the registry. Always consume `@/astryx-theme/built/roxabi`.
 });

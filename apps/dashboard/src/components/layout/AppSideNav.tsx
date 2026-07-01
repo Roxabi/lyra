@@ -1,4 +1,3 @@
-import { Icon } from "@astryxdesign/core/Icon";
 import {
   SideNav,
   SideNavCollapseButton,
@@ -33,9 +32,10 @@ export function AppSideNav() {
           label={t(item.labelKey)}
           href={item.to}
           isSelected={active}
-          // Domain glyph routed through Astryx Icon (#2091). Active state is
-          // conveyed by SideNavItem's isSelected highlight, so no weight swap.
-          icon={<Icon icon={item.Icon} size="sm" />}
+          // Pass the raw Phosphor component (#2091): SideNavItem wraps it in
+          // Astryx <Icon> via renderIconSlot with the nav size + primary/
+          // secondary color coordination (active vs inactive) for free.
+          icon={item.Icon}
         />
       );
     });

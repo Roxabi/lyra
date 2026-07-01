@@ -1,52 +1,59 @@
+import { AppShell as AstryxAppShell } from "@astryxdesign/core/AppShell";
+import { LinkProvider } from "@astryxdesign/core/Link";
 import { Outlet, useRouterState } from "@tanstack/react-router";
-import { AppBottomNav } from "@/components/layout/AppBottomNav";
-import { AppHeader } from "@/components/layout/AppHeader";
-import { AppSidebar } from "@/components/layout/AppSidebar";
+import { useEffect, useState } from "react";
+import { AppSideNav } from "@/components/layout/AppSideNav";
+import { AppTopNav } from "@/components/layout/AppTopNav";
+import { RouterLink } from "@/components/layout/RouterLink";
 import { Toaster } from "@/components/ui/sonner";
-import { appNavItems, resolveNavFlags } from "@/lib/nav";
+import { resolveNavFlags } from "@/lib/nav";
 import { ShellTitleProvider } from "@/lib/shell-title";
 import { cn } from "@/lib/utils";
 
 export function AppShell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { fullBleed, wideLayout, hideBottomNav } = resolveNavFlags(pathname, appNavItems);
+  const { fullBleed, wideLayout } = resolveNavFlags(pathname);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Astryx's AppShell auto-generates the mobile drawer from `sideNav` (plus
+  // `topNav`'s own content) below the `md` breakpoint. Controlling `isOpen`
+  // ourselves — instead of leaving it uncontrolled — lets us close the
+  // drawer on every route change (acceptance criterion for #2090).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger — the effect must re-run on every navigation to close the drawer; removing it would fire only once on mount.
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
 
   return (
     <ShellTitleProvider key={pathname}>
-      <div className="ember-canvas flex h-dvh overflow-hidden bg-background text-foreground">
-        <AppSidebar />
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <AppHeader />
-
-          <main
+      <LinkProvider component={RouterLink}>
+        <AstryxAppShell
+          className="ember-canvas bg-background text-foreground"
+          topNav={<AppTopNav />}
+          sideNav={<AppSideNav />}
+          // Mobile nav is the SideNav in a hamburger drawer (#2090 replaces the
+          // former bottom-tab bar). Controlled so the route-change effect closes it.
+          mobileNav={{ isOpen: mobileNavOpen, onOpenChange: setMobileNavOpen }}
+        >
+          <div
             className={cn(
-              "min-h-0 flex-1",
+              "mx-auto w-full",
               fullBleed
-                ? "overflow-hidden p-0"
+                ? // overflow-hidden so pages that own their internal scroll (chat)
+                  // don't stack a second scroll region inside Astryx's scrollable
+                  // content area.
+                  "h-full min-h-0 max-w-none overflow-hidden p-0"
                 : cn(
-                    "fd-scroll overflow-y-auto px-4 py-4 md:px-6 md:py-6",
-                    !hideBottomNav && "pb-nav-mobile md:pb-6",
+                    "px-4 py-4 md:px-6 md:py-6",
+                    wideLayout ? "max-w-6xl xl:max-w-7xl" : "max-w-5xl",
                   ),
             )}
           >
-            <div
-              className={cn(
-                "mx-auto w-full",
-                fullBleed
-                  ? "h-full min-h-0 max-w-none"
-                  : wideLayout
-                    ? "max-w-6xl xl:max-w-7xl"
-                    : "max-w-5xl",
-              )}
-            >
-              <Outlet />
-            </div>
-          </main>
-        </div>
-        <AppBottomNav />
-        <Toaster />
-      </div>
+            <Outlet />
+          </div>
+        </AstryxAppShell>
+      </LinkProvider>
+      <Toaster />
     </ShellTitleProvider>
   );
 }

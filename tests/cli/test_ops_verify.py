@@ -10,7 +10,12 @@ import pytest
 from typer.testing import CliRunner
 
 from factory.cli import factory_app
-from factory.cli.ops import _expand_subject, _is_permission_error, _load_matrix
+from factory.cli.ops import (
+    _default_hub_seed,
+    _expand_subject,
+    _is_permission_error,
+    _load_matrix,
+)
 
 runner = CliRunner()
 
@@ -32,6 +37,17 @@ runner = CliRunner()
 )
 def test_expand_subject(subject: str, expected: str) -> None:
     assert _expand_subject(subject) == expected
+
+
+def test_default_hub_seed_matches_nkeys_ssot(tmp_path: Path) -> None:
+    """publish-host-event must resolve disk SSoT hub.seed, not factory-hub.seed."""
+    seeds = tmp_path / "nkeys"
+    seeds.mkdir()
+    hub_seed = seeds / "hub.seed"
+    hub_seed.write_text("SUABC\n", encoding="utf-8")
+
+    assert _default_hub_seed(seeds) == hub_seed
+    assert _default_hub_seed(seeds).is_file()
 
 
 def test_is_permission_error() -> None:

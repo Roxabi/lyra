@@ -333,7 +333,8 @@ def _default_nats_url() -> str:
 
 
 def _default_hub_seed(seeds_dir: Path) -> Path:
-    return seeds_dir / "factory-hub.seed"
+    # Disk SSoT per deploy/secrets-policy.toml → factory-nats-hub ← nkeys/hub.seed
+    return seeds_dir / "hub.seed"
 
 
 @ops_app.command("publish-host-event")
@@ -352,7 +353,7 @@ def publish_host_event_cmd(
     seeds_dir: Path = typer.Option(
         Path(_DEFAULT_SEEDS_DIR),
         "--seeds-dir",
-        help="Directory containing factory-hub.seed",
+        help="Directory containing hub.seed (factory-nats-hub identity)",
     ),
 ) -> None:
     """Publish a plane ① host event to factory-events (JetStream)."""

@@ -1,5 +1,11 @@
 [Unit]
 Description=Factory deploy failure notification — logs deploy failure to journal
+# Alert-storm throttle: a 2h40 network outage (2026-07-01) fired 65 near-identical
+# alerts (one per failed 5-min poll). Cap at 3 notifications per hour — systemd
+# rate-limits further OnFailure triggers within the window (start-limit-hit) instead
+# of spamming the journal. The interval auto-resets, so alerting resumes after it.
+StartLimitIntervalSec=3600
+StartLimitBurst=3
 
 [Service]
 Type=oneshot

@@ -368,7 +368,7 @@ cd ~/projects/roxabi-factory
 systemctl --user status 'factory-*.service'
 ```
 
-You should see all twenty `factory-*.service` units active (SSoT: `deploy/quadlet.toml` via `quadlet_containers`). Core factory units include `factory-nats`, `factory-hub`, adapters, workers, and infra; observability units include `factory-loki`, `factory-promtail`, `factory-otel-collector`, and `factory-langfuse-*`.
+You should see sixteen active `factory-*.service` units (SSoT: `deploy/quadlet.toml` via `quadlet_containers`; Langfuse and `factory-otel-collector` are disabled). Core units include `factory-nats`, `factory-hub`, adapters, workers, ingress, and infra; observability units include `factory-loki`, `factory-promtail`, and `factory-otel`.
 
 Or check the full container list:
 ```bash

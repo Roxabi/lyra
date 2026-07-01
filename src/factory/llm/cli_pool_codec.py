@@ -7,12 +7,11 @@ Encodes ClaudeJobPayload; decodes CliChunkEvent into LlmResult / LlmEvent.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 from pydantic import ValidationError
 
+from factory.core.envelope_fields import mint_work_envelope_fields
 from factory.core.messaging.events import (
     LlmEvent,
     ResultLlmEvent,
@@ -27,7 +26,6 @@ from roxabi_contracts.cli.models import (
     CliChunkEvent,
     CliControlCmd,
 )
-from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 
 if TYPE_CHECKING:
@@ -75,9 +73,14 @@ class CliPoolCodec:
         **kwargs: Any,
     ) -> tuple[bytes, str]:
         del messages  # ClaudeJobPayload carries text directly
-        trace_id = str(uuid4())
-        pool_id = kwargs.get("pool_id", "")
-        lyra_session_id = kwargs.get("lyra_session_id") or pool_id
+        pool_id = kwargs.get("pool_id", "") or None
+        fields = mint_work_envelope_fields(
+
+            job_id=kwargs.get("root_job_id"),
+            pool_id=pool_id,
+        )
+        trace_id = fields.trace_id
+        lyra_session_id = kwargs.get("lyra_session_id") or (pool_id or "")
         agent_name = TraceContext.get_agent_name() or None
 
         _mcfg: dict = (
@@ -85,10 +88,10 @@ class CliPoolCodec:
         )
 
         payload = ClaudeJobPayload(
-            contract_version=CONTRACT_VERSION,
+            contract_version=fields.contract_version,
             trace_id=trace_id,
-            issued_at=datetime.now(timezone.utc),
-            pool_id=pool_id,
+            issued_at=fields.issued_at,
+            pool_id=pool_id or "",
             lyra_session_id=lyra_session_id,
             text=text,
             model_cfg=_mcfg,

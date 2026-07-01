@@ -166,11 +166,17 @@ class TestNatsSttClientRealBlobRef:
             size=1024,
             source="telegram",
         )
+        from factory.core.trace import TraceContext
+
         codec = SttCodec()
         params = SttEncodeParams(model="large-v3-turbo")
 
         # Act — encode produces wire bytes using the real codec path
-        wire_bytes = codec.encode(real_ref, "audio/ogg", params)
+        tok = TraceContext.set_trace_id("550e8400-e29b-41d4-a716-446655440000")
+        try:
+            wire_bytes = codec.encode(real_ref, "audio/ogg", params)
+        finally:
+            TraceContext.reset_trace_id(tok)
 
         # Assert — wire bytes are valid JSON; SttRequest parses without error
         wire_dict = json.loads(wire_bytes)

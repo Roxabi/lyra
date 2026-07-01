@@ -209,6 +209,22 @@ fi
 # Wire generated token path into SEEDS so the policy loop can install it.
 SEEDS[factory_blobstore_token]="${BLOBSTORE_TOK}"
 
+# ── 3b. Generate factory-otel bearer token (idempotent) ───────────────────
+
+OTEL_TOK="${HOME}/.roxabi/factory/otel.tok"
+if [[ ! -f "${OTEL_TOK}" ]]; then
+  log "Generating factory-otel bearer token → ${OTEL_TOK} ..."
+  run mkdir -p "${HOME}/.roxabi/factory"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    (umask 0077; openssl rand -base64 48 > "${OTEL_TOK}")
+  else
+    echo "[dry-run] would generate ${OTEL_TOK}"
+  fi
+else
+  echo "  [skip] ${OTEL_TOK} already exists"
+fi
+SEEDS[factory_otel_token]="${OTEL_TOK}"
+
 # ── 4. Bootstrap tailnet env files (idempotent) ─────────────────────────────
 # TAILSCALE_IPV4 is host-global (M₁'s tailnet IP); written per-service so each unit's
 # EnvironmentFile is self-contained. Consumed by tailnet-bound PublishPort + the

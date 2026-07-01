@@ -26,14 +26,16 @@ export function AppSideNav() {
   const renderItems = (items: AppNavItem[]) =>
     items.map((item) => {
       const active = isNavItemActive(pathname, item);
-      const Icon = item.Icon;
       return (
         <SideNavItem
           key={item.to}
           label={t(item.labelKey)}
           href={item.to}
           isSelected={active}
-          icon={<Icon className="size-4" weight={active ? "fill" : "regular"} aria-hidden />}
+          // Pass the raw Phosphor component (#2091): SideNavItem wraps it in
+          // Astryx <Icon> via renderIconSlot with the nav size + primary/
+          // secondary color coordination (active vs inactive) for free.
+          icon={item.Icon}
         />
       );
     });

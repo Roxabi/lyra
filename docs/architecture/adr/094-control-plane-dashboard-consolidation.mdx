@@ -34,9 +34,11 @@ In production, `factory-web` already implements the hub-spoke chat path: FastAPI
 factory-dashboard (HTTP, Tailnet)
 ├── Chat adapter axis     → factory.inbound/outbound.web.* (phase 1)
 │                           → factory.*.dashboard.* (phase 2, with auth)
-└── Control-plane BFF axis → proxy Loki/Prom/Langfuse APIs; subscribe factory.event.*;
-                            kv.watch jobs — does NOT route through hub Pool
+└── Control-plane BFF axis → proxy Loki/Prom/Langfuse APIs; hub RPC for panels;
+                            SSE fanout for pipeline — does NOT route through hub Pool
 ```
+
+**Amendment (ADR-097, 2026-06-30):** Control-plane panels (`/fleet`, `/pipeline`, `/ops`, jobs) read state via **hub NATS RPC** (and **SSE** where live updates help). The dashboard BFF **must not** subscribe to `factory.event.>` or `factory.metric.>` directly — the hub owns projectors and read models (plane ④). This preserves ADR-094's single-process dashboard without duplicating JetStream consumers in the BFF process.
 
 Observability composition (ADR-092) stays **headless engine query** — not hub chat routing.
 

@@ -12,6 +12,7 @@
     "agents": "Agents",
     "jobs": "Jobs",
     "integrations": "Integrations",
+    "pipeline": "Pipeline",
     "fleet": "Fleet",
     "ops": "Supervision",
     "spans": "Spans",

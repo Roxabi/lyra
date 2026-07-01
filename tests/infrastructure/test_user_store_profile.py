@@ -75,7 +75,9 @@ async def test_delete_profile_user_removes_user_and_identities(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
-async def test_set_platform_identity_rejects_cross_user_collision(tmp_path: Path) -> None:
+async def test_set_platform_identity_rejects_cross_user_collision(
+    tmp_path: Path,
+) -> None:
     store = UserStore(db_path=tmp_path / "auth.db")
     await store.connect()
     try:

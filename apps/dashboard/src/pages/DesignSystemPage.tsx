@@ -1,3 +1,5 @@
+import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import { List, Moon, Robot, SquaresFour, Sun } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -28,10 +30,8 @@ import { PopoverSelect } from "@/components/ui/popover-select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SelectField } from "@/components/ui/select-field";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
-import { Textarea } from "@/components/ui/textarea";
 import { type AgentHealth, MODEL_CATALOG } from "@/lib/api";
 import type { HarnessKind } from "@/lib/chats-storage";
 import { cn } from "@/lib/utils";
@@ -113,6 +113,7 @@ export function DesignSystemPage() {
   const [listSearch, setListSearch] = useState("");
   const [listView, setListView] = useState<"cards" | "table">("cards");
   const [statusFilter, setStatusFilter] = useState(false);
+  const [textareaValue, setTextareaValue] = useState("");
 
   return (
     <div className="space-y-8 pb-8">
@@ -261,8 +262,8 @@ export function DesignSystemPage() {
           />
         </ListToolbar>
         <div className="flex flex-wrap gap-3">
-          <Skeleton className="h-10 w-40" />
-          <Skeleton className="h-6 w-20 rounded-full" />
+          <Skeleton width={160} height={40} />
+          <Skeleton width={80} height={24} radius="rounded" />
         </div>
         <EmptyState
           icon={Robot}
@@ -307,10 +308,13 @@ export function DesignSystemPage() {
           </div>
         </div>
         <div className="space-y-2">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor="ds-textarea">
-            Textarea
-          </label>
-          <Textarea id="ds-textarea" placeholder="Zone de texte multiligne…" rows={3} />
+          <TextArea
+            label="Textarea"
+            value={textareaValue}
+            onChange={setTextareaValue}
+            placeholder="Zone de texte multiligne…"
+            rows={3}
+          />
         </div>
         <Row label="SelectField">
           <SelectField label="Harness">

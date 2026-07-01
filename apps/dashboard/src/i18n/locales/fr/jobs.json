@@ -7,6 +7,7 @@
   "launch": {
     "title": "Lancer un job OMP",
     "agentLabel": "Agent",
+    "promptLabel": "Prompt du job OMP",
     "promptPlaceholder": "Prompt opérateur — publié comme WorkEnvelope sur NATS",
     "submit": "Lancer",
     "submitting": "Envoi…",

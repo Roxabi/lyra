@@ -3,6 +3,7 @@
   "viewCards": "Vue cartes",
   "viewTable": "Vue tableau",
   "viewMode": "Mode d'affichage",
+  "soulSectionEditor": "Éditeur soul — {{section}}",
   "soulSizeBytes": "{{bytes}} o",
   "soulSizeKb": "{{size}} Ko",
   "edit": "Éditer",

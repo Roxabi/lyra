@@ -8,7 +8,7 @@ from roxabi_contracts._nats_utils import validate_job_token
 RUNTIME_JOB_CLAUDE = "claude"
 RUNTIME_JOB_OMP = "omp"
 
-# Reserved steer payload — dashboard cancel (#1773) publishes this on factory.job.<id>.steer.
+# Reserved steer payload — dashboard cancel (#1773) on factory.job.<id>.steer.
 JOB_CANCEL_STEER_TOKEN = "__factory_cancel__"
 
 __all__ = [

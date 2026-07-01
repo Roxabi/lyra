@@ -179,16 +179,15 @@ def build_default_pipeline(
     trace_hook: TraceHook | None = None,
     event_bus: PipelineEventBus | None = None,
 ) -> MiddlewarePipeline:
-    """Build the standard middleware pipeline with all 11 stages."""
+    """Build the standard middleware pipeline with all 10 stages."""
     from .middleware_stages import (
         AuthorizeAgentMiddleware,
         CommandMiddleware,
         MessagePrepMiddleware,
         RateLimitMiddleware,
         ResolveBindingMiddleware,
-        ResolveTrustMiddleware,
+        ResolveIdentityMiddleware,
         TraceMiddleware,
-        TrustGuardMiddleware,
         ValidatePlatformMiddleware,
     )
     from .middleware_stt import SttMiddleware
@@ -198,8 +197,7 @@ def build_default_pipeline(
         [
             TraceMiddleware(),
             ValidatePlatformMiddleware(),
-            ResolveTrustMiddleware(),
-            TrustGuardMiddleware(),
+            ResolveIdentityMiddleware(),
             RateLimitMiddleware(),
             SttMiddleware(),
             ResolveBindingMiddleware(),

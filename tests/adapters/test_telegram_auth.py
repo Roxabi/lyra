@@ -1,8 +1,9 @@
 """Tests for Telegram adapter inbound path and Hub-side auth gate (C3).
 
 After C3 (trust re-resolution #456), adapters forward all messages with
-trust_level=PUBLIC to the bus; the Hub resolves trust and TrustGuardMiddleware
-drops BLOCKED users. These tests verify the adapter-side half of that contract.
+trust_level=PUBLIC to the bus; the Hub resolves identity and
+ResolveIdentityMiddleware drops BLOCKED users. These tests verify the
+adapter-side half of that contract.
 
 Covers: T2 (missing secret → 401), T9 (missing env var → SystemExit),
 SC-14 (GET /status returns all circuits), C3 (adapter forwards with PUBLIC trust).

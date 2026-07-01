@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from factory.adapters.omp.omp_pool import OmpPool
+from factory.adapters.omp.omp_pool import OmpPool, _PoolWorker
 from factory.core.agent.agent_db_loader import agent_row_to_config
 from factory.core.agent.agent_models import AgentRow
 from factory.core.agent.soul_cache import get_soul_document_cache
@@ -45,11 +45,12 @@ class TestSoulHarnessParity:
     @pytest.mark.asyncio
     async def test_omp_acquire_receives_identical_composed_string(self) -> None:
         composed = compose_soul_document_from_markdown(_SOUL_MD)
+        start_prompts: list[str] = []
+
         client = MagicMock()
         client.new_session = MagicMock()
         state = MagicMock(session_file="/tmp/s.jsonl")
         client.get_state = MagicMock(return_value=state)
-        client.set_system_prompt = MagicMock()
         client.start = MagicMock()
         client.stop = MagicMock()
         bridge = MagicMock()
@@ -59,10 +60,9 @@ class TestSoulHarnessParity:
         pool._nc = MagicMock()
         pool._loop = __import__("asyncio").get_event_loop()
 
-        async def _fake_start() -> object:
-            from factory.adapters.omp.omp_pool import _PoolWorker
-
-            w = _PoolWorker(client=client, bridge=bridge)
+        async def _fake_start(*, system_prompt: str = "") -> _PoolWorker:
+            start_prompts.append(system_prompt)
+            w = _PoolWorker(client=client, bridge=bridge, system_prompt=system_prompt)
             pool._all.append(w)
             return w
 
@@ -71,17 +71,23 @@ class TestSoulHarnessParity:
 
         worker = await pool.acquire(None, system_prompt=composed)
         assert worker.system_prompt == composed
-        client.set_system_prompt.assert_called_once_with(composed)
+        assert start_prompts == [composed]
 
     @pytest.mark.asyncio
     async def test_persona_edit_triggers_new_omp_session_with_new_soul(self) -> None:
-        client = MagicMock()
-        client.new_session = MagicMock()
-        state = MagicMock(session_file="/tmp/s.jsonl")
-        client.get_state = MagicMock(return_value=state)
-        client.set_system_prompt = MagicMock()
-        client.start = MagicMock()
-        client.stop = MagicMock()
+        start_prompts: list[str] = []
+        clients: list[MagicMock] = []
+
+        def _make_client() -> MagicMock:
+            client = MagicMock()
+            client.new_session = MagicMock()
+            state = MagicMock(session_file="/tmp/s.jsonl")
+            client.get_state = MagicMock(return_value=state)
+            client.start = MagicMock()
+            client.stop = MagicMock()
+            clients.append(client)
+            return client
+
         bridge = MagicMock()
         bridge.attach = AsyncMock()
 
@@ -89,10 +95,11 @@ class TestSoulHarnessParity:
         pool._nc = MagicMock()
         pool._loop = __import__("asyncio").get_event_loop()
 
-        async def _fake_start() -> object:
-            from factory.adapters.omp.omp_pool import _PoolWorker
-
-            w = _PoolWorker(client=client, bridge=bridge)
+        async def _fake_start(*, system_prompt: str = "") -> _PoolWorker:
+            start_prompts.append(system_prompt)
+            w = _PoolWorker(
+                client=_make_client(), bridge=bridge, system_prompt=system_prompt
+            )
             pool._all.append(w)
             return w
 
@@ -100,13 +107,12 @@ class TestSoulHarnessParity:
         await pool.register(MagicMock())
 
         soul_v1 = compose_soul_document_from_markdown("## Identity\nVersion one\n")
-        await pool.acquire(None, system_prompt=soul_v1)
-        pool.release(pool._all[0])
+        w1 = await pool.acquire(None, system_prompt=soul_v1)
+        pool.release(w1)
 
         soul_v2 = compose_soul_document_from_markdown("## Identity\nVersion two\n")
-        client.new_session.reset_mock()
-        client.set_system_prompt.reset_mock()
         worker2 = await pool.acquire(None, system_prompt=soul_v2)
         assert worker2.system_prompt == soul_v2
-        client.new_session.assert_called_once()
-        client.set_system_prompt.assert_called_once_with(soul_v2)
+        assert start_prompts == [soul_v1, soul_v2]
+        clients[0].stop.assert_called_once()
+        clients[1].new_session.assert_called_once()

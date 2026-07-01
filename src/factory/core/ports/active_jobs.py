@@ -99,3 +99,22 @@ class ActiveJobsPort(Protocol):
     async def get_by_pool(self, pool_id: str) -> ActiveJobEntry | None:
         """Return the active job for *pool_id*, or ``None`` if absent/expired."""
         ...
+
+
+@runtime_checkable
+class ActiveJobsRecorder(Protocol):
+    """Narrow open/close surface the Pool needs to register a run (#1772).
+
+    A strict subset of :class:`ActiveJobsPort` — satisfied structurally by
+    ``RegistryCoordinator`` (which delegates to the port and maintains the
+    in-memory snapshot the dashboard reads).  Kept separate so ``core.pool``
+    depends only on the two methods it calls, not the full store surface.
+    """
+
+    async def open(self, entry: ActiveJobEntry) -> None:
+        """Register *entry* as the active job for its pool."""
+        ...
+
+    async def close(self, job_id: str) -> None:
+        """Remove *job_id* from the registry (no-op if absent)."""
+        ...

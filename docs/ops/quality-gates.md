@@ -17,7 +17,7 @@ For script behaviour and exit codes, see [`tools/CLAUDE.md`](../../tools/CLAUDE.
 | `.claude/stack.yml` | Declares gates (`quality_gates`), stages, scripts, file filters, execution order (`qg.run_order`) |
 | `scripts/qg` | Executes gates for a stage, profile, or single gate name |
 | `.pre-commit-config.yaml` | Stable shell: upstream hooks + `qg run --stage pre-commit` / `pre-push` |
-| `.github/workflows/ci.yml` | CI bootstrap (nats, uv, bun) + `qg run --stage ci` + repo-specific extras (ACL matrix, coverage, e2e) |
+| `.github/workflows/ci.yml` | CI bootstrap (nats, uv, bun, yq) + `qg run --stage ci` + meta-tests, coverage, e2e |
 
 `tools/qg.conf` remains generated runtime config for file-length scripts (drift-gated by `scripts/check-qg-conf-drift.sh`).
 
@@ -56,11 +56,11 @@ Path-filtered gates (`files:` regex) skip when no changed file matches (commit/p
 
 Explicit steps in `.github/workflows/ci.yml` after the QG bundle:
 
-- Gate self-tests (`tests/tools/test_check_*.sh`)
-- ACL matrix lifecycle, request-reply flows, grant coverage
-- `bash scripts/check_inbox_prefix.sh`, `bash scripts/check_subject_literals.sh` (Python implementations)
+- Gate self-tests (`tests/tools/test_check_*.sh`, `tests/scripts/test_qg.sh`)
 - Dashboard Playwright e2e, package coverage thresholds
 - Jobs `integration`, `docker-build`
+
+ACL scanners (`acl_matrix_retired`, `request_reply_flows`, `acl_grants`, `inbox_prefix`, `subject_literals`) are declared in `stack.yml` and run inside `qg run --stage ci`.
 
 ---
 
@@ -75,8 +75,22 @@ No pre-commit or ci.yml edit required for standard gates.
 
 ---
 
-## Gaps
+## Gaps — deploy gates easy to miss locally
 
-Gates declared with `stages: [pre-push]` but easy to forget locally: `volumes_table`, `secrets_source` — run before deploy PRs when touching `deploy/`.
+Some gates run on **`git push`** (pre-push stage) but not when you only run `--stage pre-commit`, `--stage ci`, or `make qg` (local profile):
+
+| Gate | pre-push | ci | `make qg` |
+|------|:--------:|:--:|:---------:|
+| `secrets_source` | yes | no | no |
+| `volumes_table` | yes | yes | no |
+
+Before a **deploy PR**, run:
+
+```bash
+scripts/qg run --stage pre-push    # includes secrets_source + volumes_table
+# or, deploy-only subset:
+scripts/qg run secrets_source
+scripts/qg run volumes_table
+```
 
 `make quadlet-lint` for path-scoped Quadlet checks (see `quadlet-lint.yml` workflow).

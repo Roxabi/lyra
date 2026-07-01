@@ -60,5 +60,7 @@
   "createCancel": "Annuler",
   "createSubmit": "Créer",
   "createSuccess": "Agent {{name}} créé.",
-  "createError": "Échec de la création — identifiant déjà pris ?"
+  "createError": "Échec de la création.",
+  "errorAgentConflict": "Un agent avec cet identifiant existe déjà.",
+  "errorNotFound": "Agent introuvable."
 }

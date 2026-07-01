@@ -301,6 +301,13 @@ quality_gates:
     script: bash scripts/check_subject_literals.sh
     stages: [ci]
 
+  astryx_doctor:
+    enabled: true
+    script: bash scripts/check-astryx-doctor.sh
+    requires: bun
+    stages: [ci]
+    description: Astryx design-system setup health (Node floor, core<->cli alignment, peer deps) — #2088
+
 qg:
   run_order:
     pre-commit:
@@ -367,6 +374,7 @@ qg:
       - acl_grants
       - inbox_prefix
       - subject_literals
+      - astryx_doctor
   profiles:
     local:
       - lint_js

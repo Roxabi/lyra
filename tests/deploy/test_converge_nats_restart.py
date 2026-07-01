@@ -13,11 +13,14 @@ own self-source (converge.sh line 9 re-sources deploy-common.sh, which would oth
 overwrite our overrides).
 
 Assertions:
-  (auth)       auth-drift   → restart factory-nats ONLY; no client restarts; no reload
-  (structural) structural-drift → restart factory-nats + all 7 clients; no reload
+  (auth)       auth-drift   → restart factory-nats ONLY; no client restarts
+  (structural) structural-drift → restart factory-nats + all 7 clients
   (structural) voicecli branch → skipped when VOICE_DIR/.git does not exist
 
-converge NEVER reloads — reload lives only in `make nats-add-identity`.
+converge runs `systemctl --user daemon-reload` once (steps 3-4 install Quadlet content
+that must be picked up before the restarts); it never uses the unit-scoped
+`systemctl --user reload factory-nats` SIGHUP path — that lives only in
+`make nats-add-identity`.
 """
 
 from __future__ import annotations
@@ -285,15 +288,31 @@ class TestAuthDrift:
                 f"systemctl log: {lines!r}"
             )
 
-    def test_no_reload(self) -> None:
-        """converge NEVER reloads — reload lives only in make nats-add-identity.
+    def test_daemon_reload_called(self) -> None:
+        """converge runs `systemctl --user daemon-reload` once, right after step 4's
+        `make quadlet-install NO_RESTART=1` (which itself skips the reload), so the
+        restart(s) below pick up Quadlet unit content installed/rendered in steps 3-4
+        instead of relaunching from a stale generated unit.
 
-        Non-tautology: if a `systemctl --user reload factory-nats` call were added
-        to the auth branch, this assertion would fail → RED.
+        Non-tautology: if the daemon-reload were removed from converge.sh, this
+        assertion would fail → RED.
         """
         _, lines = self._run()
-        assert not any("reload" in line for line in lines), (
-            f"converge must not call systemctl reload; got: {lines!r}"
+        assert any("daemon-reload" in line for line in lines), (
+            f"expected 'daemon-reload' in systemctl log; got: {lines!r}"
+        )
+
+    def test_no_unit_scoped_reload(self) -> None:
+        """converge never calls the unit-scoped ACL SIGHUP reload
+        (`systemctl --user reload factory-nats`) — that lives only in
+        `make nats-add-identity`.
+
+        Non-tautology: if a `systemctl --user reload factory-nats` call were added,
+        this assertion would fail → RED.
+        """
+        _, lines = self._run()
+        assert not any("reload factory-nats" in line for line in lines), (
+            f"converge must not call unit-scoped reload; got: {lines!r}"
         )
 
 
@@ -337,15 +356,31 @@ class TestStructuralDrift:
                 f"systemctl log: {lines!r}"
             )
 
-    def test_no_reload(self) -> None:
-        """converge NEVER reloads — reload lives only in make nats-add-identity.
+    def test_daemon_reload_called(self) -> None:
+        """converge runs `systemctl --user daemon-reload` once, right after step 4's
+        `make quadlet-install NO_RESTART=1` (which itself skips the reload), so the
+        restart(s) below pick up Quadlet unit content installed/rendered in steps 3-4
+        instead of relaunching from a stale generated unit.
 
-        Non-tautology: if a `systemctl --user reload factory-nats` call were added
-        to the structural branch, this assertion would fail → RED.
+        Non-tautology: if the daemon-reload were removed from converge.sh, this
+        assertion would fail → RED.
         """
         _, lines = self._run()
-        assert not any("reload" in line for line in lines), (
-            f"converge must not call systemctl reload; got: {lines!r}"
+        assert any("daemon-reload" in line for line in lines), (
+            f"expected 'daemon-reload' in systemctl log; got: {lines!r}"
+        )
+
+    def test_no_unit_scoped_reload(self) -> None:
+        """converge never calls the unit-scoped ACL SIGHUP reload
+        (`systemctl --user reload factory-nats`) — that lives only in
+        `make nats-add-identity`.
+
+        Non-tautology: if a `systemctl --user reload factory-nats` call were added,
+        this assertion would fail → RED.
+        """
+        _, lines = self._run()
+        assert not any("reload factory-nats" in line for line in lines), (
+            f"converge must not call unit-scoped reload; got: {lines!r}"
         )
 
     def test_voicecli_skipped_when_no_git_dir(self) -> None:

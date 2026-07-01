@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from typing import TYPE_CHECKING
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import ValidationError
 
 from factory.dashboard.e2e import (
     e2e_enabled,
@@ -244,10 +242,11 @@ def build_bff_router(  # noqa: C901, PLR0915
             return stub_pipeline().model_dump()
         try:
             return (await hub.pipeline_list()).model_dump()
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     @router.post("/pipeline/stream-token")
     async def pipeline_stream_token() -> dict[str, str]:

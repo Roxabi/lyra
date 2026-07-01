@@ -14,10 +14,22 @@ cd ~/projects/roxabi-factory || {
 # Source shared library for PATH setup
 source "$(dirname "$0")/lib/deploy-common.sh"
 
-git fetch origin staging || {
-    echo "ERROR: git fetch origin staging failed" >&2
-    exit 1
-}
+# Retry git fetch with backoff — a transient WiFi/DNS blip on M1 (Livebox IPv6/EDNS0
+# flap, 2026-07-01) must not escalate a poll tick into a hard failure + deploy-failure
+# alert. On persistent failure, SKIP this tick (exit 0); the next timer tick retries.
+# A sustained real outage still surfaces via missed converges, just without alert spam.
+_fetch_ok=0
+for _attempt in 1 2 3; do
+    if git fetch origin staging 2>/dev/null; then
+        _fetch_ok=1
+        break
+    fi
+    [ "${_attempt}" -lt 3 ] && sleep $((_attempt * 5))
+done
+if [ "${_fetch_ok}" -ne 1 ]; then
+    echo "WARN: git fetch origin staging failed after 3 attempts (transient network?) — skipping tick" >&2
+    exit 0
+fi
 
 if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/staging)" ]; then
     echo "Already at origin/staging — nothing to do."

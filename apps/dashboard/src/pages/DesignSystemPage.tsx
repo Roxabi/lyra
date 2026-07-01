@@ -8,6 +8,7 @@ import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { useToast } from "@astryxdesign/core/Toast";
 import { List, Moon, Robot, SquaresFour, Sun } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -33,7 +34,6 @@ import {
 import { PopoverSelect } from "@/components/ui/popover-select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Separator } from "@/components/ui/separator";
-import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { type AgentHealth, MODEL_CATALOG } from "@/lib/api";
 import type { HarnessKind } from "@/lib/chats-storage";
@@ -113,6 +113,7 @@ const OFFLINE_HEALTH: AgentHealth = {
 
 export function DesignSystemPage() {
   const { t } = useTranslation();
+  const showToast = useToast();
   const [harness, setHarness] = useState<HarnessKind>("claude-cli");
   const [model, setModel] = useState(MODEL_CATALOG["claude-cli"][0]);
   const [popoverValue, setPopoverValue] = useState("a");
@@ -299,7 +300,11 @@ export function DesignSystemPage() {
             </tr>
           </thead>
         </table>
-        <Button type="button" variant="secondary" onClick={() => toast.success("Action réussie")}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => showToast({ body: "Action réussie", type: "info" })}
+        >
           Déclencher un toast
         </Button>
       </Section>

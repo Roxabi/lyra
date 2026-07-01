@@ -1,3 +1,4 @@
+import { ToastViewport } from "@astryxdesign/core/Toast";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -10,9 +11,11 @@ function renderJobs() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={queryClient}>
-      <JobsPage />
-    </QueryClientProvider>,
+    <ToastViewport>
+      <QueryClientProvider client={queryClient}>
+        <JobsPage />
+      </QueryClientProvider>
+    </ToastViewport>,
   );
 }
 
@@ -85,6 +88,8 @@ describe("JobsPage", () => {
         job_name: "omp",
       });
     });
+    // Success toast renders through the real ToastViewport.
+    expect(await screen.findByText(/job-new/)).toBeTruthy();
   });
 
   it("submits cancel mutation", async () => {

@@ -228,12 +228,12 @@ quality_gates:
   doc_drift:
     enabled: true
     script: tools/check_doc_drift.py
-    stages: [ci]
+    # Invoked only via doc_drift_bundle — no stages / run_order entry
 
   doc_semantic_drift:
     enabled: true
     script: tools/check_doc_semantic_drift.py
-    stages: [ci]
+    # Invoked only via doc_drift_bundle — no stages / run_order entry
 
   doc_drift_bundle:
     enabled: true
@@ -263,7 +263,8 @@ quality_gates:
   secrets_source:
     enabled: true
     script: tools/check_secrets_source.sh
-    stages: [pre-push]
+    # ci: wired for parity; skips (exit 0) when ~/.roxabi/factory absent on runners
+    stages: [pre-push, ci]
 
   str_exc_bus_bound:
     enabled: true
@@ -325,6 +326,10 @@ qg:
       - qg_conf_drift
       - acl_specs_drift
       - acl_authconf_drift
+      - secrets_drift
+      - quadlet_manifest_install
+      - volumes_table
+      - secrets_source
       - debt_expiry
       - test_sleep
     ci:
@@ -345,6 +350,7 @@ qg:
       - secrets_drift
       - quadlet_manifest_install
       - volumes_table
+      - secrets_source
       - quadlet_component_source
       - architecture_snapshot
       - debt_expiry
@@ -373,5 +379,8 @@ qg:
       - acl_authconf_drift
       - architecture_snapshot
       - secrets_drift
+      - quadlet_manifest_install
+      - volumes_table
+      - secrets_source
       - file_length
       - folder_size

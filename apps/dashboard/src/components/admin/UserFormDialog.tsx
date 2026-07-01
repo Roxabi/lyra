@@ -1,3 +1,4 @@
+import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -5,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
 import { type AdminUserAccess, createAdminUser, patchAdminUser } from "@/lib/admin-api";
 import { fetchAgentsConfigList } from "@/lib/agents-api";
@@ -182,8 +182,8 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
           <p className="text-xs font-medium text-muted-foreground">{t("fieldAgents")}</p>
           {agentsLoading ? (
             <div className="flex flex-wrap gap-2">
-              <Skeleton className="h-9 w-20 rounded-full" />
-              <Skeleton className="h-9 w-20 rounded-full" />
+              <Skeleton width={80} height={36} radius="rounded" />
+              <Skeleton width={80} height={36} radius="rounded" />
             </div>
           ) : agentsError ? (
             <p className="text-xs text-destructive" role="alert">

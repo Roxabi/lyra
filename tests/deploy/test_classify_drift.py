@@ -2,7 +2,9 @@
 
 Fingerprint format:
   <git_head>:<unit_sha>:<auth_sha>:<voicecli_head>:<staging-svc-digest>:<staging-digest>
-  - field 0 (git_head)         → structural
+  - field 0 (git_head) ALONE   → code-only (git advanced but no artifact changed; converge.sh
+                                  resolves inert docs/CI commits via _code_change_is_inert).
+                                  git_head + any other field → structural.
   - field 1 (unit_sha)         → structural
   - field 2 (auth_sha)         → auth
   - field 3 (voicecli_head)    → structural
@@ -40,7 +42,12 @@ def _classify(last: str, current: str) -> str:
         ],
         capture_output=True,
         text=True,
-        env={**os.environ, "XDG_RUNTIME_DIR": os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")},
+        env={
+            **os.environ,
+            "XDG_RUNTIME_DIR": os.environ.get(
+                "XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"
+            ),
+        },
         timeout=10,
     )
     assert result.returncode == 0, (
@@ -58,16 +65,25 @@ def _classify(last: str, current: str) -> str:
         ("none", _FP, "structural"),
         # 3. Only auth field (index 2) differs → auth-only reload
         (_FP, f"a:b:X:d:{_SVC}:{_STG}", "auth"),
-        # 4. Field 0 (git_head) differs → structural
-        (_FP, f"A:b:c:d:{_SVC}:{_STG}", "structural"),
+        # 4. Field 0 (git_head) ALONE differs → code-only (converge.sh then does a paths git-diff:
+        #    docs/CI-only commit → skip; runtime path or undecidable → structural, fail-safe).
+        (_FP, f"A:b:c:d:{_SVC}:{_STG}", "code-only"),
         # 5. Field 1 (unit_sha) differs → structural
         (_FP, f"a:B:c:d:{_SVC}:{_STG}", "structural"),
         # 6. Field 3 (voicecli_head) differs → structural
         (_FP, f"a:b:c:D:{_SVC}:{_STG}", "structural"),
         # 7. Field 4 (staging-svc digest) differs → structural
-        (_FP, f"a:b:c:d:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001:{_STG}", "structural"),
+        (
+            _FP,
+            f"a:b:c:d:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001:{_STG}",
+            "structural",
+        ),
         # 8. Field 5 (staging digest) differs → structural
-        (_FP, f"a:b:c:d:{_SVC}:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002", "structural"),
+        (
+            _FP,
+            f"a:b:c:d:{_SVC}:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002",
+            "structural",
+        ),
         # 9. Auth + structural both differ → structural dominates
         (_FP, f"A:b:X:d:{_SVC}:{_STG}", "structural"),
         # 10. None-sentinel guard — non-tautological legacy-normalized case
@@ -82,13 +98,12 @@ def _classify(last: str, current: str) -> str:
         ("a:b:c:d", _FP, "structural"),
         # 13. Legacy equal after normalization (images still none) → none
         ("a:b:c:d", "a:b:c:d:none:none", "none"),
-
     ],
     ids=[
         "equal_fingerprints→none",
         "no_prior_stamp→structural",
         "only_auth_differs→auth",
-        "field0_git_differs→structural",
+        "field0_git_only_differs→code_only",
         "field1_unit_differs→structural",
         "field3_voice_differs→structural",
         "field4_image_svc_differs→structural",
@@ -103,3 +118,103 @@ def _classify(last: str, current: str) -> str:
 def test_classify_drift(last: str, current: str, expected: str) -> None:
     """_classify_drift returns the correct drift category for each case."""
     assert _classify(last, current) == expected
+
+
+def _fp_git(git_head: str) -> str:
+    """6-field fingerprint whose only meaningful field is git_head (rest fixed)."""
+    return f"{git_head}:u:a:v:{_SVC}:{_STG}"
+
+
+def _inert(repo: Path, last_git: str, cur_git: str, env: dict) -> bool:
+    """True iff _code_change_is_inert exits 0 (inert → safe to skip) for this repo + range."""
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source {DEPLOY_COMMON} >/dev/null 2>&1; FACTORY_DIR="{repo}"; '
+            f'_code_change_is_inert "{_fp_git(last_git)}" "{_fp_git(cur_git)}"',
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    return result.returncode == 0
+
+
+def test_code_change_is_inert(tmp_path: Path) -> None:
+    """Fail-safe negative allowlist: only pure docs/tests/CI/artifacts commits are inert (skip);
+    any runtime path OR an undecidable diff is NOT inert (→ full converge, never under-restart)."""
+    repo = tmp_path / "factory"
+    repo.mkdir()
+
+    # Isolate from the real repo: strip inherited git env so a pre-push hook's GIT_DIR cannot
+    # redirect these git ops at ~/projects/roxabi-factory (memory: git fixture GIT_DIR leak).
+    env = {**os.environ}
+    for v in subprocess.run(
+        ["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True
+    ).stdout.split():
+        env.pop(v, None)
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(repo), *args], check=True, env=env, capture_output=True
+        )
+
+    def head() -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            env=env,
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (repo / "README.md").write_text("base\n")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    base = head()
+
+    # inert commit: only docs/, *.md, .github/, tests/
+    (repo / "docs").mkdir()
+    (repo / "docs" / "x.md").write_text("d\n")
+    (repo / ".github").mkdir()
+    (repo / ".github" / "wf.yml").write_text("w\n")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "t.py").write_text("t\n")
+    git("add", "-A")
+    git("commit", "-qm", "docs+ci+tests")
+    inert_head = head()
+
+    # runtime commit: touches src/
+    (repo / "src").mkdir()
+    (repo / "src" / "app.py").write_text("code\n")
+    git("add", "-A")
+    git("commit", "-qm", "src change")
+    runtime_head = head()
+
+    # deploy commit: touches deploy/
+    (repo / "deploy").mkdir()
+    (repo / "deploy" / "converge.sh").write_text("#\n")
+    git("add", "-A")
+    git("commit", "-qm", "deploy change")
+    deploy_head = head()
+
+    assert _inert(repo, base, inert_head, env) is True, (
+        "docs/ci/tests-only must be inert"
+    )
+    assert _inert(repo, base, runtime_head, env) is False, (
+        "src/ change must NOT be inert"
+    )
+    assert _inert(repo, inert_head, deploy_head, env) is False, (
+        "deploy/ change must NOT be inert"
+    )
+    # undecidable → fail-safe NOT inert
+    assert _inert(repo, "none", inert_head, env) is False, (
+        "missing last git_head → not inert"
+    )
+    assert _inert(repo, base, "none", env) is False, (
+        "missing current git_head → not inert"
+    )

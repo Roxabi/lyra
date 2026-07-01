@@ -38,11 +38,75 @@ export interface FleetRow {
   image_digest_status: ImageDigestStatus;
 }
 
+export type PipelineStageStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failure"
+  | "skipped"
+  | "unknown"
+  | "n/a";
+
+export interface PipelineCheck {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
+export interface PipelineRun {
+  repo: string;
+  pr_number: number;
+  title: string;
+  head_sha: string | null;
+  head_ref: string | null;
+  html_url: string | null;
+  reviewed: boolean;
+  open: boolean;
+  ci_status: PipelineStageStatus;
+  merge_status: PipelineStageStatus;
+  publish_status: PipelineStageStatus;
+  m1_deploy_status: PipelineStageStatus;
+  cf_deploy_status: PipelineStageStatus;
+  checks: PipelineCheck[];
+  last_event_at: string | null;
+  updated_at: string | null;
+}
+
 export async function fetchFleet(): Promise<FleetRow[]> {
   const res = await fetch("/api/bff/fleet");
   if (!res.ok) throw new Error("fleet fetch failed");
   const data = (await res.json()) as { rows: FleetRow[] };
   return data.rows;
+}
+
+export async function fetchPipeline(): Promise<PipelineRun[]> {
+  const res = await fetch("/api/bff/pipeline");
+  if (!res.ok) throw new Error("pipeline fetch failed");
+  const data = (await res.json()) as { runs: PipelineRun[] };
+  return data.runs;
+}
+
+export type PipelineStreamEvent =
+  | { type: "snapshot"; runs: PipelineRun[] }
+  | { type: "ping" }
+  | { type: "error"; message: string };
+
+export async function postPipelineStreamToken(): Promise<{ stream_token: string }> {
+  const res = await fetch("/api/bff/pipeline/stream-token", { method: "POST" });
+  if (!res.ok) throw new Error("pipeline stream token failed");
+  return res.json() as Promise<{ stream_token: string }>;
+}
+
+export function openPipelineStream(
+  streamToken: string,
+  onEvent: (ev: PipelineStreamEvent) => void,
+): EventSource {
+  const url = `/api/bff/pipeline/stream?token=${encodeURIComponent(streamToken)}`;
+  const source = new EventSource(url);
+  source.onmessage = (msg) => {
+    onEvent(JSON.parse(msg.data) as PipelineStreamEvent);
+  };
+  return source;
 }
 
 export async function fetchAgents(): Promise<string[]> {

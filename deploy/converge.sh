@@ -150,6 +150,12 @@ _do_converge() {
 
     op_log converge_complete drift="${_drift_kind}" exit=0
     echo "==> Converge complete."
+
+    if command -v factory >/dev/null 2>&1; then
+        factory ops publish-host-event converge.completed \
+            --payload-json "{\"drift_kind\":\"${_drift_kind}\"}" \
+            || echo "WARN: converge.completed event publish failed (non-fatal)" >&2
+    fi
 }
 
 with_deploy_lock _do_converge

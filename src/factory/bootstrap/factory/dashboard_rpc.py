@@ -15,6 +15,7 @@ from factory.bootstrap.factory.dashboard.admin_rpc import (
     handle_admin_user_patch,
 )
 from factory.bootstrap.factory.dashboard.fleet_rpc import handle_fleet_list
+from factory.bootstrap.factory.dashboard.pipeline_rpc import handle_pipeline_list
 from factory.bootstrap.factory.dashboard.voice_rpc import handle_voice_capabilities
 from factory.bootstrap.factory.dashboard_agents_rpc import (
     handle_agents_create,
@@ -106,6 +107,7 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.agents_soul_preview, _wrap_agents(handle_agents_soul_preview)),
         (SUBJECTS.voice_capabilities, handle_voice_capabilities),
         (SUBJECTS.fleet_list, handle_fleet_list),
+        (SUBJECTS.pipeline_list, handle_pipeline_list),
         (SUBJECTS.connectors_installations_list, _handle_connectors_list),
         (SUBJECTS.connectors_installations_upsert, _handle_connectors_upsert),
         (SUBJECTS.connectors_installations_delete, _handle_connectors_delete),

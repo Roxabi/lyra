@@ -275,6 +275,31 @@ quality_gates:
     script: tools/check_omp_pin_lockstep.sh
     stages: [ci]
 
+  acl_matrix_retired:
+    enabled: true
+    script: uv run factory-check-acl-retired
+    stages: [ci]
+
+  request_reply_flows:
+    enabled: true
+    script: uv run factory-check-flows
+    stages: [ci]
+
+  acl_grants:
+    enabled: true
+    script: uv run factory-acl check grants --matrix deploy/nats/acl-matrix.json
+    stages: [ci]
+
+  inbox_prefix:
+    enabled: true
+    script: bash scripts/check_inbox_prefix.sh
+    stages: [ci]
+
+  subject_literals:
+    enabled: true
+    script: bash scripts/check_subject_literals.sh
+    stages: [ci]
+
 qg:
   run_order:
     pre-commit:
@@ -331,6 +356,11 @@ qg:
       - codes_sync
       - acl_specs_drift
       - acl_authconf_drift
+      - acl_matrix_retired
+      - request_reply_flows
+      - acl_grants
+      - inbox_prefix
+      - subject_literals
   profiles:
     local:
       - lint_js

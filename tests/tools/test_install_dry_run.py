@@ -521,3 +521,42 @@ declare -A SECRET_POLICY=(
             "stderr must mention refusing or '..' on dotdot rejection.\n"
             f"stderr:\n{result.stderr}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Section — ingress.toml provisioning (copy-if-absent from the example)
+# ---------------------------------------------------------------------------
+
+
+class TestIngressTomlProvisioning:
+    """dry-run provisions ~/.roxabi/factory/ingress.toml from the example."""
+
+    def test_dry_run_logs_ingress_provision_when_absent(
+        self, tmp_path: Path
+    ) -> None:
+        """Absent → dry-run logs the copy from deploy/ingress.toml.example."""
+        _create_stub_seeds(tmp_path)
+        result = _run_install_dry_run(tmp_path)
+        assert result.returncode == 0, (
+            f"install.sh --dry-run exited {result.returncode}.\n"
+            f"stderr:\n{result.stderr}\nstdout:\n{result.stdout}"
+        )
+        assert "ingress.toml.example" in result.stdout, (
+            "dry-run must log provisioning ingress.toml from the example.\n"
+            f"stdout:\n{result.stdout}"
+        )
+
+    def test_dry_run_skips_ingress_when_present(self, tmp_path: Path) -> None:
+        """Present → dry-run reports skip, never re-copies over operator edits."""
+        _create_stub_seeds(tmp_path)
+        ingress = tmp_path / ".roxabi" / "factory" / "ingress.toml"
+        ingress.parent.mkdir(parents=True, exist_ok=True)
+        ingress.write_text("[connector.github]\nenabled = true\n")
+        result = _run_install_dry_run(tmp_path)
+        assert result.returncode == 0, (
+            f"install.sh --dry-run exited {result.returncode}.\n{result.stderr}"
+        )
+        assert "ingress.toml already exists" in result.stdout, (
+            "dry-run must skip an existing ingress.toml.\n"
+            f"stdout:\n{result.stdout}"
+        )

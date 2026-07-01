@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from roxabi_contracts.envelope import CONTRACT_VERSION
+from factory.nats.envelope_fields import mint_work_envelope_fields
 from roxabi_contracts.voice import (
     SUBJECTS,
     VoiceLifecycleRequest,
@@ -55,10 +54,11 @@ class VoiceLifecycleClient:
         op: str,
         host: str | None,
     ) -> dict[str, Any] | None:
+        fields = mint_work_envelope_fields()
         req = VoiceLifecycleRequest(
-            contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
-            issued_at=datetime.now(timezone.utc),
+            contract_version=fields.contract_version,
+            trace_id=fields.trace_id,
+            issued_at=fields.issued_at,
             request_id=str(uuid4()),
             host=host,
             op=op,  # type: ignore[arg-type]

@@ -1,5 +1,6 @@
-# OpenTelemetry Collector — OTLP ingress → Langfuse (ADR-092 trace plane).
-# Auth: LANGFUSE_OTEL_AUTH env (base64 pk:sk) set via otel-collector.env.
+# DEPRECATED — factory-otel-collector disabled in quadlet.toml (2026-06-30).
+# OTLP ingest now handled by factory-otel (src/factory/otel/). Kept for rollback.
+# Langfuse exporter removed in v1 — optional stack may be re-enabled later.
 receivers:
   otlp:
     protocols:
@@ -20,11 +21,8 @@ extensions:
     endpoint: 0.0.0.0:13133
 
 exporters:
-  otlphttp/langfuse:
-    endpoint: http://factory-langfuse-web:3000/api/public/otel
-    headers:
-      Authorization: "Basic ${env:LANGFUSE_OTEL_AUTH}"
-      x-langfuse-ingestion-version: "4"
+  file:
+    path: /otel-data/spans.jsonl
 
 service:
   extensions: [health_check]
@@ -32,4 +30,4 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/langfuse]
+      exporters: [file]

@@ -151,8 +151,8 @@ export const mockOpsHealth = () => ({
     { engine: "loki", label: "Loki", reachable: true, detail: "dev mock" },
     { engine: "langfuse", label: "Langfuse", reachable: true, detail: "dev mock" },
     {
-      engine: "otel-collector",
-      label: "OTel Collector",
+      engine: "otel",
+      label: "Factory OTel",
       reachable: false,
       detail: "dev mock offline",
     },

@@ -15,6 +15,7 @@ import { FleetPage } from "@/pages/FleetPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { JobsPage } from "@/pages/JobsPage";
 import { OpsPage } from "@/pages/OpsPage";
+import { SpansPage } from "@/pages/SpansPage";
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -58,6 +59,12 @@ const obsRoute = createRoute({
         : undefined,
   }),
   component: OpsPage,
+});
+
+const spansRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/spans",
+  component: SpansPage,
 });
 
 const agentsRoute = createRoute({
@@ -107,6 +114,7 @@ const routeTree = rootRoute.addChildren([
   agentDetailRoute,
   fleetRoute,
   obsRoute,
+  spansRoute,
   usersRoute,
   adminRedirectRoute,
   designSystemRoute,

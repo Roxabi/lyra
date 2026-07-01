@@ -21,6 +21,7 @@ from factory.ingress.ports import (
     VerificationError,
 )
 from factory.ingress.publisher import EventPublisher
+from factory.obs.hub_tracer import ingress_webhook_span
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +30,35 @@ _ACCEPTED = JSONResponse({"accepted": True}, status_code=202)
 
 
 async def handle_webhook(  # noqa: PLR0913, C901
+    connector_name: str,
+    *,
+    headers: Mapping[str, str],
+    body: bytes,
+    path_tenant: str | None,
+    config: IngressConfig,
+    registry: ConnectorRegistry,
+    installations: InstallationRegistry,
+    secrets: SecretResolver,
+    publisher: EventPublisher | None,
+) -> JSONResponse:
+    with ingress_webhook_span(
+        connector=connector_name,
+        tenant=path_tenant,
+    ):
+        return await _handle_webhook_inner(
+            connector_name,
+            headers=headers,
+            body=body,
+            path_tenant=path_tenant,
+            config=config,
+            registry=registry,
+            installations=installations,
+            secrets=secrets,
+            publisher=publisher,
+        )
+
+
+async def _handle_webhook_inner(  # noqa: PLR0913, C901
     connector_name: str,
     *,
     headers: Mapping[str, str],

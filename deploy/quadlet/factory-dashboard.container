@@ -30,7 +30,11 @@ Environment=FACTORY_WEB_PORT=8765
 # Ops BFF probes headless engines on roxabi.network — not 127.0.0.1 (dashboard container).
 Environment=FACTORY_LOKI_URL=http://factory-loki:3100
 Environment=FACTORY_LANGFUSE_URL=http://factory-langfuse-web:3000
-Environment=FACTORY_OTEL_HEALTH_URL=http://factory-otel-collector:13133
+Environment=FACTORY_OTEL_URL=http://factory-otel:8450
+Environment=FACTORY_OTEL_HEALTH_URL=http://factory-otel:8450/healthz
+Environment=FACTORY_OTEL_TOKEN_PATH=/run/secrets/factory_otel_token
+Environment=FACTORY_LANGFUSE_DEFERRED=1
+Secret=factory_otel_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_otel_token
 # Agent picker reads roster.web from factory-state KV (hub publishes at boot).
 # Phase 2 (ADR-094): roster.dashboard + platform rename.
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z

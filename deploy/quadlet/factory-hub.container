@@ -67,6 +67,11 @@ Environment=VAULT_DB=/home/factory/.roxabi-vault/vault.db
 Environment=FACTORY_HEALTH_HOST=0.0.0.0
 # Cold Qwen3 TTS model load takes ~60s; default 30s fires before model is ready.
 Environment=FACTORY_TTS_TIMEOUT=90
+# OTel hub spans → factory-otel raw store (ADR-097, #2069).
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://factory-otel:4317
+Environment=FACTORY_OTEL_TOKEN_PATH=/run/secrets/factory_otel_token
+Secret=factory_otel_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_otel_token
 PublishPort=127.0.0.1:8443:8443
 Exec=factory hub
 HealthCmd=grep -q hub /proc/1/cmdline

@@ -62,6 +62,8 @@ class AuthorizeAgentMiddleware:
             return await next(msg, ctx)
         if self._authorizer is None:
             return await next(msg, ctx)
+        if msg.is_admin:
+            return await next(msg, ctx)
 
         decision = self._authorizer.authorize(
             agent_name=ctx.binding.agent_name,

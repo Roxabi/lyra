@@ -1,6 +1,6 @@
 # factory — — Security, Routing & Memory Isolation
 
-> Reference document. Last updated: 2026-05-09.
+> Reference document. Last updated: 2026-07-01.
 > **Status**: #auth (#151 ✅), #routing (#152 ✅), #commands ✅ (CommandParser shipped), #memory-isolation — partially implemented (user_id partition active in prefs_store; full MemoryEntry metadata schema not yet applied).
 
 ---
@@ -10,7 +10,8 @@
 4 domains that together ensure an authorized user receives the correct response, from the correct agent, on the correct channel, with isolated memory.
 
 ```
-[Channel] → Authenticator + TrustGuardMiddleware  (who may speak?)
+[Channel] → ResolveIdentityMiddleware   (ban list + admin flag)
+          → AuthorizeAgentMiddleware    (agent_grants SSoT)
           → CommandParser               (what action?)
           → Bus → Router                (which agent / pool?)
                   → ComplexityEstimator → LLMConfig   (which model?)
@@ -21,76 +22,69 @@
 
 ---
 
-## #auth — Authenticator + TrustGuardMiddleware + TrustLevel
+## #auth — agent_grants SSoT (ADR-090) + ban list
 
 ### Problem
 
 Without auth, any user can send a message that reaches the Bus and consumes resources (LLM tokens, memory, CPU).
 
-### Solution — C3 pattern (current)
+### Solution — C3 + ADR-090 (current)
 
-Adapters do transport-level auth only (Telegram HMAC webhook secret, Discord gateway token). They always forward messages with `trust=PUBLIC` to NATS. Trust resolution is performed Hub-side by the Authenticator at middleware stages 2–3 (`ResolveTrustMiddleware` → `TrustGuardMiddleware`). BLOCKED users are dropped at the Hub before reaching the Bus or any agent.
+Adapters do transport-level auth only (Telegram HMAC webhook secret, Discord gateway token). They always forward messages with `trust=PUBLIC` to NATS. Hub-side enforcement is two stages:
+
+1. **`ResolveIdentityMiddleware`** (stage 2) — re-resolves identity via `Authenticator`: drops `BLOCKED` users (ban list in `auth.db`), sets `is_admin` from `[admin].user_ids`.
+2. **`AuthorizeAgentMiddleware`** (stage 6, after binding) — checks `agent_grants` for a `use` grant on the bound agent. Operators in `[admin].user_ids` bypass via `msg.is_admin`. Denied senders get a pull-model inline refusal (ADR-090 §5).
 
 ```python
-class TrustLevel(Enum):
-    OWNER   = "owner"    # full access, all commands
-    TRUSTED = "trusted"  # normal access
-    PUBLIC  = "public"   # limited access (if enabled)
-    BLOCKED = "blocked"  # silently rejected
-
-class Authenticator:
-    """Identity resolver — maps user_id to TrustLevel."""
-
-    def resolve(self, user_id: str | None) -> TrustLevel:
-        if user_id is None:
-            return TrustLevel.BLOCKED
-        return self._store.check(user_id)  # checks owner, trusted, blocked lists
-
-class TrustGuardMiddleware:
-    """Stage 3: drop BLOCKED users (C3). Trust resolved by ResolveTrustMiddleware."""
+class ResolveIdentityMiddleware:
+    """Stage 2: ban list + admin flag (C3). Access is NOT gated here."""
 
     async def __call__(self, msg, ctx, nxt):
+        msg = ctx.hub._resolve_message_trust(msg)  # Authenticator.resolve()
         if msg.trust_level == TrustLevel.BLOCKED:
-            return  # dropped at the Hub before the Pool or any agent
+            return DROP
         return await nxt(msg, ctx)
+
+class AuthorizeAgentMiddleware:
+    """Stage 6: agent_grants is the sole inbound access SSoT (ADR-090)."""
+
+    async def __call__(self, msg, ctx, nxt):
+        if msg.is_admin or authorizer.authorize(...).allowed:
+            return await nxt(msg, ctx)
+        return COMMAND_HANDLED  # pull refusal
 ```
 
-> **Pre-C3 historical (superseded):** Before containerization, adapters resolved trust themselves and dropped BLOCKED messages before calling `normalize()`. This pattern is no longer used — adapters are untrusted normalizers that always send `PUBLIC`. The composable adapter-side guard chain (GuardChain/BlockedGuard) that briefly survived the C3 migration was removed in #1997 as dead and redundant with the hub-side BLOCKED drop.
+> **Historical (superseded):** Bot-centric `owner_users` / `trusted_users` / `default_trust` on `BotRow` and the `ResolveTrustMiddleware` + `TrustGuardMiddleware` pair were removed in #2114. `TrustLevel.OWNER` / `TRUSTED` no longer gate inbound chat — only `BLOCKED` (ban) and `agent_grants` matter.
 
 ### Config
 
 ```toml
 # config.toml (gitignored — copy from config.toml.example)
-[auth.telegram]
-owner_users   = [123456789]    # numeric — get from @userinfobot on Telegram
-trusted_users = []
-default       = "blocked"
+[admin]
+user_ids = ["tg:user:7377831990"]   # global operators — bypass agent grant + admin commands
 
-[auth.discord]
-owner_users   = [123456789012345678]   # numeric snowflake
-trusted_roles = []                     # Discord role snowflake IDs
-default       = "blocked"
+# Grant access per agent (CLI or pairing /join):
+#   factory agent grant lyra_default --user tg:user:7377831990
 ```
 
-At least one section must be present. A missing section logs a warning and disables that adapter — Lyra starts with the remaining adapter. Both missing → `SystemExit`.
+Bot transport config lives in `BotStore` (no auth fields). Pairing `/join` writes agent-scoped `use` grants via `AgentGrantStore`.
 
-### Implementation — ✅ Shipped (#151, refactored #313/#314)
+### Implementation — ✅ Shipped (#151, ADR-090 #1980/#2114)
 
-- [x] `Authenticator` (identity resolver) in `src/factory/core/auth/authenticator.py`
-- [x] `TrustGuardMiddleware` (hub-side BLOCKED drop, C3) in `src/factory/core/hub/middleware/middleware_guards.py`
-- [x] `TrustLevel` enum in `src/factory/core/auth/trust.py`
-- [x] Config-driven trust_map (TOML), parsed in src/factory/core/auth.py
-- [x] Integrated in TelegramAdapter + DiscordAdapter
+- [x] `Authenticator` (ban-only + admin resolution) in `src/factory/core/auth/authenticator.py`
+- [x] `ResolveIdentityMiddleware` (hub-side BLOCKED drop, C3) in `middleware_guards.py`
+- [x] `AuthorizeAgentMiddleware` (agent_grants enforcement) in `middleware_authz.py`
+- [x] `AgentGrantStore` / operator CLI (`factory agent grant|revoke|auth list`)
+- [x] Integrated in TelegramAdapter + DiscordAdapter (forward `PUBLIC`, hub authoritative)
 - [x] CLIAdapter (trust = OWNER by default)
-- [x] Rejection logging
 
-> **Refactored in #313/#314, then #1997**: the monolithic AuthMiddleware was first split into `Authenticator` (resolves identity → TrustLevel) and a composable adapter-side guard chain. That guard chain was later **removed (#1997)** as dead/redundant — the BLOCKED drop is enforced solely hub-side by `TrustGuardMiddleware` (C3). ADR-090's agent-scoped authorization middleware, `AuthorizeAgentMiddleware` (`src/factory/core/hub/middleware/middleware_authz.py`, wired after ResolveBinding at stage 7 in `middleware.py`), is **shipped and production-enforced for the NATS inbound message pipeline** (Telegram/Discord/CLI adapters → Hub). It does not govern the dashboard's HTTP BFF (`/api/bff/*`), which is a separate control plane (`src/factory/dashboard/auth.py`).
+> The dashboard HTTP BFF (`/api/bff/*`) is a separate control plane (`src/factory/dashboard/auth.py`) — not governed by the NATS inbound pipeline stages above.
 
 ### Admin access
 
-`owner_users` in `[auth.telegram]` / `[auth.discord]` are automatically added to the admin set at startup — no need to duplicate IDs in `[admin].user_ids`. Extra non-owner admins can be added there explicitly.
+`[admin].user_ids` sets the global operator set at startup. These users get `is_admin=True` on every resolved identity and bypass `AuthorizeAgentMiddleware` until explicitly narrowed in a follow-up ADR.
 
-Module-level registry: factory.core.admin — `is_admin(user_id)` / `set_admin_user_ids()` / `get_admin_user_ids()`. Plugins use `is_admin()` to gate admin-only commands without needing access to the config layer.
+Module-level registry: `factory.core.admin` — `is_admin(user_id)` / `set_admin_user_ids()` / `get_admin_user_ids()`. Plugins use `is_admin()` to gate admin-only commands without needing access to the config layer.
 
 ---
 

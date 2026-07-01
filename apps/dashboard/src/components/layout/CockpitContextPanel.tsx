@@ -1,8 +1,8 @@
+import { Badge } from "@astryxdesign/core/Badge";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AgentHealth } from "@/lib/api";
 import { fetchJobs } from "@/lib/api";
@@ -40,9 +40,10 @@ export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps)
             <div className="rounded-lg border border-border/50 bg-background/50 px-3 py-2.5">
               <AgentIdentity agentId={agent} avatarSize="sm" />
               <div className="mt-2 flex flex-wrap items-center gap-2 pl-8">
-                <Badge variant={health?.online ? "success" : "destructive"}>
-                  {health?.online ? tc("status.online") : tc("status.offline")}
-                </Badge>
+                <Badge
+                  variant={health?.online ? "success" : "error"}
+                  label={health?.online ? tc("status.online") : tc("status.offline")}
+                />
                 {health?.harness ? (
                   <span className="text-xs text-muted-foreground">{health.harness}</span>
                 ) : null}
@@ -69,9 +70,11 @@ export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps)
               {agentJobs.map((job) => (
                 <li key={job.job_id} className="rounded-md bg-muted/30 px-3 py-2">
                   <p className="truncate font-mono text-xs">{job.job_id}</p>
-                  <Badge className="mt-1" variant={jobStatusToBadgeVariant(job.status)}>
-                    {job.status}
-                  </Badge>
+                  <Badge
+                    variant={jobStatusToBadgeVariant(job.status)}
+                    className="mt-1"
+                    label={job.status}
+                  />
                 </li>
               ))}
             </ul>

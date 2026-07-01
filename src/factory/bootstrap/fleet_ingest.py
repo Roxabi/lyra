@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from nats.aio.msg import Msg
 from pydantic import ValidationError
 
+from factory.bootstrap.pipeline_ingest import sync_m1_deploy_from_fleet
 from factory.nats.fleet_store import FleetStore
 from roxabi_contracts.fleet import CONTAINER_REPORT
 from roxabi_contracts.fleet.models import ContainerReport
@@ -38,6 +39,9 @@ async def start_fleet_ingest(hub: Hub, nc: NATS) -> list[Any]:
             log.warning("fleet_ingest: invalid ContainerReport", exc_info=True)
             return
         store.upsert(report)
+        pipeline_store = getattr(hub, "_pipeline_store", None)
+        if pipeline_store is not None:
+            sync_m1_deploy_from_fleet(hub, pipeline_store)
 
     sub = await nc.subscribe(CONTAINER_REPORT, cb=_on_report)
     log.info("fleet_ingest: subscribed %s", CONTAINER_REPORT)

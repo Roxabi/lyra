@@ -398,3 +398,43 @@ class DashboardAdminUserResponse(BaseModel):
     telegram: DashboardAdminPlatformIdentity | None = None
     discord: DashboardAdminPlatformIdentity | None = None
     agents: list[str] = Field(default_factory=list)
+
+
+PipelineStageStatus = Literal[
+    "pending",
+    "running",
+    "success",
+    "failure",
+    "skipped",
+    "unknown",
+    "n/a",
+]
+
+
+class DashboardPipelineCheck(BaseModel):
+    name: str
+    status: str
+    conclusion: str | None = None
+
+
+class DashboardPipelineRun(BaseModel):
+    repo: str
+    pr_number: int
+    title: str
+    head_sha: str | None = None
+    head_ref: str | None = None
+    html_url: str | None = None
+    reviewed: bool = False
+    open: bool = True
+    ci_status: PipelineStageStatus = "unknown"
+    merge_status: PipelineStageStatus = "pending"
+    publish_status: PipelineStageStatus = "n/a"
+    m1_deploy_status: PipelineStageStatus = "n/a"
+    cf_deploy_status: PipelineStageStatus = "n/a"
+    checks: list[DashboardPipelineCheck] = Field(default_factory=list)
+    last_event_at: str | None = None
+    updated_at: str | None = None
+
+
+class DashboardPipelineResponse(BaseModel):
+    runs: list[DashboardPipelineRun]

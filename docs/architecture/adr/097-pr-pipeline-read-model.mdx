@@ -1,0 +1,124 @@
+---
+title: "ADR-097: PR pipeline read model (dashboard /pipeline)"
+description: "Event-driven hub-side projector for release-chain visibility — stages, correlation rules, boundaries vs jobs/Sentinelle, non-authoritative UX"
+status: accepted
+date: 2026-06-30
+deciders: [Mickael]
+related: [091, 094, 096, 1760]
+amends: [094]
+---
+
+## Status
+
+Accepted — 2026-06-30. Ratifies [pipeline PR dashboard consensus](../../../artifacts/analyses/pipeline-pr-dashboard-consensus.mdx).
+
+## Context
+
+Operators need a **control-plane view** of the release chain per PR (epic #1760):
+
+```text
+PR → CI → reviewed → merged → publish → M₁ converge → CF Pages
+```
+
+Sources are **external events** (GitHub/Cloudflare ingress), **fleet reports** (plane ③), and **host converge** certificates — not GitHub API polling.
+
+The adversarial panel requires **skepticism-first** UX: the dashboard is indicative, not canonical for merge decisions.
+
+## Decision
+
+### 1. Placement
+
+| Layer | Choice |
+|---|---|
+| **Projector** | Inside **`factory-hub`** (`PipelineStore` + JetStream ingest) |
+| **Persistence** | **`~/.roxabi/factory/pipeline.db`** (plane ④ read model) |
+| **Dashboard access** | BFF **`GET /api/bff/pipeline`** + **SSE** `/api/bff/pipeline/stream` via **hub RPC** `factory.dashboard.pipeline.list` |
+| **Rejected** | Separate `factory-pipeline` container; dashboard JetStream consumer (ADR-094); GitHub poll loop |
+
+### 2. Stage machine
+
+| Stage | Source | Proof rule (v1) |
+|---|---|---|
+| `ci` | `factory.event.github.*` `check_run.*` | Worst conclusion across checks |
+| `reviewed` | `pull_request.*` labels | Label `reviewed` present |
+| `merged` | `pull_request.closed` + `merged` | GitHub event |
+| `publish` | `workflow_run` name=`publish` success | `head_sha` captured |
+| `m1_deploy` | Fleet quorum + optional `converge.completed` | See §3 |
+| `cf_deploy` | `factory.event.cloudflare.*` Pages | Project registry + structured payload |
+
+Pre-merge: `publish` / `m1_deploy` / `cf_deploy` = **`n/a`**.
+
+### 3. M₁ deploy correlation
+
+**Quorum** (instrumented): `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-clipool`.
+
+```text
+m1_fleet_ok :=
+  ∀ c ∈ QUORUM:
+    fleet[c].status == "ok"
+    ∧ fleet[c].image_revision == publish.head_sha
+    ∧ fleet[c].age_s < 90
+```
+
+**Converge certificate** (`factory.event.host.<machine>.converge.completed`):
+
+- Emitted by `deploy/converge.sh` after stamp write via `factory ops publish-host-event`.
+- Records `last_converge_at` metadata only — **M₁ proof remains fleet quorum** (`recompute_m1_from_fleet`).
+- **Does not** replace fleet proof when fleet reports contradict the publish SHA.
+
+### 4. CF Pages correlation
+
+| Surface | v1 | Notes |
+|---|---|---|
+| **Pages** | In scope | Registry `cf_project → {repo, branch}` + structured `payload.pages` (required — no text-only fallback) |
+| **Workers** | Out of scope | Deploy via GitHub `workflow_run` when Workers ship through CI — CF Worker webhooks are unreliable |
+
+Workers are Cloudflare's **edge compute** product (V8 isolates). Pages is **static/site hosting**. Factory v1 proves **Pages** post-merge; Workers releases are visible through **GitHub CI** if/when a workflow deploys them.
+
+### 5. Cold start
+
+1. Load `pipeline.db` on hub boot.
+2. If empty → replay `factory.event.>` (24 h JetStream window).
+3. GitHub REST one-shot bootstrap: **deferred** (operator decision: not needed while outage < 24 h).
+
+### 6. UX guardrails (normative)
+
+1. Banner: **NOT FOR MERGE DECISIONS**
+2. Show `last_event_at`; stale when age > 30 min
+3. Filter chips: CI red · awaiting reviewed · deploy pending
+4. Deploy stages: prefer `pending` / `unknown` over false green
+
+### 7. Boundaries
+
+| Concern | Boundary |
+|---|---|
+| **#1772 jobs panel** | Internal `factory.job.*` — not ingress pipeline |
+| **#2009 Sentinelle** | Discord push — may consume same read model later; not owner |
+| **#1992 auth** | Tailnet + `stream_token` for SSE v1; full OIDC before public exposure |
+
+### 8. Fleet image STALE (Block 6)
+
+**STALE_LIVENESS** (no NATS report / age ≥ TTL) ships in v1 via `FleetStore.status`.
+
+**STALE_IMAGE** (running OCI digest ≠ registry digest for Quadlet `Image=` tag) is **deferred**: requires host-side registry compare (`UNKNOWN_COMPARE` when auth or parallel-publish window blocks proof). Documented in `artifacts/plans/fleet-container-obs-goal.md` Block 6.
+
+## Consequences
+
+### Positive
+
+- Single event-driven read model shared by dashboard and (future) Sentinelle.
+- Survives hub restart via SQLite; idempotent via `trace_id` table.
+- Clear non-authoritative contract for operators.
+
+### Negative
+
+- CF Workers not proven via CF webhooks in v1.
+- Registry digest STALE badge not in v1.
+- `m1_deploy` may lag fleet reports by one report interval (~30 s).
+
+## See also
+
+- [ADR-091](091-sentinelle-four-observability-planes.mdx) — four planes
+- [ADR-094](094-control-plane-dashboard-consolidation.mdx) — dashboard BFF
+- [ADR-096](096-ingress-connector-tenant-registry.mdx) — ingress events
+- [Consensus doc](../../../artifacts/analyses/pipeline-pr-dashboard-consensus.mdx)

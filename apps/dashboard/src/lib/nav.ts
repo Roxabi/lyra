@@ -2,6 +2,7 @@ import {
   Briefcase,
   ChartLineUp,
   ChatCircleDots,
+  GitPullRequest,
   type Icon,
   Palette,
   Plugs,
@@ -49,6 +50,7 @@ export const operateNavItems: AppNavItem[] = [
 ];
 
 export const observeNavItems: AppNavItem[] = [
+  { to: "/pipeline", labelKey: "nav.pipeline", Icon: GitPullRequest, wideLayout: true },
   { to: "/fleet", labelKey: "nav.fleet", Icon: ShippingContainer, wideLayout: true },
   { to: "/ops", labelKey: "nav.ops", Icon: ChartLineUp, wideLayout: true, mobileBottomNav: true },
   { to: "/spans", labelKey: "nav.spans", Icon: Pulse, wideLayout: true },

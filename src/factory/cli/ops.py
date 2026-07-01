@@ -326,3 +326,67 @@ def _print_report(results: list[IdentityResult]) -> int:
         + (f", {len(skipped)} skipped" if skipped else "")
     )
     return 1 if failed or skipped else 0
+
+
+def _default_nats_url() -> str:
+    return os.environ.get("NATS_URL", _DEFAULT_NATS_URL).strip() or _DEFAULT_NATS_URL
+
+
+def _default_hub_seed(seeds_dir: Path) -> Path:
+    return seeds_dir / "factory-hub.seed"
+
+
+@ops_app.command("publish-host-event")
+def publish_host_event_cmd(
+    kind: str = typer.Argument(..., help="Event kind, e.g. converge.completed"),
+    payload_json: str = typer.Option(
+        "{}",
+        "--payload-json",
+        help="JSON object payload for the event.",
+    ),
+    machine: str = typer.Option(
+        "",
+        "--machine",
+        help="Host machine slug (default: FACTORY_MACHINE or hostname).",
+    ),
+    seeds_dir: Path = typer.Option(
+        Path(_DEFAULT_SEEDS_DIR),
+        "--seeds-dir",
+        help="Directory containing factory-hub.seed",
+    ),
+) -> None:
+    """Publish a plane ① host event to factory-events (JetStream)."""
+    from factory.ops.host_event import (
+        parse_payload_json,
+        publish_host_event,
+        resolve_host_machine,
+    )
+
+    host = machine.strip() or resolve_host_machine()
+    seed_path = _default_hub_seed(seeds_dir.expanduser())
+    if not seed_path.is_file():
+        raise typer.BadParameter(f"hub seed not found: {seed_path}")
+
+    if len(payload_json.encode()) > 1_000_000:
+        raise typer.BadParameter("payload-json exceeds 1MB limit")
+
+    try:
+        payload = parse_payload_json(payload_json)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    async def _run() -> bool:
+        async with _identity_connection(
+            _default_nats_url(), seed_path, []
+        ) as nc:
+            return await publish_host_event(
+                nc,
+                machine=host,
+                kind=kind,
+                payload=payload,
+            )
+
+    ok = asyncio.run(_run())
+    if not ok:
+        raise typer.Exit(code=1)
+    typer.echo(f"published host.{host}.{kind}")

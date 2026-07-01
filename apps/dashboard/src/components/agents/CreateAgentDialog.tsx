@@ -1,3 +1,4 @@
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -6,7 +7,6 @@ import { useTranslation } from "react-i18next";
 import { HarnessPicker } from "@/components/HarnessPicker";
 import { ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { createAgentConfig } from "@/lib/agents-api";
 import { bffErrorMessage } from "@/lib/bff-errors";
@@ -62,16 +62,23 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
     },
   });
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) reset();
+    onOpenChange(next);
+  };
+
+  // Astryx Dialog renders its native <dialog> (and children) even when closed;
+  // gate on `open` to keep the closed form subtree out of the tree (matches the
+  // prior behavior and avoids duplicate mounted content).
+  if (!open) return null;
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-      title={t("createTitle")}
-      description={t("createDescription")}
-    >
+    <Dialog isOpen={open} onOpenChange={handleOpenChange} purpose="form" width="28rem">
+      <DialogHeader
+        title={t("createTitle")}
+        subtitle={t("createDescription")}
+        onOpenChange={handleOpenChange}
+      />
       <form
         className="space-y-4"
         onSubmit={(e) => {

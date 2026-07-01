@@ -1,10 +1,10 @@
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { toast } from "@/components/ui/sonner";
 import { type AdminUserAccess, createAdminUser, patchAdminUser } from "@/lib/admin-api";
@@ -93,16 +93,24 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
     },
   });
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) reset();
+    onOpenChange(next);
+  };
+
+  // Astryx Dialog renders its native <dialog> (and children) even when closed —
+  // a real browser hides it via UA CSS, but that keeps the whole form subtree
+  // mounted. Gate on `open` to keep closed-dialog content out of the tree
+  // (matches the prior behavior and avoids duplicate fields/labels).
+  if (!open) return null;
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-      title={isEdit ? t("editTitle") : t("createTitle")}
-      description={isEdit ? t("editDescription") : t("createDescription")}
-    >
+    <Dialog isOpen={open} onOpenChange={handleOpenChange} purpose="form" width="28rem">
+      <DialogHeader
+        title={isEdit ? t("editTitle") : t("createTitle")}
+        subtitle={isEdit ? t("editDescription") : t("createDescription")}
+        onOpenChange={handleOpenChange}
+      />
       <form
         className="space-y-4"
         onSubmit={(e) => {

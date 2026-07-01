@@ -56,6 +56,24 @@ if (!HTMLElement.prototype.showPopover) {
   HTMLElement.prototype.togglePopover = () => true;
 }
 
+// jsdom (26) does not implement the native `<dialog>` modal methods that Astryx
+// `Dialog`/`AlertDialog` call (`showModal()` throws "Not implemented"). Polyfill
+// them to reflect the `open` attribute so the dialog's content mounts and is
+// queryable in unit tests; `close()` fires a `close` event like the real thing.
+if (typeof HTMLDialogElement !== "undefined") {
+  HTMLDialogElement.prototype.showModal = function showModal() {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.show = function show() {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function close(returnValue?: string) {
+    this.open = false;
+    if (returnValue !== undefined) this.returnValue = returnValue;
+    this.dispatchEvent(new Event("close"));
+  };
+}
+
 afterEach(() => {
   cleanup();
 });

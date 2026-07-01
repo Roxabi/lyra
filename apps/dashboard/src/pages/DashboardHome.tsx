@@ -1,3 +1,4 @@
+import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Briefcase, ChatCircleDots, Robot, Warning } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -9,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
 import { displayAgentName } from "@/lib/agents";
 import {
   type AgentHealth,
@@ -34,9 +34,9 @@ function TableRowsSkeleton({ rows = 3 }: { rows?: number }) {
     >
       {SKELETON_ROW_IDS.slice(0, rows).map((id) => (
         <div key={id} className="flex items-center gap-3 py-1">
-          <Skeleton className="size-8 rounded-full" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="ml-auto h-6 w-16 rounded-full" />
+          <Skeleton width={32} height={32} radius="rounded" />
+          <Skeleton width={96} height={16} />
+          <Skeleton width={64} height={24} radius="rounded" className="ml-auto" />
         </div>
       ))}
     </div>
@@ -49,8 +49,8 @@ function ListRowsSkeleton({ rows = 3 }: { rows?: number }) {
     <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
       {SKELETON_ROW_IDS.slice(0, rows).map((id) => (
         <div key={id} className="flex items-center gap-3 rounded-md bg-muted/30 px-3 py-2">
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="ml-auto h-6 w-14 rounded-full" />
+          <Skeleton width={112} height={16} />
+          <Skeleton width={56} height={24} radius="rounded" className="ml-auto" />
         </div>
       ))}
     </div>

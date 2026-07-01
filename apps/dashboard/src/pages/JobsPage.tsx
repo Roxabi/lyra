@@ -1,3 +1,5 @@
+import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import { Briefcase } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -16,10 +18,8 @@ import {
   ListToolbarSearch,
 } from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
-import { Textarea } from "@/components/ui/textarea";
 import { displayAgentName } from "@/lib/agents";
 import { fetchAgentStatus, fetchAgents, fetchJobs, launchJob, steerJob } from "@/lib/api";
 import { jobStatusToBadgeVariant } from "@/lib/job-status";
@@ -126,9 +126,11 @@ export function JobsPage() {
             />
             <Badge variant="secondary">factory.jobs.omp</Badge>
           </div>
-          <Textarea
+          <TextArea
+            label={t("launch.promptLabel")}
+            isLabelHidden
             value={launchPrompt}
-            onChange={(e) => setLaunchPrompt(e.target.value)}
+            onChange={(next) => setLaunchPrompt(next)}
             placeholder={t("launch.promptPlaceholder")}
             rows={3}
           />
@@ -185,13 +187,13 @@ export function JobsPage() {
             >
               {[0, 1, 2].map((i) => (
                 <div key={i} className="flex items-center gap-3 py-3">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-4 w-16" />
-                  <Skeleton className="h-4 w-14" />
-                  <Skeleton className="h-6 w-16 rounded-full" />
-                  <Skeleton className="h-4 w-12" />
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="ml-auto h-7 w-14 rounded-md" />
+                  <Skeleton width={112} height={16} />
+                  <Skeleton width={64} height={16} />
+                  <Skeleton width={56} height={16} />
+                  <Skeleton width={64} height={24} radius="rounded" />
+                  <Skeleton width={48} height={16} />
+                  <Skeleton width={80} height={16} />
+                  <Skeleton width={56} height={28} radius={2} className="ml-auto" />
                 </div>
               ))}
             </div>

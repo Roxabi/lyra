@@ -1,3 +1,4 @@
+import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Robot } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
@@ -10,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListToolbar, ListToolbarHeader, ListToolbarSearch } from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { displayAgentName } from "@/lib/agents";
 import { fetchAgentStatus, fetchOpsHealth, fetchOpsLogs, type OpsLogPreset } from "@/lib/api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -35,8 +35,8 @@ function EngineCardsSkeleton() {
       {[0, 1, 2].map((i) => (
         <Card key={i} className="dashboard-surface border-border/60 shadow-none">
           <CardContent className="space-y-3 pt-6">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-6 w-16 rounded-full" />
+            <Skeleton width={96} height={16} />
+            <Skeleton width={64} height={24} radius="rounded" />
           </CardContent>
         </Card>
       ))}
@@ -49,7 +49,7 @@ function LogsSkeleton() {
   return (
     <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
       {[0, 1, 2].map((i) => (
-        <Skeleton key={i} className="h-10 w-full" />
+        <Skeleton key={i} width="100%" height={40} />
       ))}
     </div>
   );
@@ -254,7 +254,7 @@ export function OpsPage() {
             aria-label={tc("actions.loading")}
           >
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-14 w-full rounded-xl" />
+              <Skeleton key={i} width="100%" height={56} radius={4} />
             ))}
           </div>
         ) : null}

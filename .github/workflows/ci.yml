@@ -67,9 +67,9 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      # Node ≥22.13 is required by the Astryx CLI (astryx_doctor gate); pin 24.
+      # Astryx CLI (astryx_doctor gate) needs Node ≥22.13; provision Node 24.
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
 

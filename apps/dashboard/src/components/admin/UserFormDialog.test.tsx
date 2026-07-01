@@ -143,6 +143,13 @@ describe("UserFormDialog", () => {
     });
   });
 
+  it("closes via the Astryx DialogHeader close button", async () => {
+    const user = userEvent.setup();
+    const { onOpenChange } = renderDialog();
+    await user.click(screen.getByRole("button", { name: /close/i }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it("prefills fields when editing an existing user", async () => {
     renderDialog({
       user: {

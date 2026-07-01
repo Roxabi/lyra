@@ -129,6 +129,15 @@ class DashboardJobsSteerResponse(BaseModel):
     message: str = ""
 
 
+class DashboardJobsCancelRequest(BaseModel):
+    job_id: str
+
+
+class DashboardJobsCancelResponse(BaseModel):
+    accepted: bool
+    message: str = ""
+
+
 OpsEngineId = Literal["loki", "langfuse", "otel"]
 OpsLogPreset = Literal[
     "hub-errors",

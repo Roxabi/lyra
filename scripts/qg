@@ -87,10 +87,18 @@ changed_files() {
 
 files_match_pattern() {
   local pattern="$1"
-  local f
+  local f match_rc
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
-    [[ "$f" =~ $pattern ]] && return 0
+    set +e
+    [[ "$f" =~ $pattern ]]
+    match_rc=$?
+    set -e
+    if [[ "$match_rc" -eq 2 ]]; then
+      echo "::error::invalid files regex: ${pattern}" >&2
+      return 2
+    fi
+    [[ "$match_rc" -eq 0 ]] && return 0
   done
   return 1
 }
@@ -164,11 +172,7 @@ check_requires() {
 run_shell_cmd() {
   local gate="$1" cmd="$2"
   echo "==> ${gate}"
-  if [[ "$cmd" == *$'\n'* ]]; then
-    bash -c "$cmd"
-  else
-    bash -c "$cmd"
-  fi
+  bash -euo pipefail -c "$cmd"
 }
 
 apply_gate_env() {
@@ -178,6 +182,10 @@ apply_gate_env() {
   local k v
   for k in "${keys[@]}"; do
     [[ -n "$k" ]] || continue
+    if [[ ! "$k" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      echo "::error::invalid env key ${k} on gate ${gate}" >&2
+      return 2
+    fi
     v=$(gate_field "$gate" "env[\"${k}\"]")
     export "${k}=${v}"
   done
@@ -190,7 +198,7 @@ run_doc_drift_bundle() {
   local cmd
   cmd=$(cat <<EOF
 set -euo pipefail
-if find docs/ -name "*.md" ! -path "*/architecture/*" | xargs grep -n "FACTORY_LOG_DIR\\|json_file\\s*=\\|RotatingFileHandler"; then
+if find docs/ -name "*.md" ! -path "*/architecture/*" -print0 | xargs -0 grep -n "FACTORY_LOG_DIR\\|json_file\\s*=\\|RotatingFileHandler"; then
   echo "::error::Removed symbols in operator docs — update docs to match code"
   exit 1
 fi
@@ -314,6 +322,7 @@ cmd_run() {
   local failed=0 rc=0 n
   for n in "${names[@]}"; do
     [[ -n "$n" ]] || continue
+    rc=0
     if [[ ${#changed[@]} -gt 0 ]]; then
       run_gate "$n" "$stage_filter" "${changed[@]}" || rc=$?
     else
@@ -321,7 +330,7 @@ cmd_run() {
     fi
     if [[ "$rc" -ne 0 ]]; then
       echo "::error::gate ${n} failed (exit ${rc})" >&2
-      failed=$rc
+      failed=1
     fi
   done
   return "$failed"

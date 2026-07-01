@@ -37,6 +37,10 @@ echo "==> Python deps (uv sync)"
 uv sync
 
 echo "==> JS deps (bun install)"
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun not installed — https://bun.sh (see package.json packageManager)" >&2
+  exit 2
+fi
 bun install --frozen-lockfile
 
 echo "==> Git hooks (pre-commit + pre-push)"

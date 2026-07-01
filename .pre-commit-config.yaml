@@ -15,12 +15,12 @@ repos:
   hooks:
   - id: quality-gates-pre-commit
     name: quality gates (stack.yml pre-commit)
-    entry: scripts/qg run --stage pre-commit
+    entry: bash -c 'command -v yq >/dev/null || { echo "yq required — run make dev-setup" >&2; exit 2; }; exec scripts/qg run --stage pre-commit'
     language: system
     pass_filenames: false
   - id: quality-gates-pre-push
     name: quality gates (stack.yml pre-push)
-    entry: scripts/qg run --stage pre-push
+    entry: bash -c 'command -v yq >/dev/null || { echo "yq required — run make dev-setup" >&2; exit 2; }; exec scripts/qg run --stage pre-push'
     language: system
     pass_filenames: false
     stages:

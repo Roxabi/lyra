@@ -11,17 +11,15 @@ CB is NOT touched on decode failure — see spec § "Error path — decode failu
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from pydantic import ValidationError
 
+from factory.core.envelope_fields import mint_work_envelope_fields
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
 from factory.core.ports.llm import LlmResult
 from factory.transport._result import Err, Result, SanitizedError
-from roxabi_contracts import new_job_id
-from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 from roxabi_contracts.llm import LlmChunkEvent, LlmRequest, LlmResponse
 
@@ -86,12 +84,17 @@ class CliNatsCodec:
         else:
             wire_messages = list(messages) + [{"role": "user", "content": text}]
 
-        trace_id = str(uuid4())
+        fields = mint_work_envelope_fields(
+
+            job_id=root_job_id,
+            pool_id=kwargs.get("pool_id"),
+        )
+        trace_id = fields.trace_id
         request = LlmRequest(
-            contract_version=CONTRACT_VERSION,
+            contract_version=fields.contract_version,
             trace_id=trace_id,
-            issued_at=datetime.now(timezone.utc),
-            job_id=root_job_id if root_job_id is not None else new_job_id(),
+            issued_at=fields.issued_at,
+            job_id=fields.job_id,
             request_id=str(uuid4()).replace("-", "")[:32],
             messages=wire_messages,
             model=model_cfg.model,

@@ -130,6 +130,8 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
         self._result_sent: bool = False
         self._last_turn: Any | None = None
         self._last_agent_end_event: Any | None = None
+        self._current_job_id: str | None = None
+        self._current_trace_id: str | None = None
 
     async def attach(
         self, nc: Any, loop: asyncio.AbstractEventLoop | None = None
@@ -212,6 +214,7 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
         prompt: str,
         job_id: str,
         *,
+        trace_id: str | None = None,
         session_file: str | None = None,
         model: str | None = None,
     ) -> None:
@@ -226,6 +229,7 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
         No bare except — exceptions propagate to the caller (OmpWorker.handle).
         """
         self._current_job_id = job_id
+        self._current_trace_id = trace_id
         self._in_prompt_await = True
         # run() is the sole success publisher — it publishes after prompt_and_wait
         # returns (race-free, on the event loop). _on_agent_end only stores the event.

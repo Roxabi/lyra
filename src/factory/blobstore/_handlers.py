@@ -11,13 +11,13 @@ import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Literal, TypeVar
-from uuid import uuid4
 
 import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from factory.blobstore._keys import resolve_delete_key, resolve_wire_key
+from factory.nats.envelope_fields import wire_trace_id_hex
 from roxabi_blobs import FsBlobStore
 from roxabi_blobs.errors import BlobNotFoundError, BlobWriteError
 from roxabi_contracts.audit.blobs import BlobAuditEvent
@@ -55,7 +55,7 @@ async def _emit_audit(  # noqa: PLR0913
     try:
         event = BlobAuditEvent(
             contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
+            trace_id=wire_trace_id_hex(),
             issued_at=datetime.now(UTC),
             op=op,
             result=result,

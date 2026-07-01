@@ -80,19 +80,19 @@ class FleetReporter:
             await asyncio.sleep(self._interval_s)
 
     async def _publish_once(self) -> None:
-        report = new_container_report(
-            host=_resolve_host(),
-            container_name=self._container_name,
-            image_ref=self._image_ref,
-            image_revision=_read_build_revision(),
-            health=self._health,
-        )
-        payload = report.model_dump_json().encode()
         try:
+            report = new_container_report(
+                host=_resolve_host(),
+                container_name=self._container_name,
+                image_ref=self._image_ref,
+                image_revision=_read_build_revision(),
+                health=self._health,
+            )
+            payload = report.model_dump_json().encode()
             await self._nc.publish(CONTAINER_REPORT, payload)
         except Exception:  # noqa: BLE001 — reporter must not crash the host process
             log.warning(
-                "roxabi_obs: publish failed for %s",
+                "roxabi_obs: fleet report failed for %s",
                 self._container_name,
                 exc_info=True,
             )

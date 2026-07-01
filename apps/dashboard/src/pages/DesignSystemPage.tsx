@@ -2,10 +2,12 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Card } from "@astryxdesign/core/Card";
 import { ClickableCard } from "@astryxdesign/core/ClickableCard";
+import { Selector } from "@astryxdesign/core/Selector";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { List, Moon, Robot, SquaresFour, Sun } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -22,7 +24,6 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { Input } from "@/components/ui/input";
 import {
   ListToolbar,
   ListToolbarControls,
@@ -31,7 +32,6 @@ import {
 } from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { SelectField } from "@/components/ui/select-field";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
@@ -116,6 +116,8 @@ export function DesignSystemPage() {
   const [harness, setHarness] = useState<HarnessKind>("claude-cli");
   const [model, setModel] = useState(MODEL_CATALOG["claude-cli"][0]);
   const [popoverValue, setPopoverValue] = useState("a");
+  const [textInputValue, setTextInputValue] = useState("");
+  const [selectorValue, setSelectorValue] = useState("claude-cli");
   const [composerValue, setComposerValue] = useState("");
   const [listSearch, setListSearch] = useState("");
   const [listView, setListView] = useState<"cards" | "table">("cards");
@@ -302,23 +304,22 @@ export function DesignSystemPage() {
         </Button>
       </Section>
 
-      <Section title="Formulaires" description="Input, Textarea, SelectField, PopoverSelect.">
+      <Section title="Formulaires" description="TextInput, Textarea, Selector, PopoverSelect.">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="ds-input">
-              Input
-            </label>
-            <Input id="ds-input" placeholder="Placeholder…" />
-          </div>
-          <div className="space-y-2">
-            <label
-              className="text-xs font-medium text-muted-foreground"
-              htmlFor="ds-input-disabled"
-            >
-              Input disabled
-            </label>
-            <Input id="ds-input-disabled" disabled placeholder="Disabled" />
-          </div>
+          <TextInput
+            label="TextInput"
+            value={textInputValue}
+            onChange={setTextInputValue}
+            placeholder="Placeholder…"
+            width="100%"
+          />
+          <TextInput
+            label="TextInput disabled"
+            isDisabled
+            value=""
+            placeholder="Disabled"
+            width="100%"
+          />
         </div>
         <div className="space-y-2">
           <TextArea
@@ -329,11 +330,17 @@ export function DesignSystemPage() {
             rows={3}
           />
         </div>
-        <Row label="SelectField">
-          <SelectField label="Harness">
-            <option value="claude-cli">Clipool</option>
-            <option value="omp-rpc">OMP</option>
-          </SelectField>
+        <Row label="Selector">
+          <Selector
+            label="Harness"
+            isLabelHidden
+            value={selectorValue}
+            options={[
+              { value: "claude-cli", label: "Clipool" },
+              { value: "omp-rpc", label: "OMP" },
+            ]}
+            onChange={setSelectorValue}
+          />
         </Row>
         <Row label="PopoverSelect">
           <PopoverSelect

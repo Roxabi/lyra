@@ -99,15 +99,15 @@ def test_cockpit_visual(dashboard_url: str, theme: str, tmp_path: Path) -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 800})
+        # Seed the theme preference BEFORE any page script runs so the app boots
+        # in the target mode exactly as it does for a real user: the inline
+        # bootstrap sets data-theme, and Astryx's <Theme mode> (via useTheme)
+        # sets color-scheme — keeping brand tokens and Astryx light-dark() in
+        # sync. Forcing data-theme post-load left Astryx components on their
+        # mount-time mode, so color-scheme (dark) mismatched data-theme (light).
+        seed = f"localStorage.setItem('factory-dashboard:theme', {theme!r})"
+        page.add_init_script(f"try {{ {seed}; }} catch (e) {{}}")
         page.goto(f"{dashboard_url}chat", wait_until="networkidle")
-        page.evaluate(
-            """(t) => {
-              document.documentElement.setAttribute('data-theme', t);
-              document.documentElement.style.colorScheme = t;
-              localStorage.setItem('factory-dashboard:theme', t);
-            }""",
-            theme,
-        )
         page.wait_for_timeout(300)
         page.screenshot(path=str(shot), full_page=False)
         browser.close()

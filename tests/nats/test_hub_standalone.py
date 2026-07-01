@@ -296,10 +296,10 @@ class TestStandaloneHubPipeline:
     async def test_trust_re_resolution_invoked(
         self, nc: NATS, nats_server_url: str
     ) -> None:
-        """ResolveTrustMiddleware calls Authenticator.resolve() for every inbound msg.
+        """ResolveIdentityMiddleware calls Authenticator.resolve() per inbound msg.
 
         Publishes an InboundMessage via NATS and verifies that the registered
-        Authenticator's resolve() method is called — confirming the C3 trust
+        Authenticator's resolve() method is called — confirming the C3 identity
         re-resolution path runs in the standalone Hub pipeline.
         """
         import asyncio

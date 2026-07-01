@@ -8,6 +8,14 @@ backend:
   framework: typer
   path: src/factory
 
+frontend:
+  package_manager: bun
+  workspaces: [apps/dashboard, packages, brand]
+  lint_cmd: bun run lint
+  format_cmd: bun run format
+  test_cmd: bun run --filter @roxabi-factory/dashboard test
+  build_cmd: bun run build:dashboard
+
 build:
   formatter: ruff
   formatter_config: pyproject.toml
@@ -149,3 +157,20 @@ quality_gates:
     enabled: true
     script: tools/check_omp_pin_lockstep.sh
     description: assert the omp release pin stays in lockstep across the three files — OMP_SHA256 (deploy/omp-base/Containerfile) == _PINNED_SHA256 (src/factory/adapters/omp/_rpc_digest.py) and OMP_VERSION == Dockerfile factory-omp-base tag — so a version bump can't ship a partial pin → runtime DigestMismatchError (#1873)
+
+  lint_js:
+    enabled: true
+    stage: pre-commit
+    script: bun run lint
+    description: Biome lint+format on apps/packages/brand JS/TS workspaces (#1771)
+
+  dashboard_unit_test:
+    enabled: true
+    stage: pre-push
+    script: bun run --filter @roxabi-factory/dashboard test
+    description: Vitest unit tests for dashboard SPA (#1771)
+
+  dashboard_build:
+    enabled: true
+    script: bun run build:dashboard
+    description: Dashboard SPA production build — CI + make qg; not wired to git hooks (slow)

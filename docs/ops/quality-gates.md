@@ -52,8 +52,21 @@ For script behaviour, exemption files, and exit-code contract, see [`tools/CLAUD
 | `quadlet_manifest_install` | `tools/check_quadlet_manifest_install.sh` | pre-push | — | — | ✓ |
 | `secrets_source` | `tools/check_secrets_source.sh` | pre-push | — | — | — |
 | `str_exc_bus_bound` | `tools/check_str_exc_bus_bound.sh` | pre-commit | — | — | ✓ |
+| `lint_js` | `bun run lint` (Biome) | pre-commit | ✓ (path-filtered) | — | ✓ |
+| `dashboard_unit_test` | `bun run --filter @roxabi-factory/dashboard test` | pre-push | — | ✓ (path-filtered) | ✓ |
+| `dashboard_build` | `bun run build:dashboard` | — (CI/manual) | — | — | ✓ |
 
 \* `doc_drift` and `doc_semantic_drift` have no explicit `stage` in `stack.yml` but are **CI-only** in practice (not listed in `.pre-commit-config.yaml`).
+
+### Frontend gates (detail)
+
+Declared under `frontend:` and `quality_gates` in `.claude/stack.yml` (#1771). Requires [bun](https://bun.sh) on `PATH` (`packageManager` in root `package.json`).
+
+**`lint_js`** — `biome check` on `apps/`, `packages/`, `brand/`. Runs on **pre-commit** when staged files match `^(apps|packages|brand)/`. Fix locally: `bun run format`.
+
+**`dashboard_unit_test`** — Vitest for `apps/dashboard`. Runs on **pre-push** when `apps/dashboard/` changed.
+
+**`dashboard_build`** — production SPA build. **CI-only** (and `make qg`); intentionally not a git hook — too slow for every push.
 
 ### Doc gates (detail)
 
@@ -72,6 +85,8 @@ CI also greps operator docs for removed legacy logging configuration symbols (se
 | `lint` | `uv run ruff check .` | pre-commit |
 | `typecheck` | `uv run pyright` | pre-commit |
 | `codes-sync` | `check_codes_sync.py --write` (path-filtered) | pre-commit |
+| `lint-js` | `bun run lint` (Biome; path-filtered) | pre-commit |
+| `dashboard-unit-test` | `bun run --filter @roxabi-factory/dashboard test` (path-filtered) | pre-push |
 | `trufflehog` | TruffleHog git scan | pre-push |
 | `check-single-write-tool-display-config` | `tools/check_single_write_tool_display_config.sh` | pre-push |
 | `license` | `tools/license_check.py` | pre-push |

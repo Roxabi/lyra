@@ -62,6 +62,8 @@ refactor(pool): extract pool_id generation to RoutingKey
 
 ## Code style
 
+**Python**
+
 ```bash
 uv run ruff check .      # lint — must pass
 uv run ruff format .     # format — auto-fix
@@ -69,10 +71,18 @@ uv run pyright           # type check — must pass
 uv run pytest            # tests — must pass
 ```
 
+**Dashboard / JS-TS** (`apps/`, `packages/`, `brand/` — see `.claude/stack.yml` → `frontend`)
+
+```bash
+bun run lint             # biome check — must pass (CI + pre-commit hook)
+bun run format           # biome check --write — auto-fix
+bun run --filter @roxabi-factory/dashboard test   # vitest — pre-push when dashboard changes
+```
+
 Git hooks run quality gates locally:
 
-- **commit** — ruff, pyright, file/folder size, import layers, …
-- **pre-push** — trufflehog, ACL drift, debt expiry, architecture snapshot, …
+- **commit** — ruff, pyright, biome (`lint-js` when FE paths change), file/folder size, import layers, …
+- **pre-push** — dashboard vitest (when `apps/dashboard/` changes), trufflehog, ACL drift, debt expiry, architecture snapshot, …
 
 Install both hook types once:
 
@@ -87,7 +97,7 @@ uv run pre-commit install
 uv run pre-commit install --hook-type pre-push
 ```
 
-Pre-push hooks require [trufflehog](https://github.com/trufflesecurity/trufflehog/releases) on your `PATH`.
+Pre-push hooks require [trufflehog](https://github.com/trufflesecurity/trufflehog/releases) on your `PATH`. Frontend hooks require [bun](https://bun.sh) (see root `package.json` → `packageManager`).
 
 ## Adding a channel adapter
 

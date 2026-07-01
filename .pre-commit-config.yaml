@@ -67,6 +67,20 @@ repos:
     language: system
     pass_filenames: false
     files: ^packages/roxabi-contracts/(src/roxabi_contracts/errors\.py|docs/error-codes\.md|scripts/check_codes_sync\.py)$
+  - id: lint-js
+    name: lint-js (biome)
+    entry: bun run lint
+    language: system
+    pass_filenames: false
+    files: ^(apps|packages|brand)/
+  - id: dashboard-unit-test
+    name: dashboard unit tests (vitest)
+    entry: bun run --filter @roxabi-factory/dashboard test
+    language: system
+    pass_filenames: false
+    files: ^apps/dashboard/
+    stages:
+    - pre-push
   - id: trufflehog
     name: trufflehog secret scan
     entry: bash -c 'command -v trufflehog >/dev/null || { echo "trufflehog not installed — https://github.com/trufflesecurity/trufflehog/releases" >&2; exit 2; }; trufflehog git file://. --only-verified --fail'

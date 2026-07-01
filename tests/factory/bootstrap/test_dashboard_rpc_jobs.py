@@ -7,10 +7,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from factory.bootstrap.factory.dashboard_jobs_rpc import (
+    handle_jobs_cancel,
     handle_jobs_launch,
     handle_jobs_steer,
 )
-from roxabi_contracts.jobs.subjects import jobs_steer, jobs_submit
+from roxabi_contracts.jobs.subjects import (
+    JOB_CANCEL_STEER_TOKEN,
+    jobs_steer,
+    jobs_submit,
+)
 
 
 @pytest.fixture
@@ -100,4 +105,32 @@ class TestJobsSteer:
         nc.publish.assert_awaited_once_with(
             jobs_steer("abc123"),
             b"change direction",
+        )
+
+
+class TestJobsCancel:
+    @pytest.mark.asyncio
+    async def test_publishes_cancel_token_and_closes_registry(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        coord = AsyncMock()
+        hub._active_jobs_coord = coord
+        result = await handle_jobs_cancel(hub, nc, {"job_id": "abc123"})
+        assert result["accepted"] is True
+        coord.close.assert_awaited_once_with("abc123")
+        nc.publish.assert_awaited_once_with(
+            jobs_steer("abc123"),
+            JOB_CANCEL_STEER_TOKEN.encode(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_cancel_without_registry_still_publishes(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        hub._active_jobs_coord = None
+        result = await handle_jobs_cancel(hub, nc, {"job_id": "abc123"})
+        assert result["accepted"] is True
+        nc.publish.assert_awaited_once_with(
+            jobs_steer("abc123"),
+            JOB_CANCEL_STEER_TOKEN.encode(),
         )

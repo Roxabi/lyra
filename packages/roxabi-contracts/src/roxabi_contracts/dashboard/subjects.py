@@ -25,6 +25,9 @@ class DashboardSubjects(BaseModel):
         "factory.dashboard.jobs.launch"
     )
     jobs_steer: Literal["factory.dashboard.jobs.steer"] = "factory.dashboard.jobs.steer"
+    jobs_cancel: Literal["factory.dashboard.jobs.cancel"] = (
+        "factory.dashboard.jobs.cancel"
+    )
     voice_capabilities: Literal["factory.dashboard.voice.capabilities"] = (
         "factory.dashboard.voice.capabilities"
     )

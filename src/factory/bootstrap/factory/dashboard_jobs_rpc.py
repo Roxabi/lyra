@@ -12,6 +12,8 @@ from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.obs.hub_tracer import nats_client_span
 from roxabi_contracts.dashboard import (
     DashboardJob,
+    DashboardJobsCancelRequest,
+    DashboardJobsCancelResponse,
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
@@ -19,7 +21,11 @@ from roxabi_contracts.dashboard import (
     DashboardJobsSteerResponse,
 )
 from roxabi_contracts.jobs import JobEnvelope
-from roxabi_contracts.jobs.subjects import jobs_steer, jobs_submit
+from roxabi_contracts.jobs.subjects import (
+    JOB_CANCEL_STEER_TOKEN,
+    jobs_steer,
+    jobs_submit,
+)
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -116,4 +122,17 @@ async def handle_jobs_steer(_hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
     return DashboardJobsSteerResponse(
         accepted=True,
         message=f"steer published to {req.job_id}",
+    ).model_dump()
+
+
+async def handle_jobs_cancel(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dict:
+    req = DashboardJobsCancelRequest.model_validate(payload)
+    job_id = req.job_id
+    coord = getattr(hub, "_active_jobs_coord", None)
+    if coord is not None and hasattr(coord, "close"):
+        await coord.close(job_id)
+    await nc.publish(jobs_steer(job_id), JOB_CANCEL_STEER_TOKEN.encode())
+    return DashboardJobsCancelResponse(
+        accepted=True,
+        message=f"cancel published to {job_id}",
     ).model_dump()

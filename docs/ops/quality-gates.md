@@ -4,7 +4,7 @@ Operator reference for automated checks. **Single source of truth:** `.claude/st
 
 **Runner:** `scripts/qg` (bash + [yq](https://github.com/mikefarah/yq)) — reads stack.yml at execution time (no generated wiring, no drift).
 
-**Layout:** gate implementations live in `tools/`; `scripts/` holds the runner and repo-specific CI extras. See `CONTRIBUTING.md` § Language & layout.
+**Layout:** gate implementations live in `tools/`; `scripts/` holds the runner and repo-specific scanners. See `CONTRIBUTING.md` § Language & layout.
 
 For script behaviour and exit codes, see [`tools/CLAUDE.md`](../../tools/CLAUDE.md).
 
@@ -21,6 +21,8 @@ For script behaviour and exit codes, see [`tools/CLAUDE.md`](../../tools/CLAUDE.
 
 `tools/qg.conf` remains generated runtime config for file-length scripts (drift-gated by `scripts/check-qg-conf-drift.sh`).
 
+**Wiring rule:** a gate runs on a stage only when it appears in **both** `quality_gates.<name>.stages` **and** `qg.run_order.<stage>`. `tests/scripts/test_qg.sh` enforces this.
+
 ---
 
 ## Run locally
@@ -28,7 +30,7 @@ For script behaviour and exit codes, see [`tools/CLAUDE.md`](../../tools/CLAUDE.
 ```bash
 make dev-setup                              # after clone
 scripts/qg run --stage pre-commit           # commit hooks parity
-scripts/qg run --stage pre-push             # push hooks parity
+scripts/qg run --stage pre-push             # push hooks parity (incl. deploy gates)
 scripts/qg run --stage ci                   # CI gate bundle
 scripts/qg run lint_js                      # single gate
 make qg                                     # profile local + extra factory tests
@@ -52,6 +54,25 @@ Path-filtered gates (`files:` regex) skip when no changed file matches (commit/p
 
 ---
 
+## Deploy gates
+
+Deploy integrity checks (`secrets_drift`, `quadlet_manifest_install`, `volumes_table`, `secrets_source`) run on **pre-push**, **CI**, and **`make qg`** (local profile).
+
+| Gate | pre-push | ci | `make qg` | Notes |
+|------|:--------:|:--:|:---------:|-------|
+| `secrets_drift` | yes | yes | yes | |
+| `quadlet_manifest_install` | yes | yes | yes | |
+| `volumes_table` | yes | yes | yes | |
+| `secrets_source` | yes | yes | yes | Skips (exit 0) when `~/.roxabi/factory` absent — typical on CI runners |
+
+`quadlet_component_source` is **ci-only** (not pre-push).
+
+Before a **deploy PR**, `scripts/qg run --stage pre-push` or `make qg` is sufficient for deploy gates. For full CI parity: `scripts/qg run --stage ci`.
+
+`make quadlet-lint` for path-scoped Quadlet checks (see `quadlet-lint.yml` workflow).
+
+---
+
 ## CI extras (not in `qg run --stage ci`)
 
 Explicit steps in `.github/workflows/ci.yml` after the QG bundle:
@@ -67,30 +88,8 @@ ACL scanners (`acl_matrix_retired`, `request_reply_flows`, `acl_grants`, `inbox_
 ## Adding a gate
 
 1. Add `quality_gates.<name>` in `.claude/stack.yml` (`script`, `stages`, optional `files`, `env`, `requires`).
-2. Add `<name>` to `qg.run_order.<stage>` for each stage it should run in.
+2. Add `<name>` to `qg.run_order.<stage>` for **each** stage in `stages`.
 3. Regenerate `tools/qg.conf` via `/release-setup --force` if the gate uses file-length/folder shared config.
 4. Document non-obvious behaviour in `tools/CLAUDE.md`; add `tests/tools/` when logic is non-trivial.
 
 No pre-commit or ci.yml edit required for standard gates.
-
----
-
-## Gaps — deploy gates easy to miss locally
-
-Some gates run on **`git push`** (pre-push stage) but not when you only run `--stage pre-commit`, `--stage ci`, or `make qg` (local profile):
-
-| Gate | pre-push | ci | `make qg` |
-|------|:--------:|:--:|:---------:|
-| `secrets_source` | yes | no | no |
-| `volumes_table` | yes | yes | no |
-
-Before a **deploy PR**, run:
-
-```bash
-scripts/qg run --stage pre-push    # includes secrets_source + volumes_table
-# or, deploy-only subset:
-scripts/qg run secrets_source
-scripts/qg run volumes_table
-```
-
-`make quadlet-lint` for path-scoped Quadlet checks (see `quadlet-lint.yml` workflow).

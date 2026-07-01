@@ -1,10 +1,32 @@
 # roxabi-factory — Full Audit Summary (2026-06-30)
 
+> **Remediation addendum:** 2026-07-01 — session audit 2026-06-30, 4 PRs mergées (#2077, #2084, #2085, #2086). Findings snapshot ci-dessous inchangé ; statut courant dans [Remediation status](#remediation-status-session-2026-06-30--merges-2026-07-01).
+
 Reduce pass over **8 domain shards** (architecture, axial-drift, security, ssot, deploy, week-subsystem, contracts, error-async). Week-over-week window: 392 commits since 2026-06-23 (base `2714b361` → `staging`), dominated by the operator-console redesign (PR #2070, `feat/dashboard-admin-users-agents`) and fleet container observability post-MVP work (`feat/fleet-container-obs-post-mvp`), merged together in `00406cdd`, plus the ingress-connector-tenant-contract thread (ADR-096).
 
 **All 16 quality gates pass clean** (ccc-index, importlinter 15/15, doc_drift, doc_semantic_drift, secrets_drift, secrets_source, quadlet_manifest_install, quadlet_component_source, str_exc_bus_bound, hardcoded_constants, file_length, folder_size, test_sleep, omp_pin_lockstep, architecture_snapshot, volumes_table). Green-CI gives **zero protection** against 4 of this audit's 5 P0 findings — the dashboard-BFF auth bypass, the jobs/steer IDOR, the unbackported NATS ACL grant, and the OMP `set_system_prompt` API mismatch — none of these are gate-checkable today.
 
-> **Data provenance note**: `by-domain/ssot.md` and `by-domain/deploy.md` each report that a *different, larger* prior finding set previously existed at their file paths (e.g. ssot: 31 raw/29 deduped findings incl. `quadlet_component_source gate never wired`, `ingress.toml never provisioned`; deploy: `converge.sh:64 NO_RESTART=1` permanent daemon-reload skip, `cluster_plan.py:75-82 managed_repos allowlist silent-drop`). Those findings are **not REFUTED**, just absent from the JSON input handed to this reduce pass, and were overwritten per each domain synthesis's explicit instructions. They should be reconciled in a follow-up pass rather than treated as resolved.
+> **Data provenance note**: `by-domain/ssot.md` and `by-domain/deploy.md` each report that a *different, larger* prior finding set previously existed at their file paths. Three of those items are now **RESOLVED** (see remediation table): `quadlet_component_source` gate wired (#2077), `ingress.toml` auto-provisioned (#2085), `converge.sh` `NO_RESTART=1` daemon-reload skip (#2086). Still **open / not in reduce JSON**: `cluster_plan.py:75-82` managed_repos allowlist silent-drop. Domain shards (`by-domain/*.md`) remain verbatim snapshots — not re-run.
+
+## Remediation status (session 2026-06-30 → merges 2026-07-01)
+
+| PR | Contenu | Findings / items clos | État |
+|---|---|---|---|
+| [#2077](https://github.com/Roxabi/roxabi-factory/pull/2077) | quick-wins : pyright `roxabi-obs`/`roxabi-satellite`, CI coverage `roxabi-obs/tests`, `deployment.md` topology pointer, `security-routing.md` ADR-090, `reporter.py` type fix | Quick wins **#1–4** ; P1-4 (doc topology), P1-5 (ADR-090 doc), P1-8 (pyright), P1-9 (CI test job) ; bonus gate **#2038** `check_quadlet_component_source` | ✅ mergée |
+| [#2084](https://github.com/Roxabi/roxabi-factory/pull/2084) | gate `stale_container_count` : message sans compte hardcodé + régression | ssot doc-drift tooling (pas un P0–P3 numéroté) | ✅ mergée |
+| [#2085](https://github.com/Roxabi/roxabi-factory/pull/2085) | `ingress.toml` auto-provisionné (`install.sh` + `setup.py`) + tests | Provenance note : `ingress.toml never provisioned` | ✅ mergée |
+| [#2086](https://github.com/Roxabi/roxabi-factory/pull/2086) | `converge.sh` : `daemon-reload` après `NO_RESTART=1` + test ordre reload → restart | Provenance note : `converge.sh` daemon-reload skip | ✅ mergée — **vérif M₁** recommandée au prochain auto-converge |
+
+**Encore ouverts (plan session — 4 items) :**
+
+| Item | Finding audit | Décision opérateur |
+|---|---|---|
+| **obs hardening** | P1-7 — `FleetReporter` crash guard (`reporter.py:82`) | ✅ implémenté — try/except sur construction+publish ; tests régression |
+| **omp P0-5** | `omp_pool.py` `set_system_prompt` no-op | Respawn worker + `append_system_prompt` au constructeur (reco opérateur) |
+| **acl P0-4** | telegram/discord manquent `$JS.API.STREAM.NAMES` (+ `CONSUMER.INFO`) | ✅ implémenté — grants backportés ; restart NATS au merge via auto-converge |
+| **cluster-plan P0-3** | `cluster_plan.py` role-rename + `--prune` (cross-repo) | ✅ implémenté — `ROLE_GUARD` + soft_error (projects-meta) |
+
+**Toujours ouverts (hors plan session, non traités) :** P0-1 dashboard BFF auth, P0-2 jobs/steer IDOR, et le reste du backlog P1–P3 (77 findings snapshot → ~10 clos ou partiellement clos via #2077).
 
 ## Executive summary
 
@@ -171,24 +193,24 @@ Full detail: [`by-domain/architecture.md`](by-domain/architecture.md), [`by-doma
 
 ## Triage table — proposed GitHub issues
 
-Proposals only — no issues were created. Mutations go through `roxabi-issues:issue-triage` per `~/projects/ssot/operator.ssot.md`.
+Proposals only at audit time — remediation PRs listed in [Remediation status](#remediation-status-session-2026-06-30--merges-2026-07-01). New mutations go through `roxabi-issues:issue-triage` per `~/projects/ssot/operator.ssot.md`.
 
-| Priority | Suggested issue title | Owning domain | File:Line |
-|---|---|---|---|
-| P0 | `fix(dashboard): require operator auth on admin/agent BFF routes (bff_admin.py, bff_agents.py)` | security (+ssot) | `src/factory/dashboard/routes/bff_admin.py:24` |
-| P0 | `fix(dashboard): authenticate + check job ownership on /api/bff/jobs/steer (IDOR)` | security | `src/factory/bootstrap/factory/dashboard_jobs_rpc.py:100` |
-| P0 | `fix(deploy): make cluster_plan.py --prune role-validation hosts.toml-aware before deleting live units` | deploy | `lib/cluster_plan.py:45` |
-| P0 | `fix(nats): backport $JS.API.STREAM.NAMES + CONSUMER.INFO grants to telegram/discord-adapter ACL` | deploy | `deploy/nats/acl-matrix.json:94` |
-| P0 | `fix(omp): omp_pool.py calls nonexistent RpcClient.set_system_prompt — persona/soul never applied` | week-subsystem | `src/factory/adapters/omp/omp_pool.py:64` |
-| P1 | `fix(nats-kv): kv_safe_part collision — distinct pool_ids map to the same sanitized KV key` | architecture | `src/factory/infrastructure/stores/kv/_kv_keys.py:13` |
-| P1 | `fix(dashboard): admin_rpc.py PATCH allows identity rebind onto arbitrary user_id` | security | `src/factory/bootstrap/factory/dashboard/admin_rpc.py:241` |
-| P1 | `fix(dashboard): enforce soul secret-lint server-side, not just cosmetic client warning` | security | `apps/dashboard/src/lib/soul-secret-lint.ts:1` |
-| P1 | `docs(architecture): fix deployment.md container topology (9 → 20 containers)` | ssot | `docs/architecture/deployment.md:7` |
-| P1 | `docs(architecture): fix security-routing.md ADR-090 status (planned → shipped)` | ssot | `docs/architecture/security-routing.md:87` |
-| P1 | `fix(deploy): scope network.roxabi host_roles to include M2 (llm-worker/image-worker)` | ssot | `deploy/quadlet.toml:167` |
-| P1 | `fix(obs): move FleetReporter report-construction inside the crash guard` | week-subsystem | `packages/roxabi-obs/src/roxabi_obs/reporter.py:82` |
-| P1 | `fix(ci): add packages/roxabi-obs(+roxabi-satellite) to pyright include` | week-subsystem | `pyproject.toml:138` |
-| P1 | `fix(ci): wire packages/roxabi-obs/tests into an actual CI test job` | week-subsystem | `pyproject.toml:109` |
+| Priority | Suggested issue title | Owning domain | File:Line | Status (2026-07-01) |
+|---|---|---|---|---|
+| P0 | `fix(dashboard): require operator auth on admin/agent BFF routes (bff_admin.py, bff_agents.py)` | security (+ssot) | `src/factory/dashboard/routes/bff_admin.py:24` | **open** |
+| P0 | `fix(dashboard): authenticate + check job ownership on /api/bff/jobs/steer (IDOR)` | security | `src/factory/bootstrap/factory/dashboard_jobs_rpc.py:100` | **open** |
+| P0 | `fix(deploy): make cluster_plan.py --prune role-validation hosts.toml-aware before deleting live units` | deploy | `lib/cluster_plan.py:45` | **closed** — ROLE_GUARD (projects-meta) |
+| P0 | `fix(nats): backport $JS.API.STREAM.NAMES + CONSUMER.INFO grants to telegram/discord-adapter ACL` | deploy | `deploy/nats/acl-matrix.json:94` | **closed** — grants + auth.conf regen |
+| P0 | `fix(omp): omp_pool.py calls nonexistent RpcClient.set_system_prompt — persona/soul never applied` | week-subsystem | `src/factory/adapters/omp/omp_pool.py:64` | **open** — plan session, décision respawn |
+| P1 | `fix(nats-kv): kv_safe_part collision — distinct pool_ids map to the same sanitized KV key` | architecture | `src/factory/infrastructure/stores/kv/_kv_keys.py:13` | open |
+| P1 | `fix(dashboard): admin_rpc.py PATCH allows identity rebind onto arbitrary user_id` | security | `src/factory/bootstrap/factory/dashboard/admin_rpc.py:241` | open |
+| P1 | `fix(dashboard): enforce soul secret-lint server-side, not just cosmetic client warning` | security | `apps/dashboard/src/lib/soul-secret-lint.ts:1` | open |
+| P1 | `docs(architecture): fix deployment.md container topology (9 → 20 containers)` | ssot | `docs/architecture/deployment.md:7` | **closed** [#2077](https://github.com/Roxabi/roxabi-factory/pull/2077) — pointer `CURRENT.generated.md` + 16 active / 23 declared |
+| P1 | `docs(architecture): fix security-routing.md ADR-090 status (planned → shipped)` | ssot | `docs/architecture/security-routing.md:87` | **closed** [#2077](https://github.com/Roxabi/roxabi-factory/pull/2077) |
+| P1 | `fix(deploy): scope network.roxabi host_roles to include M2 (llm-worker/image-worker)` | ssot | `deploy/quadlet.toml:167` | open |
+| P1 | `fix(obs): move FleetReporter report-construction inside the crash guard` | week-subsystem | `packages/roxabi-obs/src/roxabi_obs/reporter.py:82` | **closed** — obs hardening (construction+publish guard) |
+| P1 | `fix(ci): add packages/roxabi-obs(+roxabi-satellite) to pyright include` | week-subsystem | `pyproject.toml:138` | **closed** [#2077](https://github.com/Roxabi/roxabi-factory/pull/2077) |
+| P1 | `fix(ci): wire packages/roxabi-obs/tests into an actual CI test job` | week-subsystem | `pyproject.toml:109` | **closed** [#2077](https://github.com/Roxabi/roxabi-factory/pull/2077) |
 | P1 | `fix(dashboard): useAgentStatus.ts picks rows[0] instead of the selected agent` | week-subsystem | `apps/dashboard/src/hooks/useAgentStatus.ts:21` |
 | P1 | `fix(dashboard): bulk agent-status RPC stops defaulting non-targeted agents to harness=claude-cli` | week-subsystem | `src/factory/bootstrap/factory/dashboard_rpc.py:229` |
 | P1 | `fix(dashboard): BFF error-mapping catches NATS RPC timeout/no-responders as 503` | error-async | `src/factory/dashboard/routes/bff_common.py:32` |
@@ -196,10 +218,10 @@ Proposals only — no issues were created. Mutations go through `roxabi-issues:i
 
 ## Top-10 quick wins (high impact / low effort)
 
-1. **Add `packages/roxabi-obs` to pyright include** (`pyproject.toml:138`) — 1-line config fix, closes a known CI typecheck blind spot hiding a real type error. (week-subsystem)
-2. **Wire `packages/roxabi-obs/tests` into a real CI job** (`pyproject.toml:109`) — testpaths already declared, just needs a job to invoke it; restores a shutdown-fix regression test. (week-subsystem)
-3. **Fix `deployment.md` container count** (9 → 20) — pure doc edit, removes a stale fact cited by other docs. (ssot)
-4. **Fix `security-routing.md` ADR-090 status** (planned → shipped) — pure doc edit, prevents future agents from re-litigating already-shipped work. (ssot)
+1. ~~**Add `packages/roxabi-obs` to pyright include**~~ — ✅ **#2077**
+2. ~~**Wire `packages/roxabi-obs/tests` into a real CI job**~~ — ✅ **#2077** (`Coverage — roxabi_obs`, floor 69%)
+3. ~~**Fix `deployment.md` container count**~~ — ✅ **#2077** (pointer `CURRENT.generated.md`, plus de compte hand-maintained)
+4. ~~**Fix `security-routing.md` ADR-090 status**~~ — ✅ **#2077**
 5. **Patch `tools/check_str_exc_bus_bound.sh`** regex + add `bootstrap/` to scan roots — closes 2 already-verified false-negatives (socialmedia adapter, dashboard admin RPCs) in one gate change. (security + architecture)
 6. **Harden `deploy/quadlet/factory-cloudflared.container`** — add `ReadOnly=true` + pin the image tag (currently floating `:latest`) on the one internet-facing unit missing both. (security)
 7. **Fix `useAgentStatus.ts` `rows[0]` selection bug** — small frontend diff, fixes a visibly-wrong online/harness badge in the operator cockpit. (week-subsystem)

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from io import StringIO
 from pathlib import Path
 
-from tools.check_doc_semantic_drift import main
+from tools.check_doc_semantic_drift import RULES, main
 
 
 def _pyproject(root: Path) -> None:
@@ -82,3 +83,20 @@ def test_readme_mit_fails(tmp_path: Path) -> None:
     rc, out = _run(tmp_path)
     assert rc == 1
     assert "readme" in out.lower()
+
+
+def test_stale_container_count_message_has_no_hardcoded_count() -> None:
+    """The stale_container_count fix-message must not itself hardcode a count.
+
+    Regression for the self-referential staleness the 2026-06-30 audit caught: the
+    message said "nine Quadlet containers" while the live count kept climbing, so the
+    gate's own guidance became the stale fact it exists to correct. Point at the
+    generated SSoT (`CURRENT.generated.md` / `deploy/quadlet.toml`) instead.
+    """
+    rule = next(r for r in RULES if r.rule_id == "stale_container_count")
+    assert not re.search(
+        r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+        r"\s+(?:Quadlet\s+)?containers?\b",
+        rule.message,
+        re.IGNORECASE,
+    ), f"fix-message must not hardcode a container count: {rule.message!r}"

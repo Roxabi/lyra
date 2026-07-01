@@ -69,16 +69,16 @@ repos:
     files: ^packages/roxabi-contracts/(src/roxabi_contracts/errors\.py|docs/error-codes\.md|scripts/check_codes_sync\.py)$
   - id: lint-js
     name: lint-js (biome)
-    entry: bun run lint
+    entry: bash -c 'command -v bun >/dev/null || { echo "bun not installed — https://bun.sh (see package.json packageManager)" >&2; exit 2; }; bun run lint'
     language: system
     pass_filenames: false
-    files: ^(apps|packages|brand)/
+    files: ^(apps/|packages/shared/|brand/|biome\.json|package\.json|bun\.lock)$
   - id: dashboard-unit-test
     name: dashboard unit tests (vitest)
-    entry: bun run --filter @roxabi-factory/dashboard test
+    entry: bash -c 'command -v bun >/dev/null || { echo "bun not installed — https://bun.sh (see package.json packageManager)" >&2; exit 2; }; bun run --filter @roxabi-factory/dashboard test'
     language: system
     pass_filenames: false
-    files: ^apps/dashboard/
+    files: ^(apps/dashboard/|packages/shared/|brand/)
     stages:
     - pre-push
   - id: trufflehog

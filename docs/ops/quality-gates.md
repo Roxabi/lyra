@@ -62,9 +62,9 @@ For script behaviour, exemption files, and exit-code contract, see [`tools/CLAUD
 
 Declared under `frontend:` and `quality_gates` in `.claude/stack.yml` (#1771). Requires [bun](https://bun.sh) on `PATH` (`packageManager` in root `package.json`).
 
-**`lint_js`** — `biome check` on `apps/`, `packages/`, `brand/`. Runs on **pre-commit** when staged files match `^(apps|packages|brand)/`. Fix locally: `bun run format`.
+**`lint_js`** — `biome check` on `apps/`, `packages/`, `brand/`. Runs on **pre-commit** when staged files match `^(apps/|packages/shared/|brand/|biome.json|package.json|bun.lock)$`. Fix locally: `bun run format`.
 
-**`dashboard_unit_test`** — Vitest for `apps/dashboard`. Runs on **pre-push** when `apps/dashboard/` changed.
+**`dashboard_unit_test`** — Vitest for `apps/dashboard`. Runs on **pre-push** when `apps/dashboard/`, `packages/shared/`, or `brand/` changed.
 
 **`dashboard_build`** — production SPA build. **CI-only** (and `make qg`); intentionally not a git hook — too slow for every push.
 

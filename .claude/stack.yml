@@ -172,5 +172,6 @@ quality_gates:
 
   dashboard_build:
     enabled: true
+    stage: ci
     script: bun run build:dashboard
     description: Dashboard SPA production build — CI + make qg; not wired to git hooks (slow)

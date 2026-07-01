@@ -7,6 +7,7 @@
 git clone https://github.com/Roxabi/roxabi-factory.git
 cd roxabi-factory
 uv sync
+bun install --frozen-lockfile   # dashboard / Biome hooks (lint-js, vitest)
 
 # 2. Configure environment
 cp .env.example .env
@@ -75,14 +76,14 @@ uv run pytest            # tests — must pass
 
 ```bash
 bun run lint             # biome check — must pass (CI + pre-commit hook)
-bun run format           # biome check --write — auto-fix
+bun run format           # biome check --write — auto-fix (run if lint-js fails, then re-stage)
 bun run --filter @roxabi-factory/dashboard test   # vitest — pre-push when dashboard changes
 ```
 
 Git hooks run quality gates locally:
 
 - **commit** — ruff, pyright, biome (`lint-js` when FE paths change), file/folder size, import layers, …
-- **pre-push** — dashboard vitest (when `apps/dashboard/` changes), trufflehog, ACL drift, debt expiry, architecture snapshot, …
+- **pre-push** — dashboard vitest (when `apps/dashboard/`, `packages/shared/`, or `brand/` changes), trufflehog, ACL drift, debt expiry, architecture snapshot, …
 
 Install both hook types once:
 

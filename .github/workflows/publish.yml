@@ -72,9 +72,7 @@ jobs:
           push: true
           set: |
             ${{ steps.tags.outputs.bake_set }}
-            *.args.ROXABI_BUILD_REVISION=${{ github.event.workflow_run.head_sha || github.sha }}
             *.labels.org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            *.labels.org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha || github.sha }}
             *.labels.org.opencontainers.image.version=${{ github.ref_name }}
 
       - name: Verify forbidden binaries absent (SC-3)

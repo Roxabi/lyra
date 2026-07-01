@@ -41,7 +41,7 @@ _SAFE_ENV_KEYS = {
     "LC_CTYPE",
     "TMPDIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
-    # Claude Code OTel → factory-otel-collector → Langfuse (ADR-092, #1764).
+    # Claude Code OTel → factory-otel (ADR-097, #2069).
     "CLAUDE_CODE_ENABLE_TELEMETRY",
     "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA",
     "OTEL_TRACES_EXPORTER",

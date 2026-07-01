@@ -12,10 +12,10 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Protocol
-from uuid import uuid4
 
 import nats.errors
 
+from factory.core.envelope_fields import control_trace_id
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.core.ports.llm import LlmResult
 from roxabi_contracts.cli import SUBJECTS as CLI_SUBJECTS
@@ -174,7 +174,7 @@ class LlmClient:
         """Send reset control command to clipool worker."""
         cmd = CliControlCmd(
             contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
+            trace_id=control_trace_id(),
             issued_at=datetime.now(timezone.utc),
             pool_id=pool_id,
             op="reset",
@@ -214,7 +214,7 @@ class LlmClient:
         """Ask clipool worker to switch the working directory."""
         cmd = CliControlCmd(
             contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
+            trace_id=control_trace_id(),
             issued_at=datetime.now(timezone.utc),
             pool_id=pool_id,
             op="switch_cwd",

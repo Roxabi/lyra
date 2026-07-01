@@ -10,15 +10,16 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol
-from uuid import uuid4
 
 from pydantic import ValidationError
 
 from factory.core.agent.agent_config import ModelConfig
+from factory.core.envelope_fields import control_trace_id, mint_work_envelope_fields
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.core.ports.llm import LlmResult
 from factory.core.trace import TraceContext
 from factory.llm.claude_job_codec import ClaudeJobCodec
+from factory.obs.hub_tracer import nats_client_span
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.jobs import JobEnvelope, JobProgress, JobResult
 from roxabi_contracts.jobs.subjects import jobs_progress, jobs_result, jobs_submit
@@ -82,7 +83,7 @@ class ClaudeRpcDriver:
 
         cmd = CliControlCmd(
             contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
+            trace_id=control_trace_id(),
             issued_at=datetime.now(timezone.utc),
             pool_id=pool_id,
             op="reset",
@@ -117,7 +118,11 @@ class ClaudeRpcDriver:
     ) -> LlmResult:
         del messages
         pending_resume = self._pending_resume.pop(pool_id, None)
-        job_id = uuid4().hex
+        fields = mint_work_envelope_fields(
+
+            pool_id=pool_id,
+        )
+        job_id = fields.job_id
         result_sub = await self._nc.subscribe(jobs_result(job_id))
         try:
             await self._publish_envelope(
@@ -146,7 +151,7 @@ class ClaudeRpcDriver:
         finally:
             await result_sub.unsubscribe()
 
-    async def stream(  # noqa: C901
+    async def stream(  # noqa: C901, PLR0915
         self,
         pool_id: str,
         text: str,
@@ -157,7 +162,11 @@ class ClaudeRpcDriver:
     ) -> AsyncIterator[LlmEvent]:
         del messages
         pending_resume = self._pending_resume.pop(pool_id, None)
-        job_id = uuid4().hex
+        fields = mint_work_envelope_fields(
+
+            pool_id=pool_id,
+        )
+        job_id = fields.job_id
         progress_sub = await self._nc.subscribe(jobs_progress(job_id))
         result_sub = await self._nc.subscribe(jobs_result(job_id))
         queue: asyncio.Queue[tuple[str, bytes]] = asyncio.Queue()
@@ -266,19 +275,31 @@ class ClaudeRpcDriver:
         if provider_session_id is not None:
             payload["provider_session_id"] = provider_session_id
 
+        fields = mint_work_envelope_fields(
+
+            job_id=job_id,
+            pool_id=pool_id,
+        )
         env = JobEnvelope(
-            contract_version=CONTRACT_VERSION,
-            trace_id=job_id,
-            issued_at=datetime.now(tz=timezone.utc),
+            contract_version=fields.contract_version,
+            trace_id=fields.trace_id,
+            issued_at=fields.issued_at,
             job_id=job_id,
             job_name="claude",
             payload=payload,
             reply_to=f"_INBOX.{job_id}",
         )
-        await self._nc.publish(
-            jobs_submit("claude"),
-            env.model_dump_json().encode(),
-        )
+        wire = env.model_dump_json().encode()
+        submit_subject = jobs_submit("claude")
+        with nats_client_span(
+            name="claude",
+            subject=submit_subject,
+            payload=wire,
+            trace_id=fields.trace_id,
+            job_id=job_id,
+            pool_id=pool_id,
+        ):
+            await self._nc.publish(submit_subject, wire)
 
     async def _persist_session(self, pool_id: str, result: JobResult) -> None:
         data = result.data or {}

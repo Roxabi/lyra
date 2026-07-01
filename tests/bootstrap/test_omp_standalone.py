@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -73,6 +73,10 @@ async def test_happy_path_wires_pool_into_worker(
         await _bootstrap_omp_standalone({})
 
     mock_pool_cls.assert_called_once_with()
-    mock_worker_cls.assert_called_once_with(pool=mock_pool, identity_name="omp-worker")
+    mock_worker_cls.assert_called_once_with(
+        pool=mock_pool,
+        identity_name="omp-worker",
+        lifecycle_hooks=ANY,
+    )
     mock_worker.run_embedded.assert_awaited_once_with(mock_nc, stop)
     mock_nc.close.assert_awaited_once()

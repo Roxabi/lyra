@@ -34,7 +34,12 @@ class TraceLogRecord(Protocol):
 
 
 class TraceContext:
-    """Static helpers around the three tracing ContextVars."""
+    """Static helpers around the three tracing ContextVars.
+
+    Hub ingress sets ``trace_id`` and ``pool_id`` before NATS codec encode paths
+    run. Codecs call ``mint_work_envelope_fields()`` which reads these vars when
+    explicit correlation args are omitted (#2069).
+    """
 
     @staticmethod
     def generate() -> str:

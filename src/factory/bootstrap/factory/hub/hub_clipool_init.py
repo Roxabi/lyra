@@ -44,7 +44,13 @@ async def _init_clipool(
     )
     await cli_pool.start()
     cli_pool.set_turn_store(stores.turn)
-    worker = CliPoolNatsWorker(cli_pool, timeout=cli_pool_cfg.default_timeout)
+    from factory.obs.otel_wiring import build_lifecycle_hooks
+
+    worker = CliPoolNatsWorker(
+        cli_pool,
+        timeout=cli_pool_cfg.default_timeout,
+        lifecycle_hooks=build_lifecycle_hooks("clipool-workers"),
+    )
 
     return CliPoolBundle(
         cli_pool=cli_pool,

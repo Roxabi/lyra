@@ -9,16 +9,14 @@ CB is NOT touched on decode failure — see spec § "Error path — decode failu
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from pydantic import ValidationError
 
 from factory.core.ports.tts import SynthesisResult
+from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.transport._result import Err, Result, SanitizedError
-from roxabi_contracts import new_job_id
-from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import TtsRequest, TtsResponse
 from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
 
@@ -35,7 +33,7 @@ class TtsCodec:
     decode: maps Result[bytes, SanitizedError] → SynthesisResult; never raises.
     """
 
-    def encode(
+    def encode(  # noqa: PLR0913 — correlation kwargs (#2069)
         self,
         text: str,
         *,
@@ -43,17 +41,24 @@ class TtsCodec:
         language: str | None = None,
         voice: str | None = None,
         fallback_language: str | None = None,
+        trace_id: str | None = None,
+        job_id: str | None = None,
+        parent_job_id: str | None = None,
+        pool_id: str | None = None,
     ) -> bytes:
         """Build canonical TtsRequest payload bytes.
 
         Mirrors NatsTtsClient.synthesize() payload-builder exactly so the wire
         format is bit-for-bit identical.
         """
+        fields = mint_work_envelope_fields(
+            trace_id=trace_id,
+            job_id=job_id,
+            parent_job_id=parent_job_id,
+            pool_id=pool_id,
+        )
         req_kwargs: dict[str, Any] = {
-            "contract_version": CONTRACT_VERSION,
-            "trace_id": str(uuid4()),
-            "issued_at": datetime.now(timezone.utc),
-            "job_id": new_job_id(),
+            **fields.as_dict(),
             "request_id": str(uuid4()),
             "text": text,
             "language": language,

@@ -83,7 +83,7 @@ Unified: `factory start` → hub + adapters in 1 process + embedded NATS
 
 ## Container deployment
 
-Prod: Podman Quadlet (systemd `--user`) on M₁ (`factory-hub` role). **20 containers** per `deploy/quadlet.toml`: core (`factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-clipool`, `factory-omp`, `factory-socialmedia-adapter`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`) + observability (`factory-loki`, `factory-promtail`, `factory-otel-collector`, `factory-langfuse-*`). Install: `deploy/install.sh` (idempotent).
+Prod: Podman Quadlet (systemd `--user`) on M₁ (`factory-hub` role). **16 active containers** per `deploy/quadlet.toml` (Langfuse ×6 + `factory-otel-collector` disabled): core (`factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-clipool`, `factory-omp`, `factory-socialmedia-adapter`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`, `factory-ingress`, `factory-cloudflared`) + observability (`factory-loki`, `factory-promtail`, `factory-otel`). Install: `deploy/install.sh` (idempotent).
 
 → `docs/runbooks/README.md` — ops runbooks (install, secrets, diagnostic)
 → `~/projects/docs/container-deployment-standard.md` — 18 standards (S7 secret target, S8 naming, S12 RestartSec=10)

@@ -27,6 +27,11 @@ Volume=%h/.roxabi/factory/ingress.toml:/home/factory/.roxabi/factory/ingress.tom
 # Directory bind — SQLite WAL needs ingress.db-wal / ingress.db-shm siblings (same mount ns).
 Volume=%h/.roxabi/factory/ingress-store:/home/factory/.roxabi/factory/ingress-store:rw,z
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
+# OTel ingress spans → factory-otel (ADR-097, #2069).
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://factory-otel:4317
+Environment=FACTORY_OTEL_TOKEN_PATH=/run/secrets/factory_otel_token
+Secret=factory_otel_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_otel_token
 PublishPort=${TAILSCALE_IPV4}:8780:8780
 Exec=factory ingress serve --host 0.0.0.0 --port 8780
 HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8780/health",timeout=3); sys.exit(0 if r.status==200 else 1)'

@@ -34,10 +34,16 @@
     "mode": "Mode",
     "started": "Started",
     "steer": "Steer",
-    "steerPlaceholder": "Steer…"
+    "steerPlaceholder": "Steer…",
+    "actions": "Actions",
+    "cancel": "Cancel"
   },
   "steer": {
     "sent": "Steer sent for {{jobId}}",
     "failed": "Failed to send steer"
+  },
+  "cancel": {
+    "sent": "Cancel sent for {{jobId}}",
+    "failed": "Failed to cancel job"
   }
 }

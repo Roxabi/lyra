@@ -13,6 +13,7 @@ from roxabi_contracts.dashboard import (
     DashboardFleetRow,
     DashboardGithubInstallUrlResponse,
     DashboardJob,
+    DashboardJobsCancelResponse,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
     DashboardJobsSteerResponse,
@@ -98,6 +99,13 @@ def stub_jobs_steer(job_id: str) -> DashboardJobsSteerResponse:
     return DashboardJobsSteerResponse(
         accepted=True,
         message=f"E2E steer stub for {job_id}",
+    )
+
+
+def stub_jobs_cancel(job_id: str) -> DashboardJobsCancelResponse:
+    return DashboardJobsCancelResponse(
+        accepted=True,
+        message=f"E2E cancel stub for {job_id}",
     )
 
 

@@ -20,8 +20,6 @@ export interface AppNavItem {
   exact?: boolean;
   fullBleed?: boolean;
   wideLayout?: boolean;
-  hideBottomNav?: boolean;
-  mobileBottomNav?: boolean;
 }
 
 export const homeNavItems: AppNavItem[] = [
@@ -31,7 +29,6 @@ export const homeNavItems: AppNavItem[] = [
     Icon: SquaresFour,
     exact: true,
     wideLayout: true,
-    mobileBottomNav: true,
   },
 ];
 
@@ -41,10 +38,8 @@ export const operateNavItems: AppNavItem[] = [
     labelKey: "nav.chat",
     Icon: ChatCircleDots,
     fullBleed: true,
-    hideBottomNav: true,
-    mobileBottomNav: true,
   },
-  { to: "/agents", labelKey: "nav.agents", Icon: Robot, wideLayout: true, mobileBottomNav: true },
+  { to: "/agents", labelKey: "nav.agents", Icon: Robot, wideLayout: true },
   { to: "/jobs", labelKey: "nav.jobs", Icon: Briefcase, wideLayout: true },
   { to: "/integrations", labelKey: "nav.integrations", Icon: Plugs, wideLayout: true },
 ];
@@ -52,7 +47,7 @@ export const operateNavItems: AppNavItem[] = [
 export const observeNavItems: AppNavItem[] = [
   { to: "/pipeline", labelKey: "nav.pipeline", Icon: GitPullRequest, wideLayout: true },
   { to: "/fleet", labelKey: "nav.fleet", Icon: ShippingContainer, wideLayout: true },
-  { to: "/ops", labelKey: "nav.ops", Icon: ChartLineUp, wideLayout: true, mobileBottomNav: true },
+  { to: "/ops", labelKey: "nav.ops", Icon: ChartLineUp, wideLayout: true },
   { to: "/spans", labelKey: "nav.spans", Icon: Pulse, wideLayout: true },
 ];
 
@@ -67,10 +62,6 @@ export const appNavItems: AppNavItem[] = [
   ...observeNavItems,
   ...adminNavItems,
 ];
-
-export const mobileBottomNavItems: AppNavItem[] = appNavItems.filter(
-  (item) => item.mobileBottomNav,
-);
 
 export interface PageTitleDescriptor {
   key: string;
@@ -91,12 +82,11 @@ export function resolvePageTitle(pathname: string): PageTitleDescriptor {
 export function resolveNavFlags(
   pathname: string,
   items: AppNavItem[] = appNavItems,
-): { fullBleed: boolean; wideLayout: boolean; hideBottomNav: boolean } {
+): { fullBleed: boolean; wideLayout: boolean } {
   const sorted = [...items].sort((a, b) => b.to.length - a.to.length);
   const match = sorted.find((item) => isNavItemActive(pathname, item));
   return {
     fullBleed: match?.fullBleed ?? false,
     wideLayout: match?.wideLayout ?? false,
-    hideBottomNav: match?.hideBottomNav ?? false,
   };
 }

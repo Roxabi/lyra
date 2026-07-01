@@ -1,5 +1,5 @@
+import { Badge } from "@astryxdesign/core/Badge";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
 
 interface PresenceBadgeProps {
   present: boolean;
@@ -9,8 +9,10 @@ interface PresenceBadgeProps {
 export function PresenceBadge({ present, namespace = "admin" }: PresenceBadgeProps) {
   const { t } = useTranslation(namespace);
   return (
-    <Badge variant={present ? "success" : "secondary"} className="text-[10px]">
-      {present ? t("platformLinked") : t("platformNotLinked")}
-    </Badge>
+    <Badge
+      variant={present ? "success" : "neutral"}
+      className="text-[10px]"
+      label={present ? t("platformLinked") : t("platformNotLinked")}
+    />
   );
 }

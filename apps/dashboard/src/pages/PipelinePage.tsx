@@ -1,7 +1,7 @@
+import { Badge, type BadgeVariant } from "@astryxdesign/core/Badge";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePipelineRuns } from "@/hooks/usePipelineRuns";
@@ -12,11 +12,10 @@ const FILTER_OPTIONS: PipelineFilter[] = ["ci_red", "awaiting_reviewed", "deploy
 
 function stageVariant(
   status: PipelineStageStatus,
-): "success" | "destructive" | "secondary" | "outline" {
+): Extract<BadgeVariant, "success" | "error" | "neutral"> {
   if (status === "success") return "success";
-  if (status === "failure") return "destructive";
-  if (status === "running" || status === "pending") return "secondary";
-  return "outline";
+  if (status === "failure") return "error";
+  return "neutral"; // running / pending / skipped / unknown / n-a
 }
 
 function StageBadge({ label, status }: { label: string; status: PipelineStageStatus }) {
@@ -24,9 +23,11 @@ function StageBadge({ label, status }: { label: string; status: PipelineStageSta
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
-      <Badge variant={stageVariant(status)} className="w-fit text-xs">
-        {t(`pipeline.stage.${status}`)}
-      </Badge>
+      <Badge
+        variant={stageVariant(status)}
+        className="w-fit text-xs"
+        label={t(`pipeline.stage.${status}`)}
+      />
     </div>
   );
 }
@@ -123,14 +124,14 @@ export function PipelinePage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {isPipelineRowStale(row.last_event_at) ? (
-                      <Badge variant="destructive">{t("pipeline.stale")}</Badge>
+                      <Badge variant="error" label={t("pipeline.stale")} />
                     ) : null}
                     {row.reviewed ? (
-                      <Badge variant="success">{t("pipeline.reviewed")}</Badge>
+                      <Badge variant="success" label={t("pipeline.reviewed")} />
                     ) : (
-                      <Badge variant="outline">{t("pipeline.notReviewed")}</Badge>
+                      <Badge variant="neutral" label={t("pipeline.notReviewed")} />
                     )}
-                    {!row.open ? <Badge variant="secondary">{t("pipeline.merged")}</Badge> : null}
+                    {!row.open ? <Badge variant="neutral" label={t("pipeline.merged")} /> : null}
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

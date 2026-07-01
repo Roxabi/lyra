@@ -116,6 +116,11 @@ def _expand_subject(subject: str) -> str:
     )
 
 
+def _inbox_prefix_for_seed(seed_path: Path) -> str:
+    """Derive ADR-051 inbox prefix from seed filename (hub.seed → _inbox.hub)."""
+    return f"_inbox.{seed_path.stem}"
+
+
 def _read_seed(seed_path: Path) -> str:
     """Read an nkey seed from *seed_path* with the same hardening as roxabi-nats.
 
@@ -164,7 +169,13 @@ async def _identity_connection(
     async def _err_cb(exc: Exception) -> None:
         error_sink.append(str(exc))
 
-    kwargs: dict = {"error_cb": _err_cb, "nkeys_seed_str": seed}
+    kwargs: dict = {
+        "error_cb": _err_cb,
+        "nkeys_seed_str": seed,
+        # JetStream PubAck and $JS.API.* need an inbox sub matching ACL
+        # (_inbox.<identity>.>, not nats-py default _INBOX.<random>.>).
+        "inbox_prefix": _inbox_prefix_for_seed(seed_path),
+    }
     tls_ctx = _build_tls_context()
     if tls_ctx:
         kwargs["tls"] = tls_ctx

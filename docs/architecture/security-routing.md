@@ -84,7 +84,7 @@ Bot transport config lives in `BotStore` (no auth fields). Pairing `/join` write
 
 `[admin].user_ids` sets the global operator set at startup. These users get `is_admin=True` on every resolved identity and bypass `AuthorizeAgentMiddleware` until explicitly narrowed in a follow-up ADR.
 
-Module-level registry: `factory.core.admin` — `is_admin(user_id)` / `set_admin_user_ids()` / `get_admin_user_ids()`. Plugins use `is_admin()` to gate admin-only commands without needing access to the config layer.
+Admin resolution lives in `Authenticator.resolve()` (`src/factory/core/auth/authenticator.py`) using `[admin].user_ids` from config. Plugins gate privileged commands via `msg.is_admin` on the inbound message (set by `ResolveIdentityMiddleware`).
 
 ---
 

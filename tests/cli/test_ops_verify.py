@@ -13,6 +13,7 @@ from factory.cli import factory_app
 from factory.cli.ops import (
     _default_hub_seed,
     _expand_subject,
+    _inbox_prefix_for_seed,
     _is_permission_error,
     _load_matrix,
 )
@@ -48,6 +49,14 @@ def test_default_hub_seed_matches_nkeys_ssot(tmp_path: Path) -> None:
 
     assert _default_hub_seed(seeds) == hub_seed
     assert _default_hub_seed(seeds).is_file()
+
+
+def test_inbox_prefix_for_seed_matches_acl() -> None:
+    assert _inbox_prefix_for_seed(Path("/nkeys/hub.seed")) == "_inbox.hub"
+    assert (
+        _inbox_prefix_for_seed(Path("/nkeys/clipool-worker.seed"))
+        == "_inbox.clipool-worker"
+    )
 
 
 def test_is_permission_error() -> None:

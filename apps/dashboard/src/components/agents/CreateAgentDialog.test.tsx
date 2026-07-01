@@ -100,4 +100,11 @@ describe("CreateAgentDialog", () => {
     expect((submit as HTMLButtonElement).disabled).toBe(true);
     expect(createAgentConfig).not.toHaveBeenCalled();
   });
+
+  it("closes via the Astryx DialogHeader close button", async () => {
+    const user = userEvent.setup();
+    const { onOpenChange } = renderDialog();
+    await user.click(screen.getByRole("button", { name: /close/i }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
 });

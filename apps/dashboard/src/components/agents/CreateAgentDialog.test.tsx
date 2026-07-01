@@ -86,9 +86,7 @@ describe("CreateAgentDialog", () => {
     await user.click(screen.getByRole("button", { name: /^créer$/i }));
 
     await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith(
-        "Un agent avec cet identifiant existe déjà.",
-      );
+      expect(toastError).toHaveBeenCalledWith("Un agent avec cet identifiant existe déjà.");
     });
   });
 

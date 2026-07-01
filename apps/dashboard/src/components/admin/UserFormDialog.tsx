@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
 import { type AdminUserAccess, createAdminUser, patchAdminUser } from "@/lib/admin-api";
-import { bffErrorMessage } from "@/lib/bff-errors";
 import { fetchAgentsConfigList } from "@/lib/agents-api";
+import { bffErrorMessage } from "@/lib/bff-errors";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 

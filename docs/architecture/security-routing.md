@@ -84,7 +84,7 @@ At least one section must be present. A missing section logs a warning and disab
 - [x] CLIAdapter (trust = OWNER by default)
 - [x] Rejection logging
 
-> **Refactored in #313/#314, then #1997**: the monolithic AuthMiddleware was first split into `Authenticator` (resolves identity → TrustLevel) and a composable adapter-side guard chain. That guard chain was later **removed (#1997)** as dead/redundant — the BLOCKED drop is enforced solely hub-side by `TrustGuardMiddleware` (C3). ADR-090's planned agent-scoped authorization middleware (after ResolveBinding) is the next authorization stage.
+> **Refactored in #313/#314, then #1997**: the monolithic AuthMiddleware was first split into `Authenticator` (resolves identity → TrustLevel) and a composable adapter-side guard chain. That guard chain was later **removed (#1997)** as dead/redundant — the BLOCKED drop is enforced solely hub-side by `TrustGuardMiddleware` (C3). ADR-090's agent-scoped authorization middleware, `AuthorizeAgentMiddleware` (`src/factory/core/hub/middleware/middleware_authz.py`, wired after ResolveBinding at stage 7 in `middleware.py`), is **shipped and production-enforced**.
 
 ### Admin access
 

@@ -1,13 +1,17 @@
 # factory — — Deployment & Operations
 
-> Last updated: 2026-06-17
+> Last updated: 2026-07-01
 
 ## Overview
 
-Production on M₁ runs **nine Quadlet containers** on `roxabi.network`, communicating over NATS.
-The core message path is four NATS-connected processes (hub, telegram adapter, discord adapter,
-clipool worker); the remaining five units provide infrastructure (NATS, gh-helper, turn-writer,
-blobstore, omp).
+Production on M₁ runs **16 active Quadlet containers** on `roxabi.network`, communicating over NATS
+(23 units are declared in `deploy/quadlet.toml`; the Langfuse observability stack ×6 and
+`factory-otel-collector` ship disabled). The generated, authoritative inventory is
+`docs/architecture/CURRENT.generated.md` (Process Topology) — regenerate counts from there rather
+than hand-maintaining them here. The core message path is the hub, the telegram/discord adapters
+and the clipool worker (diagram + table below); the full active set also includes
+`factory-dashboard`, `factory-socialmedia-adapter`, `factory-ingress`, `factory-cloudflared`, and
+the `factory-loki` / `factory-promtail` / `factory-otel` observability units.
 
 ```
 ┌──────────────┐  NATS inbound   ┌─────────────┐  NATS cmd    ┌──────────────┐
@@ -17,6 +21,8 @@ blobstore, omp).
                                         │
                     + NATS bus + gh-helper + turn-writer + blobstore + omp
 ```
+
+Core message-path and base-infrastructure units:
 
 | Container | Role |
 |---|---|

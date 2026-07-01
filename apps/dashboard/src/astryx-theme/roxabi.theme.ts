@@ -1,5 +1,5 @@
 import { defineTheme } from "@astryxdesign/core/theme";
-import { neutralIconRegistry, neutralTheme } from "@astryxdesign/theme-neutral";
+import { neutralTheme } from "@astryxdesign/theme-neutral";
 
 /**
  * roxabi — Roxabi Factory brand theme for Astryx (slice 1, #2089).
@@ -51,11 +51,15 @@ export const roxabiTheme = defineTheme({
     "--ease-standard": "var(--ease-out)",
   },
 
-  // Astryx default glyph registry (check, chevron, close, …). `extends` does
-  // propagate icons, but `astryx theme build` derives the built module's `icons`
-  // field via a regex scan of THIS source (`icons:\s*<identifier>`), not the
-  // resolved theme object — so it must stay a literal named-import identifier.
-  // Any non-literal (spread/computed) would silently drop built-in glyphs with a
-  // green build. Phosphor product icons land in a later slice via the global registry.
-  icons: neutralIconRegistry,
+  // No `icons` here on purpose (#2091): Astryx's <Theme> re-registers
+  // `theme.icons` on every render, which would override the app's global
+  // Phosphor registry. Icons are owned by `registerAppIcons()`
+  // (src/lib/astryx-icons.tsx), called once at boot in src/main.tsx.
+  //
+  // ⚠ Inert ONLY because the app imports the *built* module (built/roxabi.js),
+  // whose `icons` is derived by `astryx theme build`'s regex scan of THIS
+  // source (no `icons:` key → none emitted). At RUNTIME, `defineTheme({extends:
+  // neutralTheme})` still resolves `icons = neutralTheme.icons`, so importing
+  // this .ts source directly (test / storybook / inline defineTheme) would
+  // re-clobber the registry. Always consume `@/astryx-theme/built/roxabi`.
 });

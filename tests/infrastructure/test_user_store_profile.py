@@ -75,6 +75,26 @@ async def test_delete_profile_user_removes_user_and_identities(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_set_platform_identity_rejects_cross_user_collision(tmp_path: Path) -> None:
+    store = UserStore(db_path=tmp_path / "auth.db")
+    await store.connect()
+    try:
+        first = await store.create_profile_user(
+            display_name="First",
+            email="first@example.com",
+        )
+        second = await store.create_profile_user(
+            display_name="Second",
+            email="second@example.com",
+        )
+        await store.set_platform_identity(first.id, "telegram", "12345")
+        with pytest.raises(ValueError, match="platform identity already linked"):
+            await store.set_platform_identity(second.id, "telegram", "12345")
+    finally:
+        await store.close()
+
+
+@pytest.mark.asyncio
 async def test_set_platform_identity_links_and_clears(tmp_path: Path) -> None:
     store = UserStore(db_path=tmp_path / "auth.db")
     await store.connect()

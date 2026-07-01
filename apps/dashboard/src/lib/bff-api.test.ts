@@ -19,6 +19,12 @@ describe("classifyBffDetail", () => {
   it("detects agent name conflicts", () => {
     expect(classifyBffDetail("agent 'lyra' already exists")).toBe("agent_conflict");
   });
+
+  it("detects not_found and generic fallbacks", () => {
+    expect(classifyBffDetail("user not_found")).toBe("not_found");
+    expect(classifyBffDetail("")).toBe("generic");
+    expect(classifyBffDetail("something else")).toBe("generic");
+  });
 });
 
 describe("parseBffResponse", () => {

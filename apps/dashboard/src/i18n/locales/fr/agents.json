@@ -61,9 +61,6 @@
   "createSubmit": "Créer",
   "createSuccess": "Agent {{name}} créé.",
   "createError": "Échec de la création.",
-  "errorEmailConflict": "Cet email est déjà enregistré.",
-  "errorPlatformConflict": "Cette identité plateforme est déjà liée à un autre utilisateur.",
-  "errorUnknownAgent": "Un ou plusieurs agents sélectionnés n'existent pas.",
   "errorAgentConflict": "Un agent avec cet identifiant existe déjà.",
   "errorNotFound": "Agent introuvable."
 }

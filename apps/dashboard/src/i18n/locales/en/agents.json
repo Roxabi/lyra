@@ -61,9 +61,6 @@
   "createSubmit": "Create",
   "createSuccess": "Agent {{name}} created.",
   "createError": "Create failed.",
-  "errorEmailConflict": "This email is already registered.",
-  "errorPlatformConflict": "This platform identity is already linked to another user.",
-  "errorUnknownAgent": "One or more selected agents do not exist.",
   "errorAgentConflict": "An agent with this identifier already exists.",
   "errorNotFound": "Agent not found."
 }

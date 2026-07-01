@@ -24,6 +24,6 @@ export function bffErrorMessage(
     case "not_found":
       return t("errorNotFound");
     default:
-      return err.detail || t(mode === "edit" ? "editError" : "createError");
+      return t(mode === "edit" ? "editError" : "createError");
   }
 }

@@ -101,6 +101,48 @@ describe("UserFormDialog", () => {
     });
   });
 
+  it("shows platform conflict toast on create", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminApi, "createAdminUser").mockRejectedValue(
+      new BffApiError(409, "platform identity already linked: tg:user:99999"),
+    );
+    renderDialog();
+
+    await user.type(screen.getByLabelText(/nom/i), "Ops");
+    await user.type(screen.getByLabelText(/email/i), "ops@example.com");
+    await user.type(screen.getByLabelText(/telegram/i), "99999");
+    await user.click(screen.getByRole("button", { name: /créer/i }));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Cette identité plateforme est déjà liée à un autre utilisateur.",
+      );
+    });
+  });
+
+  it("shows edit-specific toast on patch conflict", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminApi, "patchAdminUser").mockRejectedValue(
+      new BffApiError(409, "email already registered"),
+    );
+    renderDialog({
+      user: {
+        user_id: "rx:user:abc",
+        display_name: "Jane",
+        email: "jane@example.com",
+        telegram: null,
+        discord: null,
+        agents: [],
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: /enregistrer/i }));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith("Cet email est déjà enregistré.");
+    });
+  });
+
   it("prefills fields when editing an existing user", async () => {
     renderDialog({
       user: {

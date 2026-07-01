@@ -102,15 +102,18 @@ async def _sync_user_agents(
     agent_store: Any,
     user_id: str,
     desired_agents: list[str],
-) -> None:
-    known = {r.name for r in agent_store.get_all()}
-    unknown = sorted(name for name in desired_agents if name not in known)
-    if unknown:
-        raise ValueError(f"unknown agent(s): {', '.join(unknown)}")
+    *,
+    source: str = "admin.user.patch",
+    granted_out: list[str] | None = None,
+) -> list[str]:
+    unknown_msg = _validate_desired_agents(agent_store, desired_agents)
+    if unknown_msg is not None:
+        raise ValueError(unknown_msg)
 
     current = set(await _agents_for_user(grant_store, agent_store, user_id))
     desired = set(desired_agents)
     principal = Principal(kind=PrincipalKind.USER, id=user_id)
+    granted = granted_out if granted_out is not None else []
 
     for agent_name in sorted(desired - current):
         await grant_store.grant(
@@ -118,11 +121,47 @@ async def _sync_user_agents(
             principal,
             capability=Capability.USE,
             granted_by="dashboard",
-            source="admin.user.patch",
+            source=source,
         )
+        granted.append(agent_name)
 
     for agent_name in sorted(current - desired):
         await grant_store.revoke(agent_name, principal, capability=Capability.USE)
+
+    return granted
+
+
+def _validate_desired_agents(agent_store: Any, desired_agents: list[str]) -> str | None:
+    known = {r.name for r in agent_store.get_all()}
+    unknown = sorted(name for name in desired_agents if name not in known)
+    if unknown:
+        return f"unknown agent(s): {', '.join(unknown)}"
+    return None
+
+
+async def _rollback_created_admin_user(
+    user_store: UserStore,
+    grant_store: AgentGrantStore | None,
+    user_id: str,
+    agents_to_revoke: list[str],
+) -> None:
+    if grant_store is not None:
+        principal = Principal(kind=PrincipalKind.USER, id=user_id)
+        for agent_name in agents_to_revoke:
+            try:
+                await grant_store.revoke(
+                    agent_name,
+                    principal,
+                    capability=Capability.USE,
+                )
+            except Exception:
+                log.debug(
+                    "rollback revoke skipped for %s on %s",
+                    user_id,
+                    agent_name,
+                    exc_info=True,
+                )
+    await user_store.delete_profile_user(user_id)
 
 
 async def _apply_platform_identities(  # noqa: PLR0913
@@ -186,6 +225,13 @@ async def handle_admin_user_create(
     agent_store = _agent_store(hub)
     if user_store is None:
         return {"error": "store_unavailable"}
+    if grant_store is not None and agent_store is not None and req.agents:
+        unknown_msg = _validate_desired_agents(agent_store, req.agents)
+        if unknown_msg is not None:
+            return {"error": "conflict", "message": unknown_msg}
+
+    user: User | None = None
+    granted_agents: list[str] = []
     try:
         user = await user_store.create_profile_user(
             display_name=req.display_name,
@@ -200,9 +246,25 @@ async def handle_admin_user_create(
             apply_discord=req.discord_uid is not None,
         )
         if grant_store is not None and agent_store is not None:
-            await _sync_user_agents(grant_store, agent_store, user.id, req.agents)
-    except ValueError as exc:
-        return {"error": "conflict", "message": str(exc)}
+            await _sync_user_agents(
+                grant_store,
+                agent_store,
+                user.id,
+                req.agents,
+                source="admin.user.create",
+                granted_out=granted_agents,
+            )
+    except Exception as exc:
+        if user is not None:
+            await _rollback_created_admin_user(
+                user_store,
+                grant_store,
+                user.id,
+                granted_agents,
+            )
+        if isinstance(exc, ValueError):
+            return {"error": "conflict", "message": str(exc)}
+        raise
 
     if grant_store is None or agent_store is None:
         return DashboardAdminUserResponse(

@@ -1,3 +1,4 @@
+import { parseBffResponse } from "@/lib/bff-api";
 import type { HarnessKind } from "@/lib/chats-storage";
 
 export interface AgentSummary {
@@ -29,8 +30,7 @@ export type SoulSections = Record<string, string>;
 
 export async function fetchAgentsConfigList(): Promise<{ agents: AgentSummary[] }> {
   const res = await fetch("/api/bff/agents");
-  if (!res.ok) throw new Error("agents list failed");
-  return res.json() as Promise<{ agents: AgentSummary[] }>;
+  return parseBffResponse<{ agents: AgentSummary[] }>(res);
 }
 
 export async function createAgentConfig(body: {
@@ -45,8 +45,7 @@ export async function createAgentConfig(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("agent create failed");
-  return res.json() as Promise<AgentConfig>;
+  return parseBffResponse<AgentConfig>(res);
 }
 
 export async function fetchAgentConfig(name: string): Promise<AgentConfig> {

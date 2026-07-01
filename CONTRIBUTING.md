@@ -104,7 +104,7 @@ Pre-push hooks require [trufflehog](https://github.com/trufflesecurity/truffleho
 | Product frontend | JS/TS | `apps/`, `packages/`, `brand/` | Dashboard and shared UI |
 | Quality gates | bash (+ Python when parsing) | `tools/` | Gate implementations declared in `stack.yml` |
 | Platform orchestration | **bash** | `scripts/`, `tools/dev-setup.sh` | Run gates, CI wrappers, drift checks |
-| Domain ops (ACL, deploy) | bash entry → Python | `scripts/` | Repo-specific scanners not in `quality_gates` |
+| Domain ops (ACL, deploy) | bash entry → Python | `scripts/` + `tools/` | Scanners declared in `stack.yml` `quality_gates` |
 
 ### `scripts/` vs `tools/`
 
@@ -113,13 +113,13 @@ Both are dev tooling — not product code. The split is **who invokes them**:
 | | `scripts/` | `tools/` |
 |---|------------|----------|
 | **What** | Factory platform ops (ACL render/check, `qg` runner, drift guards) | Generic quality gates wired from dev-core |
-| **Caller** | CI extras, Makefile, `factory-acl`, pre-push drift scripts | `scripts/qg run` (reads `.claude/stack.yml`) |
-| **New work** | ACL matrix scanners, deploy evidence, one-off migrations | Lint/size/import/doc gates shared across Roxabi repos |
+| **Caller** | `scripts/qg run` (primary); Makefile / `factory-acl` for direct ops | Gate scripts in `tools/` or `scripts/` |
+| **New work** | ACL render pipeline, evidence scripts, one-off migrations | Lint/size/import/doc/deploy gates (dev-core pattern) |
 
 **Rules**
 
-- New **quality gate** → implement in `tools/`, declare in `.claude/stack.yml` `quality_gates` + `qg.run_order`. No pre-commit/CI edit for standard gates.
-- New **ACL/deploy scanner** → bash entry in `scripts/` (`.sh` calling `.py` when logic needs Python).
+- New **quality gate** → implement in `tools/` (or `scripts/` for ACL-specific), declare in `quality_gates` **and** `qg.run_order.<stage>` for each target stage. No pre-commit/CI edit for standard gates.
+- ACL **render** pipeline stays in `scripts/` (`render_acl_*.py`); drift wrappers `check-acl-*-drift.sh` in `scripts/`.
 - **Orchestration only** (run order, stage filters, `yq` parsing) → bash in `scripts/` (`qg`, `check-*-drift.sh`).
 
 See `scripts/AGENTS.md`, `tools/AGENTS.md`, and `docs/ops/quality-gates.md`.

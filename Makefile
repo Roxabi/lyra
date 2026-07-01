@@ -37,7 +37,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format hooks-install quality-debt-report quality-debt-classify qg fleet-obs-evidence
+.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format dev-setup hooks-install quality-debt-report quality-debt-classify qg fleet-obs-evidence build-dashboard lint-js
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -367,16 +367,9 @@ lint-js:               ## lint JS/TS workspaces (biome)
 fleet-obs-evidence:  ## run scripts/goal-fleet-obs-evidence.sh (fleet goal verification plan steps 1–8)
 	bash scripts/goal-fleet-obs-evidence.sh
 
-qg: lint-js lint typecheck build-dashboard  ## full local QG (lint, import-linter, tests, ACL + architecture snapshot drift)
-	bun run --filter @roxabi-factory/dashboard test
-	uv run lint-imports
-	bash scripts/check-acl-specs-drift.sh
-	bash scripts/check-acl-authconf-drift.sh
-	bash tools/check_architecture_snapshot.sh
+qg:  ## local QG bundle (stack.yml qg.profiles.local + factory flows/tests)
+	scripts/qg run --profile local
 	uv run factory-check-flows
-	bash tools/check_secrets_drift.sh
-	bash tools/check_file_length.sh
-	bash tools/check_folder_size.sh
 	uv run pytest \
 		tests/adapters/web/test_dashboard_bff.py \
 		tests/adapters/web/test_web_server.py \
@@ -395,7 +388,10 @@ typecheck:
 format:
 	uv run ruff format .
 
-hooks-install:  ## install pre-commit + pre-push git hooks (see CONTRIBUTING.md)
+dev-setup:  ## bootstrap local dev after clone (uv + bun + hooks — see stack.yml commands.dev_setup)
+	bash tools/dev-setup.sh
+
+hooks-install:  ## install pre-commit + pre-push git hooks (included in make dev-setup)
 	uv run pre-commit install
 	uv run pre-commit install --hook-type pre-push
 

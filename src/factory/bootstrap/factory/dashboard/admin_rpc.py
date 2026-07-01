@@ -97,7 +97,7 @@ async def _user_access_row(
     )
 
 
-async def _sync_user_agents(
+async def _sync_user_agents(  # noqa: PLR0913
     grant_store: AgentGrantStore,
     agent_store: Any,
     user_id: str,
@@ -154,7 +154,7 @@ async def _rollback_created_admin_user(
                     principal,
                     capability=Capability.USE,
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001 — best-effort rollback
                 log.debug(
                     "rollback revoke skipped for %s on %s",
                     user_id,

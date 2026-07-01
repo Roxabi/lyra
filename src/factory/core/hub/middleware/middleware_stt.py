@@ -2,7 +2,7 @@
 
 Inserted between RateLimitMiddleware and ResolveBindingMiddleware so that:
 - Rate limiting applies before expensive STT transcription.
-- Trust resolution (ResolveTrustMiddleware) runs earlier via the middleware chain.
+- Identity resolution (ResolveIdentityMiddleware) runs earlier via the middleware chain.
 - Binding lookup uses the transcribed text (correct for command detection).
 
 Replaces the deleted AudioPipeline.run() consumer loop. All 6 error outcomes

@@ -34,10 +34,16 @@
     "mode": "Mode",
     "started": "Démarré",
     "steer": "Steer",
-    "steerPlaceholder": "Steer…"
+    "steerPlaceholder": "Steer…",
+    "actions": "Actions",
+    "cancel": "Annuler"
   },
   "steer": {
     "sent": "Steer envoyé pour {{jobId}}",
     "failed": "Échec de l'envoi du steer"
+  },
+  "cancel": {
+    "sent": "Annulation envoyée pour {{jobId}}",
+    "failed": "Échec de l'annulation du job"
   }
 }

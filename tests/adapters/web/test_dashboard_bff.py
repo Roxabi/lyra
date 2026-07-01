@@ -315,6 +315,20 @@ class TestDashboardBffRealPath:
         assert res.status_code == 200
         assert res.json()["accepted"] is True
 
+    def test_jobs_cancel_e2e_stub(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _adapter, _nc = wired_client
+        res = tc.post(
+            "/api/bff/jobs/cancel",
+            json={"job_id": "job-xyz"},
+        )
+        assert res.status_code == 200
+        assert res.json()["accepted"] is True
+
     def test_list_agents_config_calls_hub_rpc(
         self,
         wired_client: tuple[TestClient, WebAdapter, AsyncMock],

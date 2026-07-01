@@ -1,3 +1,4 @@
+import { Badge } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { CaretRight, PencilSimple, Plus, Robot, SquaresFour, Table } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
@@ -5,7 +6,6 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -271,17 +271,19 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                 >
                   <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-4">
                     <AgentIdentity agentId={a.name} subtitle={persona.tagline} />
-                    <Badge variant={a.has_soul ? "success" : "warning"} className="shrink-0">
-                      {a.has_soul ? t("hasSoul") : t("noSoul")}
-                    </Badge>
+                    <Badge
+                      variant={a.has_soul ? "success" : "warning"}
+                      className="shrink-0"
+                      label={a.has_soul ? t("hasSoul") : t("noSoul")}
+                    />
                   </div>
                   <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
-                    <Badge variant="secondary" className="font-mono text-[10px]">
-                      {harnessLabel(a.backend)}
-                    </Badge>
-                    <Badge variant="secondary" className="font-mono text-[10px]">
-                      {a.model}
-                    </Badge>
+                    <Badge
+                      variant="neutral"
+                      className="font-mono text-[10px]"
+                      label={harnessLabel(a.backend)}
+                    />
+                    <Badge variant="neutral" className="font-mono text-[10px]" label={a.model} />
                     <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
                       {t("colTelegram")}
                       <PresenceBadge present={a.has_telegram} namespace="agents" />
@@ -374,9 +376,11 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                       <span className="line-clamp-2">{persona.tagline}</span>
                     </td>
                     <td className="py-3 pr-4">
-                      <Badge variant="secondary" className="font-mono text-[10px]">
-                        {harnessLabel(a.backend)}
-                      </Badge>
+                      <Badge
+                        variant="neutral"
+                        className="font-mono text-[10px]"
+                        label={harnessLabel(a.backend)}
+                      />
                     </td>
                     <td className="py-3 pr-4 font-mono text-xs text-muted-foreground">{a.model}</td>
                     <td className="py-3 pr-4">
@@ -389,9 +393,10 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                       <PresenceBadge present={a.has_email} namespace="agents" />
                     </td>
                     <td className="py-3 pr-4">
-                      <Badge variant={a.has_soul ? "success" : "warning"}>
-                        {a.has_soul ? t("hasSoul") : t("noSoul")}
-                      </Badge>
+                      <Badge
+                        variant={a.has_soul ? "success" : "warning"}
+                        label={a.has_soul ? t("hasSoul") : t("noSoul")}
+                      />
                     </td>
                     <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">
                       {formatSoulSize(a.soul_document_bytes, t)}

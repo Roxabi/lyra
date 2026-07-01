@@ -1,3 +1,4 @@
+import { Badge } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { PencilSimple, Plus } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -5,7 +6,6 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UserFormDialog } from "@/components/admin/UserFormDialog";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListToolbar, ListToolbarHeader, ListToolbarSearch } from "@/components/ui/list-toolbar";
@@ -155,11 +155,10 @@ export function AdminPage() {
                           u.agents.map((agent) => (
                             <Badge
                               key={agent}
-                              variant="secondary"
+                              variant="neutral"
                               className="font-mono text-[10px]"
-                            >
-                              {agent}
-                            </Badge>
+                              label={agent}
+                            />
                           ))
                         ) : (
                           <span className="text-xs text-muted-foreground">{t("noAgents")}</span>

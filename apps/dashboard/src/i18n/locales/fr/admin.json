@@ -38,7 +38,12 @@
   "formCreate": "Créer",
   "formSave": "Enregistrer",
   "createSuccess": "Utilisateur créé.",
-  "createError": "Échec de la création — email déjà utilisé ?",
+  "createError": "Échec de la création.",
   "editSuccess": "Utilisateur mis à jour.",
-  "editError": "Échec de la mise à jour — email déjà utilisé ?"
+  "editError": "Échec de la mise à jour.",
+  "errorEmailConflict": "Cet email est déjà enregistré.",
+  "errorPlatformConflict": "Cette identité plateforme est déjà liée à un autre utilisateur.",
+  "errorUnknownAgent": "Un ou plusieurs agents sélectionnés n'existent pas.",
+  "errorAgentConflict": "Conflit sur les accès agents.",
+  "errorNotFound": "Utilisateur introuvable."
 }

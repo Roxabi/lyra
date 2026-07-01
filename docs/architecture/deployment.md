@@ -6,9 +6,10 @@
 
 Production on M₁ runs **16 active Quadlet containers** on `roxabi.network`, communicating over NATS
 (23 units are declared in `deploy/quadlet.toml`; the Langfuse observability stack ×6 and
-`factory-otel-collector` ship disabled). The generated, authoritative inventory is
-`docs/architecture/CURRENT.generated.md` (Process Topology) — regenerate counts from there rather
-than hand-maintaining them here. The core message path is the hub, the telegram/discord adapters
+`factory-otel-collector` ship disabled). `docs/architecture/CURRENT.generated.md` (Process Topology) enumerates all 23 declared
+components; the active-vs-disabled split comes from the `disabled = true` flags in
+`deploy/quadlet.toml` (Langfuse ×6 + `factory-otel-collector` ship disabled). Derive the count
+from those two files rather than hand-maintaining it here. The core message path is the hub, the telegram/discord adapters
 and the clipool worker (diagram + table below); the full active set also includes
 `factory-dashboard`, `factory-socialmedia-adapter`, `factory-ingress`, `factory-cloudflared`, and
 the `factory-loki` / `factory-promtail` / `factory-otel` observability units.

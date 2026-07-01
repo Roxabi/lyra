@@ -1,0 +1,338 @@
+#!/usr/bin/env bash
+# Quality gate runner — reads .claude/stack.yml, executes gates (bash orchestration).
+#
+# Usage:
+#   scripts/qg run --stage pre-commit
+#   scripts/qg run --stage pre-push
+#   scripts/qg run --stage ci
+#   scripts/qg run --profile local
+#   scripts/qg run [--stage STAGE] GATE_NAME
+#
+# Requires: yq (https://github.com/mikefarah/yq) — checked in tools/dev-setup.sh
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STACK="${REPO_ROOT}/.claude/stack.yml"
+
+BUN_HINT="bun not installed — https://bun.sh (see package.json packageManager)"
+TRUFFLEHOG_HINT="trufflehog not installed — https://github.com/trufflesecurity/trufflehog/releases"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/qg run --stage pre-commit|pre-push|ci
+  scripts/qg run --profile NAME
+  scripts/qg run [--stage STAGE] GATE_NAME
+EOF
+}
+
+require_yq() {
+  if ! command -v yq >/dev/null 2>&1; then
+    echo "::error::yq required — install via tools/dev-setup.sh or https://github.com/mikefarah/yq#install" >&2
+    exit 2
+  fi
+}
+
+yq_read() {
+  yq -r "$1" "$STACK"
+}
+
+gate_field() {
+  local gate="$1" field="$2"
+  yq_read ".quality_gates[\"${gate}\"].${field}"
+}
+
+gate_enabled() {
+  local gate="$1"
+  local v
+  v=$(gate_field "$gate" 'enabled // true')
+  [[ "$v" != "false" ]]
+}
+
+gate_stages_list() {
+  local gate="$1"
+  local -a stages=()
+  mapfile -t stages < <(yq_read ".quality_gates[\"${gate}\"].stages[]?" 2>/dev/null || true)
+  if [[ ${#stages[@]} -eq 0 || -z "${stages[0]:-}" ]]; then
+    local single
+    single=$(gate_field "$gate" 'stage // "pre-commit"')
+    printf '%s\n' "$single"
+    return
+  fi
+  printf '%s\n' "${stages[@]}"
+}
+
+gate_has_stage() {
+  local gate="$1" want="$2"
+  local s
+  while IFS= read -r s; do
+    [[ -n "$s" && "$s" == "$want" ]] && return 0
+  done < <(gate_stages_list "$gate")
+  return 1
+}
+
+changed_files() {
+  local stage="$1"
+  local -a files=()
+  if [[ "$stage" == "pre-push" && -n "${PRE_COMMIT_FROM_REF:-}" && -n "${PRE_COMMIT_TO_REF:-}" ]]; then
+    mapfile -t files < <(git -C "$REPO_ROOT" diff --name-only "${PRE_COMMIT_FROM_REF}...${PRE_COMMIT_TO_REF}" 2>/dev/null || true)
+  else
+    mapfile -t files < <(git -C "$REPO_ROOT" diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+  fi
+  if [[ ${#files[@]} -eq 0 ]]; then
+    return 0
+  fi
+  printf '%s\n' "${files[@]}"
+}
+
+files_match_pattern() {
+  local pattern="$1"
+  local f
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    [[ "$f" =~ $pattern ]] && return 0
+  done
+  return 1
+}
+
+should_run_gate() {
+  local gate="$1" stage="$2"
+  shift 2
+  local pattern
+  pattern=$(gate_field "$gate" 'files // ""')
+  if [[ -z "$pattern" || "$stage" == "ci" ]]; then
+    return 0
+  fi
+  if [[ $# -eq 0 ]]; then
+    return 1
+  fi
+  files_match_pattern "$pattern" "$@"
+}
+
+default_script() {
+  case "$1" in
+    file_length) echo "bash tools/check_file_length.sh" ;;
+    folder_size) echo "bash tools/check_folder_size.sh" ;;
+    import_layers) echo "uv run lint-imports" ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_command() {
+  local gate="$1" stage="$2"
+  local cmd=""
+  if [[ "$stage" == "ci" ]]; then
+    cmd=$(gate_field "$gate" 'ci_script // ""')
+  fi
+  if [[ -z "$cmd" || "$cmd" == "null" ]]; then
+    cmd=$(gate_field "$gate" 'script // ""')
+  fi
+  if [[ -z "$cmd" || "$cmd" == "null" ]]; then
+    cmd=$(default_script "$gate" || true)
+  fi
+  if [[ -z "$cmd" ]]; then
+    echo "::error::gate ${gate} has no script" >&2
+    return 2
+  fi
+  printf '%s' "$cmd"
+}
+
+require_binary() {
+  local name="$1" hint="$2"
+  if ! command -v "$name" >/dev/null 2>&1; then
+    echo "::error::${hint}" >&2
+    return 2
+  fi
+  return 0
+}
+
+check_requires() {
+  local gate="$1"
+  local req
+  req=$(gate_field "$gate" 'requires // ""')
+  case "$req" in
+    bun) require_binary bun "$BUN_HINT" ;;
+    trufflehog) require_binary trufflehog "$TRUFFLEHOG_HINT" ;;
+    "") return 0 ;;
+    *)
+      echo "::error::unknown requires=${req} on gate ${gate}" >&2
+      return 2
+      ;;
+  esac
+}
+
+run_shell_cmd() {
+  local gate="$1" cmd="$2"
+  echo "==> ${gate}"
+  if [[ "$cmd" == *$'\n'* ]]; then
+    bash -c "$cmd"
+  else
+    bash -c "$cmd"
+  fi
+}
+
+apply_gate_env() {
+  local gate="$1"
+  local -a keys=()
+  mapfile -t keys < <(yq_read ".quality_gates[\"${gate}\"].env | keys | .[]?" 2>/dev/null || true)
+  local k v
+  for k in "${keys[@]}"; do
+    [[ -n "$k" ]] || continue
+    v=$(gate_field "$gate" "env[\"${k}\"]")
+    export "${k}=${v}"
+  done
+}
+
+run_doc_drift_bundle() {
+  local doc sem
+  doc=$(gate_field "doc_drift" 'script // "tools/check_doc_drift.py"')
+  sem=$(gate_field "doc_semantic_drift" 'script // "tools/check_doc_semantic_drift.py"')
+  local cmd
+  cmd=$(cat <<EOF
+set -euo pipefail
+if find docs/ -name "*.md" ! -path "*/architecture/*" | xargs grep -n "FACTORY_LOG_DIR\\|json_file\\s*=\\|RotatingFileHandler"; then
+  echo "::error::Removed symbols in operator docs — update docs to match code"
+  exit 1
+fi
+uv run python ${doc}
+uv run python ${sem}
+EOF
+)
+  run_shell_cmd "doc_drift_bundle" "$cmd"
+}
+
+run_gate() {
+  local gate="$1" stage_filter="${2:-}" 
+  shift 2 || true
+  local -a changed=("$@")
+
+  if [[ "$gate" == "doc_drift_bundle" ]]; then
+    run_doc_drift_bundle
+    return $?
+  fi
+
+  gate_enabled "$gate" || return 0
+
+  if [[ -n "$stage_filter" ]] && ! gate_has_stage "$gate" "$stage_filter"; then
+    return 0
+  fi
+
+  if ! should_run_gate "$gate" "${stage_filter:-ci}" "${changed[@]}"; then
+    echo "==> ${gate} (skipped — no matching files)"
+    return 0
+  fi
+
+  check_requires "$gate" || return $?
+
+  local cmd
+  cmd=$(resolve_command "$gate" "${stage_filter:-ci}") || return $?
+
+  (
+    cd "$REPO_ROOT"
+    apply_gate_env "$gate"
+    run_shell_cmd "$gate" "$cmd"
+  )
+}
+
+ordered_gates() {
+  local mode="$1" key="$2"
+  local -a names=()
+  if [[ "$mode" == "profile" ]]; then
+    mapfile -t names < <(yq_read ".qg.profiles[\"${key}\"][]?" 2>/dev/null || true)
+    if [[ ${#names[@]} -eq 0 || -z "${names[0]:-}" ]]; then
+      echo "::error::unknown profile ${key}" >&2
+      return 2
+    fi
+  else
+    mapfile -t names < <(yq_read ".qg.run_order[\"${key}\"][]?" 2>/dev/null || true)
+    if [[ ${#names[@]} -eq 0 || -z "${names[0]:-}" ]]; then
+      echo "::error::no run_order for stage ${key}" >&2
+      return 2
+    fi
+  fi
+  local n
+  for n in "${names[@]}"; do
+    gate_enabled "$n" && printf '%s\n' "$n"
+  done
+}
+
+cmd_run() {
+  local stage="" profile="" gate_name=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stage)
+        stage="$2"
+        shift 2
+        ;;
+      --profile)
+        profile="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        return 0
+        ;;
+      run)
+        shift
+        ;;
+      -*)
+        echo "::error::unknown option $1" >&2
+        usage >&2
+        return 2
+        ;;
+      *)
+        gate_name="$1"
+        shift
+        ;;
+    esac
+  done
+
+  require_yq
+  [[ -f "$STACK" ]] || { echo "::error::missing ${STACK}" >&2; return 2; }
+
+  local -a names=()
+  local stage_filter=""
+  local -a changed=()
+
+  if [[ -n "$gate_name" ]]; then
+    names=("$gate_name")
+    stage_filter="$stage"
+  elif [[ -n "$profile" ]]; then
+    mapfile -t names < <(ordered_gates profile "$profile") || return $?
+    stage_filter=""
+  elif [[ -n "$stage" ]]; then
+    mapfile -t names < <(ordered_gates stage "$stage") || return $?
+    stage_filter="$stage"
+    if [[ "$stage" == "pre-commit" || "$stage" == "pre-push" ]]; then
+      mapfile -t changed < <(changed_files "$stage")
+    fi
+  else
+    echo "::error::specify --stage, --profile, or a gate name" >&2
+    return 2
+  fi
+
+  local failed=0 rc=0 n
+  for n in "${names[@]}"; do
+    [[ -n "$n" ]] || continue
+    if [[ ${#changed[@]} -gt 0 ]]; then
+      run_gate "$n" "$stage_filter" "${changed[@]}" || rc=$?
+    else
+      run_gate "$n" "$stage_filter" || rc=$?
+    fi
+    if [[ "$rc" -ne 0 ]]; then
+      echo "::error::gate ${n} failed (exit ${rc})" >&2
+      failed=$rc
+    fi
+  done
+  return "$failed"
+}
+
+main() {
+  case "${1:-}" in
+    run) shift; cmd_run "$@" ;;
+    -h|--help|"") usage ;;
+    *) usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"

@@ -5,9 +5,15 @@
 Quality gates and analysis scripts for the Factory codebase.
 Canonical source: `roxabi-plugins/plugins/dev-core/tools/` — ¬edit project-side copies directly.
 
+**vs `scripts/`:** `tools/` = gate implementations invoked by `scripts/qg run` from `stack.yml`. `scripts/` = platform orchestration (`qg` runner), drift wrappers, and repo-specific ACL/deploy scanners called directly from CI/Makefile. See `scripts/AGENTS.md` and `CONTRIBUTING.md` § Language & layout.
+
+**Languages:** gate shell entrypoints are bash; parsing-heavy gates may use Python. Orchestration (`scripts/qg`) is bash + yq only.
+
 ## Wiring
 
-Scripts are driven by `.claude/stack.yml` `quality_gates` block — that block is the SSoT for which gates exist and their stage (pre-commit, pre-push, CI). Full wiring table (pre-commit / pre-push / CI / path workflows): `docs/ops/quality-gates.md`. Most gates run pre-commit; `import_layers` and `architecture_snapshot` run pre-push; `doc_drift` and `doc_semantic_drift` run CI.
+Gates are declared in `.claude/stack.yml` (`quality_gates` + `qg.run_order`) and executed by `scripts/qg` (bash) — no generated pre-commit/CI wiring. Index: `docs/ops/quality-gates.md`.
+
+`tools/qg.conf` is generated from `stack.yml` file-length settings; drift-gated by `scripts/check-qg-conf-drift.sh`. Fix via `/release-setup --force`.
 
 ### `check_doc_semantic_drift.py` — living-doc patterns (Phase C)
 
@@ -27,8 +33,6 @@ Regex gate for operator-facing stale text that `check_doc_drift.py` misses: `mak
 | AGENTS.md network (root, `src/`, `packages/`, `plugins/`) | — |
 
 Add a doc to the gate → list it (or its dir) in `_collect_scan_files()`; regenerate via `--update-baseline` (new dead refs join the #1536 burn-down).
-
-Runtime config: `tools/qg.conf` (seeded from `stack.yml` by `/release-setup`); scripts fall back to hardcoded defaults when absent. `qg.conf` is generated-but-committed → drift-gated by `scripts/check-qg-conf-drift.sh` (pre-push + CI): it re-renders from `stack.yml` (cookbook N4a logic) and diffs, so the two can't silently desync. Fix drift via `/release-setup --force`.
 
 `file_length` runs in **SLOC mode** (`QG_FILE_METRIC=sloc`, `metric: sloc` in `stack.yml`): the cap counts source lines only — blanks, comments and docstrings excluded — via `radon` (a dev dep; Node repos would use `npx sloc`). `check_file_length.sh` sources `check_lib.sh` for the exemption helpers. Exemption counts (`# N lines`) are SLOC too. Switching back to raw `wc -l` = set `metric: raw` (or drop the key) and re-run `/release-setup --force`.
 

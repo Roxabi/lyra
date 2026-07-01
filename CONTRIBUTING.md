@@ -3,21 +3,17 @@
 ## Dev environment setup
 
 ```bash
-# 1. Clone and install dependencies
+# 1. Clone and bootstrap (deps + git hooks)
 git clone https://github.com/Roxabi/roxabi-factory.git
 cd roxabi-factory
-uv sync
-bun install --frozen-lockfile   # dashboard / Biome hooks (lint-js, vitest)
+make dev-setup   # uv + bun + yq + git hooks (stack.yml → commands.dev_setup)
 
 # 2. Configure environment
 cp .env.example .env
 # Fill in DEPLOY_HOST / DEPLOY_DIR if using make remote or make push (see docs/DEPLOYMENT.md §8)
 # Bot tokens: factory bot add — not in .env (see docs/GETTING-STARTED.md)
 
-# 3. Install git hooks (commit + pre-push quality gates)
-make hooks-install
-
-# 4. Run the test suite to verify your setup
+# 3. Run the test suite to verify your setup
 uv run pytest
 ```
 
@@ -98,7 +94,35 @@ uv run pre-commit install
 uv run pre-commit install --hook-type pre-push
 ```
 
-Pre-push hooks require [trufflehog](https://github.com/trufflesecurity/trufflehog/releases) on your `PATH`. Frontend hooks require [bun](https://bun.sh) (see root `package.json` → `packageManager`).
+Pre-push hooks require [trufflehog](https://github.com/trufflesecurity/trufflehog/releases) on your `PATH`. Frontend hooks require [bun](https://bun.sh) (see root `package.json` → `packageManager`). Quality gate orchestration requires [yq](https://github.com/mikefarah/yq) — installed by `make dev-setup`.
+
+## Language & layout
+
+| Layer | Language | Location | Role |
+|-------|----------|----------|------|
+| Product backend | Python | `src/factory/`, `packages/` | Runtime, adapters, contracts |
+| Product frontend | JS/TS | `apps/`, `packages/`, `brand/` | Dashboard and shared UI |
+| Quality gates | bash (+ Python when parsing) | `tools/` | Gate implementations declared in `stack.yml` |
+| Platform orchestration | **bash** | `scripts/`, `tools/dev-setup.sh` | Run gates, CI wrappers, drift checks |
+| Domain ops (ACL, deploy) | bash entry → Python | `scripts/` | Repo-specific scanners not in `quality_gates` |
+
+### `scripts/` vs `tools/`
+
+Both are dev tooling — not product code. The split is **who invokes them**:
+
+| | `scripts/` | `tools/` |
+|---|------------|----------|
+| **What** | Factory platform ops (ACL render/check, `qg` runner, drift guards) | Generic quality gates wired from dev-core |
+| **Caller** | CI extras, Makefile, `factory-acl`, pre-push drift scripts | `scripts/qg run` (reads `.claude/stack.yml`) |
+| **New work** | ACL matrix scanners, deploy evidence, one-off migrations | Lint/size/import/doc gates shared across Roxabi repos |
+
+**Rules**
+
+- New **quality gate** → implement in `tools/`, declare in `.claude/stack.yml` `quality_gates` + `qg.run_order`. No pre-commit/CI edit for standard gates.
+- New **ACL/deploy scanner** → bash entry in `scripts/` (`.sh` calling `.py` when logic needs Python).
+- **Orchestration only** (run order, stage filters, `yq` parsing) → bash in `scripts/` (`qg`, `check-*-drift.sh`).
+
+See `scripts/AGENTS.md`, `tools/AGENTS.md`, and `docs/ops/quality-gates.md`.
 
 ## Adding a channel adapter
 

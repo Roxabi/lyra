@@ -1,3 +1,5 @@
+# Git hooks: upstream hygiene + stack.yml quality gates via scripts/qg.
+# Gate list and order: .claude/stack.yml → qg.run_order
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v5.0.0
@@ -11,142 +13,14 @@ repos:
     args: ['--maxkb=500']
 - repo: local
   hooks:
-  - id: lint
-    name: lint
-    entry: uv run ruff check .
+  - id: quality-gates-pre-commit
+    name: quality gates (stack.yml pre-commit)
+    entry: scripts/qg run --stage pre-commit
     language: system
     pass_filenames: false
-  - id: typecheck
-    name: typecheck
-    entry: uv run pyright
-    language: system
-    pass_filenames: false
-  - id: check-file-length
-    name: check-file-length
-    entry: tools/check_file_length.sh
-    language: system
-    pass_filenames: false
-  - id: check-file-exemptions
-    name: check-file-exemptions (expiry dates on file-length exemptions)
-    entry: tools/check_file_exemptions.sh
-    language: system
-    pass_filenames: false
-  - id: check-hardcoded-constants
-    name: check-hardcoded-constants (new numeric literals in src/factory/core/)
-    entry: tools/check_hardcoded_constants.sh
-    language: system
-    pass_filenames: false
-  - id: check-file-length-roxabi-nats
-    name: check-file-length (roxabi-nats)
-    entry: bash -c "QG_FILE_ROOT=packages/roxabi-nats/src/ QG_FILE_EXEMPTIONS=packages/roxabi-nats/tools/file_exemptions.txt tools/check_file_length.sh"
-    language: system
-    pass_filenames: false
-  - id: check-file-length-roxabi-contracts
-    name: check-file-length (roxabi-contracts)
-    entry: bash -c "QG_FILE_ROOT=packages/roxabi-contracts/src/ QG_FILE_EXEMPTIONS=packages/roxabi-contracts/tools/file_exemptions.txt tools/check_file_length.sh"
-    language: system
-    pass_filenames: false
-  - id: check-folder-size
-    name: check-folder-size
-    entry: tools/check_folder_size.sh
-    language: system
-    pass_filenames: false
-  - id: check-duplicate-test-basenames
-    name: check-duplicate-test-basenames
-    entry: tools/check_duplicate_test_basenames.sh
-    language: system
-    pass_filenames: false
-  - id: import-layers
-    name: import-layers
-    entry: uv run lint-imports
-    language: system
-    pass_filenames: false
-  - id: codes-sync
-    name: codes-sync (regenerate error-codes.md)
-    entry: uv run python packages/roxabi-contracts/scripts/check_codes_sync.py --write
-    language: system
-    pass_filenames: false
-    files: ^packages/roxabi-contracts/(src/roxabi_contracts/errors\.py|docs/error-codes\.md|scripts/check_codes_sync\.py)$
-  - id: lint-js
-    name: lint-js (biome)
-    entry: bash -c 'command -v bun >/dev/null || { echo "bun not installed — https://bun.sh (see package.json packageManager)" >&2; exit 2; }; bun run lint'
-    language: system
-    pass_filenames: false
-    files: ^(apps/|packages/shared/|brand/|biome\.json|package\.json|bun\.lock)$
-  - id: dashboard-unit-test
-    name: dashboard unit tests (vitest)
-    entry: bash -c 'command -v bun >/dev/null || { echo "bun not installed — https://bun.sh (see package.json packageManager)" >&2; exit 2; }; bun run --filter @roxabi-factory/dashboard test'
-    language: system
-    pass_filenames: false
-    files: ^(apps/dashboard/|packages/shared/|brand/)
-    stages:
-    - pre-push
-  - id: trufflehog
-    name: trufflehog secret scan
-    entry: bash -c 'command -v trufflehog >/dev/null || { echo "trufflehog not installed — https://github.com/trufflesecurity/trufflehog/releases" >&2; exit 2; }; trufflehog git file://. --only-verified --fail'
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
-  - id: check-single-write-tool-display-config
-    name: check-single-write-tool-display-config
-    entry: tools/check_single_write_tool_display_config.sh
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
-  - id: check-no-runtime-toml-bots
-    name: check-no-runtime-toml-bots
-    entry: tools/check_no_runtime_toml_bots.sh
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
-  - id: license
-    name: license check
-    entry: uv run tools/license_check.py
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
-  - id: architecture-snapshot
-    name: architecture snapshot freshness
-    entry: tools/check_architecture_snapshot.sh
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
-  - id: qg-conf-drift
-    name: qg.conf drift (stack.yml is source of truth)
-    entry: scripts/check-qg-conf-drift.sh
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
-  - id: acl-specs-drift
-    name: ACL spec/fixture drift (acl-matrix.json is source of truth)
-    entry: scripts/check-acl-specs-drift.sh
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
-  - id: acl-authconf-drift
-    name: ACL auth.conf drift (acl-matrix.json is source of truth)
-    entry: scripts/check-acl-authconf-drift.sh
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
-  - id: check-debt-expiry
-    name: "debt expiry (stale DEBT: markers without issue ref)"
-    entry: tools/check_debt_expiry.sh
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
-  - id: check-test-sleep
-    name: test sleep (raw sleep without sync comment)
-    entry: tools/check_test_sleep.sh
+  - id: quality-gates-pre-push
+    name: quality gates (stack.yml pre-push)
+    entry: scripts/qg run --stage pre-push
     language: system
     pass_filenames: false
     stages:

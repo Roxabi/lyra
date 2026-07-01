@@ -196,7 +196,7 @@
 
 ### clipool
 - **Container:** factory-clipool.container
-- **Required secrets:** factory-claude-oauth, factory-nats-clipool
+- **Required secrets:** factory-claude-oauth, factory-nats-clipool, factory_otel_token
 - **Host roles:** factory-hub
 
 ### cloudflared
@@ -205,7 +205,7 @@
 
 ### dashboard
 - **Container:** factory-dashboard.container
-- **Required secrets:** factory-nats-web
+- **Required secrets:** factory-nats-web, factory_otel_token
 - **Host roles:** factory-hub
 
 ### discord
@@ -220,12 +220,12 @@
 
 ### hub
 - **Container:** factory-hub.container
-- **Required secrets:** factory-nats-hub
+- **Required secrets:** factory-nats-hub, factory_otel_token
 - **Host roles:** factory-hub
 
 ### ingress
 - **Container:** factory-ingress.container
-- **Required secrets:** factory-ingress-cloudflare-webhook, factory-ingress-github-webhook, factory-nats-ingress
+- **Required secrets:** factory-ingress-cloudflare-webhook, factory-ingress-github-webhook, factory-nats-ingress, factory_otel_token
 - **Host roles:** factory-hub
 
 ### langfuse-clickhouse
@@ -262,7 +262,12 @@
 
 ### omp
 - **Container:** factory-omp.container
-- **Required secrets:** factory-litellm-key, factory-nats-omp
+- **Required secrets:** factory-litellm-key, factory-nats-omp, factory_otel_token
+- **Host roles:** factory-hub
+
+### otel
+- **Container:** factory-otel.container
+- **Required secrets:** factory_otel_token
 - **Host roles:** factory-hub
 
 ### otel-collector

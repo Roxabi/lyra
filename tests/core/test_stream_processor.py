@@ -823,6 +823,7 @@ class TestRunLifecycle:
         assert started.run_id == "abc-123"
         assert finished.run_id == "abc-123"
 
+    @pytest.mark.no_default_trace
     async def test_run_id_synthetic_when_trace_unset(self) -> None:
         """No active TraceContext → synthetic prefix; both bookends carry it."""
         # Sanity: prior test must have cleaned up. ContextVar has no "unset"

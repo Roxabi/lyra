@@ -32,6 +32,7 @@ class TestTraceContext:
         ids = {TraceContext.generate() for _ in range(100)}
         assert len(ids) == 100
 
+    @pytest.mark.no_default_trace
     def test_get_trace_id_returns_none_when_unset(self) -> None:
         ctx = copy_context()
         assert ctx.run(TraceContext.get_trace_id) is None
@@ -116,6 +117,7 @@ class TestTraceIdFilter:
         ctx = copy_context()
         assert ctx.run(_inner) == "tg:main:chat:1"
 
+    @pytest.mark.no_default_trace
     def test_filter_sets_empty_when_no_context(self) -> None:
         """When no contextvar is set, attributes are empty string."""
         f = TraceIdFilter()

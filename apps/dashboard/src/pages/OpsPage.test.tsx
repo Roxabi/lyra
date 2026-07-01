@@ -89,7 +89,7 @@ describe("OpsPage", () => {
         detail: "ok",
       },
       {
-        engine: "otel-collector",
+        engine: "otel",
         label: "OTel Collector",
         reachable: false,
         detail: "timeout",

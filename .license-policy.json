@@ -5,6 +5,7 @@
     "roxabi-blobs",
     "roxabi-contracts",
     "roxabi-obs",
+    "roxabi-otel",
     "factory",
     "aiohttp",
     "grandalf",

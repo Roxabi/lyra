@@ -1,17 +1,14 @@
 import { Theme } from "@astryxdesign/core/theme";
-import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import "./index.css";
+import { roxabiTheme } from "@/astryx-theme/built/roxabi";
 import i18n from "@/i18n";
-import { initTheme } from "@/lib/theme";
 import { useTheme } from "@/lib/use-theme";
 import { router } from "@/router";
-
-initTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,16 +20,17 @@ const queryClient = new QueryClient({
 });
 
 /**
- * Astryx theme provider. Bridges the dashboard's own dark/light system
- * (src/lib/theme.ts → data-theme + `factory-dashboard:theme-change` event) into
- * Astryx's <Theme mode>, so Astryx components follow the same toggle rather than
- * the OS preference. Full token reconciliation (custom `roxabi` theme) lands in
- * slice 1 (#2089); S0 uses the neutral placeholder theme.
+ * Astryx theme provider — applies the brand `roxabi` theme (#2089) and is the
+ * SOLE runtime owner of `<html>`'s `data-theme` + `color-scheme`. The dashboard
+ * preference lives in `src/lib/theme.ts` (state only: persisted pref + change
+ * event); `useTheme()` mirrors it into `<Theme mode>`, which writes `data-theme`
+ * on the document root. A pre-paint bootstrap in `index.html` sets the initial
+ * value to avoid FOUC before React hydrates.
  */
 function AstryxThemeProvider({ children }: { children: ReactNode }) {
   const mode = useTheme();
   return (
-    <Theme theme={neutralTheme} mode={mode}>
+    <Theme theme={roxabiTheme} mode={mode}>
       {children}
     </Theme>
   );

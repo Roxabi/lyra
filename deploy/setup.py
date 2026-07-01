@@ -198,6 +198,29 @@ def scaffold_config_toml(factory_dir: Path) -> None:
     print(f"       → Edit {factory_dir}/config.toml and fill in your user IDs")
 
 
+def scaffold_ingress_toml(factory_dir: Path) -> None:
+    """Copy deploy/ingress.toml.example → ~/.roxabi/factory/ingress.toml if absent.
+
+    Connector registry consumed by factory.ingress.config (FACTORY_INGRESS_CONFIG env
+    override, else ~/.roxabi/factory/ingress.toml). Distinct from ingress.db
+    (connector_installations — self-provisioning via InstallationStore.connect()).
+    Target is the runtime data dir, not factory_dir; example lives under deploy/.
+    """
+    target_dir = Path.home() / ".roxabi" / "factory"
+    ingress_file = target_dir / "ingress.toml"
+    example = factory_dir / "deploy" / "ingress.toml.example"
+    if ingress_file.exists():
+        print("  ✓  ingress.toml already exists")
+        return
+    if not example.exists():
+        print("  ✗  deploy/ingress.toml.example not found — skipping")
+        return
+    target_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(example, ingress_file)
+    print("  ✓  ingress.toml created from deploy/ingress.toml.example")
+    print(f"       → Edit {ingress_file} to enable/disable connectors")
+
+
 def init_agents(factory_dir: Path) -> None:
     """Run factory agent init to seed the DB from TOML files."""
     agent_init = factory_dir / ".venv" / "bin" / "factory"
@@ -562,6 +585,7 @@ def main() -> None:
         symlink_voicecli(voicecli_dir)
     scaffold_env(factory_dir)
     scaffold_config_toml(factory_dir)
+    scaffold_ingress_toml(factory_dir)
     init_agents(factory_dir)
     init_bots(factory_dir)
     print()

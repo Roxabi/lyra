@@ -67,51 +67,38 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Dashboard SPA build + lint (#1771)
-        run: |
-          bun install --frozen-lockfile
-          bun run build:dashboard
-          bun run lint
-          bun run --filter @roxabi-factory/dashboard test
-          test -f apps/dashboard/dist/index.html
-
       - name: Install dependencies
         run: |
           uv sync --frozen --group dev
           uv sync --frozen --package roxabi-contracts --extra testing
+          bun install --frozen-lockfile
 
-      - name: Check file length
-        run: bash tools/check_file_length.sh
+      - name: Install yq
+        env:
+          YQ_VERSION: "4.44.6"
+        run: |
+          ARCH=$(dpkg --print-architecture)
+          case "$ARCH" in
+            amd64) YQ_ARCH=amd64 ;;
+            arm64) YQ_ARCH=arm64 ;;
+            *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
+          esac
+          curl -fsSL \
+            "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_${YQ_ARCH}" \
+            -o /tmp/yq
+          chmod +x /tmp/yq
+          sudo install -m 755 /tmp/yq /usr/local/bin/yq
+          yq --version
 
-      - name: "Check file exemption expiry (stale exemptions without valid date)"
-        run: bash tools/check_file_exemptions.sh
+      - name: Quality gates (stack.yml)
+        run: scripts/qg run --stage ci
 
-      - name: "Check hardcoded constants (new numeric literals in src/factory/core/)"
-        run: bash tools/check_hardcoded_constants.sh
-
-      - name: "Check bus-bound str(exc) (SanitizedError discipline #1212, ADR-073)"
-        run: bash tools/check_str_exc_bus_bound.sh
-
+      # CI extras — repo-specific infra checks (not generic quality_gates)
       - name: Test hardcoded-constants gate
         run: bash tests/tools/test_check_hardcoded_constants.sh
 
-      - name: "Check omp pin lockstep (omp-base / Dockerfile / _PINNED_SHA256, #1873)"
-        run: bash tools/check_omp_pin_lockstep.sh
-
       - name: Test omp-pin-lockstep gate
         run: bash tests/tools/test_check_omp_pin_lockstep.sh
-
-      - name: Check qg.conf drift (stack.yml is source of truth)
-        run: bash scripts/check-qg-conf-drift.sh
-
-      - name: Check duplicate test basenames
-        run: bash tools/check_duplicate_test_basenames.sh
-
-      - name: Check folder size
-        run: bash tools/check_folder_size.sh
-
-      - name: Check no runtime TOML bots
-        run: bash tools/check_no_runtime_toml_bots.sh
 
       - name: Check ACL matrix lifecycle fields
         run: uv run factory-check-acl-retired
@@ -122,62 +109,11 @@ jobs:
       - name: Check ACL code coverage (ADR-079)
         run: uv run factory-acl check grants --matrix deploy/nats/acl-matrix.json
 
-      - name: Check auth.conf drift (acl-matrix.json is source of truth)
-        run: bash scripts/check-acl-authconf-drift.sh
-
-      - name: Check ACL spec/fixture drift (acl-matrix.json is source of truth)
-        run: bash scripts/check-acl-specs-drift.sh
-
       - name: Check inbox_prefix uses identity_name API
-        run: uv run python scripts/check_inbox_prefix.py
+        run: bash scripts/check_inbox_prefix.sh
 
       - name: Check subject literals resolve (acl-matrix + contracts)
-        run: uv run python scripts/check_subject_literals.py
-
-      - name: Check docs drift — removed symbols must not reappear
-        run: |
-          set -euo pipefail
-          if find docs/ -name "*.md" ! -path "*/architecture/*" | xargs grep -n "FACTORY_LOG_DIR\|json_file\s*=\|RotatingFileHandler"; then
-            echo "::error::Removed symbols found in operator docs — update docs to match current code"
-            exit 1
-          fi
-          uv run python tools/check_doc_drift.py
-          uv run python tools/check_doc_semantic_drift.py
-
-      - name: Check secrets drift (unit Secret= / quadlet.toml / manifest / acl-matrix)
-        run: bash tools/check_secrets_drift.sh
-
-      - name: Check quadlet manifest install wiring (quadlet.toml → Makefile/verify/converge)
-        run: bash tools/check_quadlet_manifest_install.sh
-
-      - name: Check deployment.md Volumes table matches quadlet Volume= directives
-        run: bash tools/check_volumes_table.sh
-
-      - name: Check architecture snapshot freshness
-        run: bash tools/check_architecture_snapshot.sh
-
-      - name: "Check debt expiry (stale DEBT: markers)"
-        run: bash tools/check_debt_expiry.sh
-
-      - name: "Check test sleep (raw sleep without sync comment)"
-        run: bash tools/check_test_sleep.sh
-
-      - name: Enforce import layers
-        run: uv run lint-imports
-
-      - name: Lint
-        run: uv run ruff check .
-
-      - name: Typecheck
-        run: uv run pyright
-
-      - name: License check
-        run: uv run tools/license_check.py
-
-      - name: Verify error codes registry sync
-        run: |
-          uv run python packages/roxabi-contracts/scripts/check_codes_sync.py || EC=$?
-          [[ ${EC:-0} -eq 0 || ${EC:-0} -eq 2 ]] || exit "${EC:-1}"
+        run: bash scripts/check_subject_literals.sh
 
       - name: Dashboard visual e2e (#1771)
         run: |

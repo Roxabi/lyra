@@ -28,6 +28,11 @@ Secret=factory-nats-omp,type=mount,target=factory-nats-omp.seed,uid=1500,gid=150
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-omp.seed
 Secret=factory-litellm-key,type=mount,target=factory-litellm-key.tok,uid=1500,gid=1500,mode=0400
 Environment=LITELLM_API_KEY_FILE=/run/secrets/factory-litellm-key.tok
+# OTel omp worker spans → factory-otel (ADR-097, #2069).
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://factory-otel:4317
+Environment=FACTORY_OTEL_TOKEN_PATH=/run/secrets/factory_otel_token
+Secret=factory_otel_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_otel_token
 Tmpfs=/tmp
 # omp writes $HOME/.omp at boot: file-log transport (makeFileTransport) + native
 # modules unpacked and dlopen'd under natives/. ReadOnly=true makes that EROFS; a

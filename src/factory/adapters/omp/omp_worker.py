@@ -20,7 +20,7 @@ import asyncio
 import logging
 import signal
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import nats.errors
 from pydantic import ValidationError
@@ -29,8 +29,12 @@ from factory.adapters.omp._rpc_bridge import publish_job_error
 from factory.adapters.omp.omp_pool import OmpPool
 from roxabi_contracts.jobs.models import JobEnvelope
 from roxabi_contracts.jobs.subjects import jobs_submit
+from roxabi_contracts.telemetry import ATTR_MODEL, ATTR_POOL_ID, ATTR_RUNTIME
 from roxabi_nats import nats_connect
 from roxabi_nats.adapter_base import NatsAdapterBase
+
+if TYPE_CHECKING:
+    from roxabi_contracts.telemetry import MessageLifecycleHooks
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +63,7 @@ class OmpWorker(NatsAdapterBase):
         pool: OmpPool | None = None,
         timeout: float = 300.0,
         identity_name: str | None = None,
+        lifecycle_hooks: "MessageLifecycleHooks | None" = None,
     ) -> None:
         super().__init__(
             subject=_CMD_SUBJECT,
@@ -70,6 +75,7 @@ class OmpWorker(NatsAdapterBase):
             heartbeat_interval=_HEARTBEAT_INTERVAL,
             identity_name=identity_name,
             wait_ready=False,  # worker semantics — hub readiness not required
+            lifecycle_hooks=lifecycle_hooks,
         )
         # Allow injection for testing; production always constructs real pool.
         self._pool: OmpPool = pool if pool is not None else OmpPool()
@@ -139,6 +145,27 @@ class OmpWorker(NatsAdapterBase):
     def _extra_subjects(self) -> list[str]:
         return []
 
+    def _defer_hooks_to_background(self) -> bool:
+        return True
+
+    def telemetry_attributes(
+        self, payload: dict, result: object | None
+    ) -> dict[str, str]:
+        try:
+            envelope = JobEnvelope.model_validate(payload)
+        except ValidationError:
+            return {ATTR_RUNTIME: "omp"}
+        body = envelope.payload or {}
+        pool_id = str(body.get("pool_id") or envelope.job_id)
+        model_cfg = body.get("model_cfg") or {}
+        model = ""
+        if isinstance(model_cfg, dict):
+            model = str(model_cfg.get("model") or "")
+        attrs: dict[str, str] = {ATTR_POOL_ID: pool_id, ATTR_RUNTIME: "omp"}
+        if model:
+            attrs[ATTR_MODEL] = model
+        return attrs
+
     async def handle(self, msg: Any, payload: dict) -> None:
         """Parse the job envelope and spawn a task for it (Model B)."""
         try:
@@ -148,14 +175,25 @@ class OmpWorker(NatsAdapterBase):
             # ValidationError.__str__ may embed incoming values — use only
             # type name on the bus (ADR-073). Log the full exception locally above.
             job_id = payload.get("job_id", "unknown")
-            await publish_job_error(self._nc, str(job_id), exc)
+            await publish_job_error(
+                self._nc,
+                str(job_id),
+                exc,
+                trace_id=str(payload.get("trace_id") or ""),
+            )
             return
 
         job_id = envelope.job_id
+        wire_trace_id = envelope.trace_id
         prompt = envelope.payload.get("prompt", "")
         if not prompt:
             log.warning("omp_worker: job_id=%s has empty prompt — rejecting", job_id)
-            await publish_job_error(self._nc, str(job_id), ValueError("empty prompt"))
+            await publish_job_error(
+                self._nc,
+                str(job_id),
+                ValueError("empty prompt"),
+                trace_id=wire_trace_id,
+            )
             return
 
         # provider_session_id (session path) from envelope — basic guard.
@@ -170,7 +208,10 @@ class OmpWorker(NatsAdapterBase):
             ):
                 log.warning("omp_worker: job_id=%s bad session token — reject", job_id)
                 await publish_job_error(
-                    self._nc, str(job_id), ValueError("invalid session token")
+                    self._nc,
+                    str(job_id),
+                    ValueError("invalid session token"),
+                    trace_id=wire_trace_id,
                 )
                 return
 
@@ -206,25 +247,30 @@ class OmpWorker(NatsAdapterBase):
         )
 
         task = asyncio.create_task(
-            self._run_job(
-                str(job_id),
-                str(prompt),
-                provider_session_id,
-                model=requested_model,
-                system_prompt=(
-                    str(system_prompt) if isinstance(system_prompt, str) else ""
+            self._run_with_work_hooks(
+                payload,
+                lambda: self._run_job(
+                    str(job_id),
+                    str(prompt),
+                    provider_session_id,
+                    trace_id=wire_trace_id,
+                    model=requested_model,
+                    system_prompt=(
+                        str(system_prompt) if isinstance(system_prompt, str) else ""
+                    ),
                 ),
             )
         )
         self._jobs.add(task)
         task.add_done_callback(self._jobs.discard)
 
-    async def _run_job(
+    async def _run_job(  # noqa: PLR0913
         self,
         job_id: str,
         prompt: str,
         session_file: str | None,
         *,
+        trace_id: str | None = None,
         model: str | None = None,
         system_prompt: str = "",
     ) -> None:
@@ -239,6 +285,7 @@ class OmpWorker(NatsAdapterBase):
             await worker.bridge.run(
                 prompt,
                 job_id,
+                trace_id=trace_id,
                 session_file=worker.session_file,
                 model=model,
             )
@@ -250,7 +297,7 @@ class OmpWorker(NatsAdapterBase):
             # See module docstring, CLAUDE.md, axial review.
             log.exception("omp_worker: job_id=%s failed", job_id)
             await publish_job_error(
-                self._nc, job_id, exc
+                self._nc, job_id, exc, trace_id=trace_id
             )  # type(exc).__name__ only, on the bus
         else:
             log.info(

@@ -1,0 +1,1 @@
+"""Factory OTel raw store — OTLP ingest + JSONL archive + SQLite query API."""

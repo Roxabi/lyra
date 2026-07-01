@@ -66,7 +66,7 @@ class TestFetchOpsHealth:
         ok.status_code = 200
         fail = MagicMock()
         fail.status_code = 503
-        mock_client.get = AsyncMock(side_effect=[ok, ok, fail])
+        mock_client.get = AsyncMock(side_effect=[ok, fail])
 
         with patch(
             "factory.dashboard.ops_proxy.httpx.AsyncClient",
@@ -77,6 +77,9 @@ class TestFetchOpsHealth:
         assert len(res.engines) == 3
         assert res.engines[0].engine == "loki"
         assert res.engines[0].reachable is True
+        assert res.engines[1].engine == "langfuse"
+        assert res.engines[1].reachable is False
+        assert res.engines[2].engine == "otel"
         assert res.engines[2].reachable is False
 
 

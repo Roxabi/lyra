@@ -143,7 +143,7 @@ def stub_ops_health() -> DashboardOpsHealthResponse:
                 detail="E2E stub",
             ),
             OpsEngineHealth(
-                engine="otel-collector",
+                engine="otel",
                 label="OTel Collector",
                 reachable=False,
                 detail="E2E stub offline",

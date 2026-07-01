@@ -15,6 +15,7 @@ import logging
 from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Protocol
 
+from factory.obs.hub_tracer import nats_client_span, nats_client_stream_span
 from factory.transport._result import Err, InboxStream, Ok, Result, SanitizedError
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
@@ -166,7 +167,8 @@ class WorkerPoolClient:
                     code="pool.circuit_open", message="CircuitOpen", retryable=True
                 )
             )
-        result = await self._transport.call(subject, payload, timeout=timeout)
+        with nats_client_span(name=self._name, subject=subject, payload=payload):
+            result = await self._transport.call(subject, payload, timeout=timeout)
         if isinstance(result, Ok):
             self._cb.record_success()
             return result
@@ -207,7 +209,10 @@ class WorkerPoolClient:
                     "result": "pending",
                 },
             )
-            result = await self._transport.call(subject, payload, timeout=timeout)
+            with nats_client_span(
+                name=self._name, subject=subject, payload=payload
+            ):
+                result = await self._transport.call(subject, payload, timeout=timeout)
             attempt += 1
             if isinstance(result, Ok):
                 self._cb.record_success()
@@ -244,9 +249,12 @@ class WorkerPoolClient:
                 )
             )
             return
-        async with self._transport.open_inbox() as stream:
-            await self._transport.publish(
-                subject, payload, reply_subject=stream.inbox_subject
-            )
-            async for msg in stream.messages:
-                yield msg
+        async with nats_client_stream_span(
+            name=self._name, subject=subject, payload=payload
+        ):
+            async with self._transport.open_inbox() as stream:
+                await self._transport.publish(
+                    subject, payload, reply_subject=stream.inbox_subject
+                )
+                async for msg in stream.messages:
+                    yield msg

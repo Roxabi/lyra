@@ -2,6 +2,14 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Stack } from "@astryxdesign/core/Stack";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "@astryxdesign/core/Table";
 import { Text } from "@astryxdesign/core/Text";
 import { Briefcase, ChatCircleDots, Robot, Warning } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -152,34 +160,38 @@ export function DashboardHome() {
             ) : null}
             {!statusLoading && rosterAgents.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-t border-border/40 text-xs text-muted-foreground">
-                      <th className="px-6 py-2 font-medium">{t("agents.colAgent")}</th>
-                      <th className="px-3 py-2 font-medium">{t("agents.colHarness")}</th>
-                      <th className="px-6 py-2 font-medium">{t("agents.colStatus")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table dividers="rows" hasHover>
+                  <TableHeader>
+                    <TableRow isHeaderRow>
+                      {/* pl-6/pr-6 realign the edge columns with the Card's
+                          px-6 title row — Astryx edge-compensation collapses to
+                          8px under Card padding={0} (--container-padding-*=0). */}
+                      <TableHeaderCell scope="col" className="pl-6">
+                        {t("agents.colAgent")}
+                      </TableHeaderCell>
+                      <TableHeaderCell scope="col">{t("agents.colHarness")}</TableHeaderCell>
+                      <TableHeaderCell scope="col" className="pr-6">
+                        {t("agents.colStatus")}
+                      </TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {rosterAgents.map((s) => (
-                      <tr
-                        key={s.agent}
-                        className="border-t border-border/30 transition-colors hover:bg-muted/15"
-                      >
-                        <td className="px-6 py-2.5">
+                      <TableRow key={s.agent}>
+                        <TableCell className="pl-6">
                           <AgentIdentity agentId={s.agent} avatarSize="sm" />
-                        </td>
-                        <td className="px-3 py-2.5 text-xs text-muted-foreground">{s.harness}</td>
-                        <td className="px-6 py-2.5">
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{s.harness}</TableCell>
+                        <TableCell className="pr-6">
                           <Badge
                             variant={s.online ? "success" : "error"}
                             label={s.online ? tc("status.online") : tc("status.offline")}
                           />
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             ) : null}
           </Stack>

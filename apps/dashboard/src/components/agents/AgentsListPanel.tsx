@@ -1,3 +1,4 @@
+import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { CaretRight, PencilSimple, Plus, Robot, SquaresFour, Table } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -15,7 +16,6 @@ import {
 } from "@/components/ui/list-toolbar";
 import { PresenceBadge } from "@/components/ui/presence-badge";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { Skeleton } from "@/components/ui/skeleton";
 import { getAgentPersona } from "@/lib/agent-catalog";
 import type { AgentSummary } from "@/lib/agents-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -123,14 +123,14 @@ function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
         >
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex items-center gap-4 py-3">
-              <Skeleton className="size-8 shrink-0 rounded-full" />
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-6 w-14 rounded-full" />
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-6 w-12 rounded-full" />
-              <Skeleton className="h-6 w-12 rounded-full" />
-              <Skeleton className="h-6 w-12 rounded-full" />
-              <Skeleton className="ml-auto h-7 w-16 rounded-md" />
+              <Skeleton width={32} height={32} radius="rounded" className="shrink-0" />
+              <Skeleton width={96} height={16} />
+              <Skeleton width={56} height={24} radius="rounded" />
+              <Skeleton width={80} height={16} />
+              <Skeleton width={48} height={24} radius="rounded" />
+              <Skeleton width={48} height={24} radius="rounded" />
+              <Skeleton width={48} height={24} radius="rounded" />
+              <Skeleton width={64} height={28} radius={2} className="ml-auto" />
             </div>
           ))}
         </div>
@@ -150,17 +150,17 @@ function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
           <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                <Skeleton className="size-9 shrink-0 rounded-full" />
+                <Skeleton width={36} height={36} radius="rounded" className="shrink-0" />
                 <div className="min-w-0 flex-1 space-y-2">
-                  <Skeleton className="h-4 w-2/5" />
-                  <Skeleton className="h-3 w-3/5" />
+                  <Skeleton width="40%" height={16} />
+                  <Skeleton width="60%" height={12} />
                 </div>
               </div>
-              <Skeleton className="h-6 w-14 shrink-0 rounded-full" />
+              <Skeleton width={56} height={24} radius="rounded" className="shrink-0" />
             </div>
             <div className="mt-3 flex gap-2">
-              <Skeleton className="h-5 w-14 rounded-full" />
-              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton width={56} height={20} radius="rounded" />
+              <Skeleton width={64} height={20} radius="rounded" />
             </div>
           </div>
         </li>

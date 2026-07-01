@@ -117,6 +117,9 @@ jobs:
       - name: Coverage — roxabi_contracts
         run: uv run pytest packages/roxabi-contracts/tests --cov=roxabi_contracts --cov-branch --cov-report=term-missing --cov-fail-under=80
 
+      - name: Coverage — roxabi_obs
+        run: uv run pytest packages/roxabi-obs/tests --cov=roxabi_obs --cov-branch --cov-report=term-missing --cov-fail-under=69
+
   integration:
     needs: [ci]
     runs-on: ubuntu-latest

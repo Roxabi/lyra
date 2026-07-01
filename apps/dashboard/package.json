@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "cd ../.. && biome check apps/dashboard",
     "test": "vitest run",
-    "astryx": "node node_modules/@astryxdesign/cli/bin/astryx.mjs"
+    "astryx": "node node_modules/@astryxdesign/cli/bin/astryx.mjs",
+    "theme:build": "bun run astryx theme build src/astryx-theme/roxabi.theme.ts --out src/astryx-theme/built/roxabi.theme.css"
   },
   "dependencies": {
     "@astryxdesign/core": "^0.1.2",
@@ -50,6 +51,6 @@
     "vitest": "^3.2.4"
   },
   "astryx": {
-    "theme": "@astryxdesign/theme-neutral"
+    "theme": "./src/astryx-theme/roxabi.theme.ts"
   }
 }

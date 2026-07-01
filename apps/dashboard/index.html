@@ -5,6 +5,23 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Factory Dashboard</title>
+    <script>
+      // Pre-paint theme bootstrap — sets data-theme before the bundle loads so
+      // the correct light/dark tokens paint without a flash (FOUC). This is a
+      // one-shot pre-mount stand-in; after mount the Astryx <Theme mode>
+      // provider (src/main.tsx) owns data-theme. color-scheme is intentionally
+      // NOT set here: it is driven reactively by the [data-theme] rules in
+      // brand/tokens/colors.css, so it follows every toggle (an inline
+      // style.colorScheme would outrank those rules and freeze on first paint).
+      // The storage key must match THEME_STORAGE_KEY in src/lib/theme.ts.
+      (() => {
+        let t = "dark";
+        try {
+          t = localStorage.getItem("factory-dashboard:theme") === "light" ? "light" : "dark";
+        } catch {}
+        document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

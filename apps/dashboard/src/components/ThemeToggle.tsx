@@ -1,8 +1,8 @@
 import { Moon, Sun } from "@phosphor-icons/react";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { applyTheme, readTheme, type Theme } from "@/lib/theme";
+import { applyTheme } from "@/lib/theme";
+import { useTheme } from "@/lib/use-theme";
 import { cn } from "@/lib/utils";
 
 interface ThemeToggleProps {
@@ -11,13 +11,13 @@ interface ThemeToggleProps {
 
 export function ThemeToggle({ className }: ThemeToggleProps) {
   const { t } = useTranslation();
-  const [theme, setTheme] = useState<Theme>(readTheme);
+  // Read from the shared reactive hook (subscribes to THEME_CHANGE_EVENT) so
+  // the icon stays in sync when the theme changes via any other control.
+  const theme = useTheme();
   const Icon = theme === "dark" ? Moon : Sun;
 
   const toggle = () => {
-    const next: Theme = theme === "dark" ? "light" : "dark";
-    applyTheme(next);
-    setTheme(next);
+    applyTheme(theme === "dark" ? "light" : "dark");
   };
 
   return (

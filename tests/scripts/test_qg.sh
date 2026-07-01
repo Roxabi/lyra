@@ -136,6 +136,32 @@ fi
 rm -rf "$WORK2"
 
 # ---------------------------------------------------------------------------
+# D. run_order must include every gate listed in quality_gates.stages
+# ---------------------------------------------------------------------------
+STACK_FILE="${REPO_ROOT}/.claude/stack.yml"
+missing=0
+while IFS=$'\t' read -r gate stage; do
+  [[ -n "$gate" && -n "$stage" ]] || continue
+  if ! yq -e ".qg.run_order[\"${stage}\"][] | select(. == \"${gate}\")" "$STACK_FILE" >/dev/null 2>&1; then
+    fail "run_order sync" "${gate} has stages=[${stage}] but is missing from qg.run_order.${stage}"
+    missing=$((missing + 1))
+  fi
+done < <(
+  yq -r '
+    .quality_gates | to_entries | .[] |
+    select(.value.enabled != false) |
+    select(.value.stages != null or .value.stage != null) |
+    .key as $name |
+    (.value.stages // [.value.stage] | unique | .[]) as $stage |
+    [$name, $stage] | @tsv
+  ' "$STACK_FILE"
+)
+
+if [[ "$missing" -eq 0 ]]; then
+  pass "every quality_gates.stages entry appears in qg.run_order"
+fi
+
+# ---------------------------------------------------------------------------
 echo "----"
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

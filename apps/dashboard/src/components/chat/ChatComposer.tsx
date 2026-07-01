@@ -1,7 +1,7 @@
+import { TextArea } from "@astryxdesign/core/TextArea";
 import { PaperPlaneRight } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 
 interface ChatComposerProps {
   value: string;
@@ -15,13 +15,15 @@ export function ChatComposer({ value, disabled, onChange, onSend }: ChatComposer
   return (
     <div className="border-t border-border bg-card/40 px-4 py-3">
       <div className="mx-auto flex max-w-3xl items-end gap-2">
-        <Textarea
+        <TextArea
+          label={t("composer.placeholder")}
+          isLabelHidden
           value={value}
-          disabled={disabled}
+          isDisabled={disabled}
           placeholder={disabled ? t("composer.placeholderOffline") : t("composer.placeholder")}
           rows={1}
-          className="min-h-[44px] max-h-32 flex-1"
-          onChange={(e) => onChange(e.target.value)}
+          className="max-h-32 flex-1"
+          onChange={(next) => onChange(next)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();

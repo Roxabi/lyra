@@ -35,14 +35,18 @@ function renderUserMenu() {
 }
 
 describe("UserMenu", () => {
-  it("opens dropdown with profile and admin links", async () => {
+  it("opens the menu with profile and navigation links", async () => {
     const user = userEvent.setup();
     renderUserMenu();
 
     const trigger = await waitFor(() => screen.getByRole("button", { name: /opérateur factory/i }));
     await user.click(trigger);
+
+    // Astryx renders the Popover navigation entries as Items (button semantics),
+    // not Radix-generated `role="menuitem"` nodes — assert by stable data-testid
+    // instead of the framework-coupled role that the old dropdown emitted.
     expect(screen.getByText("operator@roxabi.dev")).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /utilisateurs/i })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /design system/i })).toBeTruthy();
+    expect(screen.getByTestId("user-menu-users").textContent).toMatch(/utilisateurs/i);
+    expect(screen.getByTestId("user-menu-design-system").textContent).toMatch(/design system/i);
   });
 });

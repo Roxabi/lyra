@@ -31,6 +31,18 @@ if (!window.ResizeObserver) {
   };
 }
 
+// jsdom (26) doesn't implement the native Popover API that Astryx's layer
+// primitives (Popover/DropdownMenu/Tooltip) call via showPopover()/hidePopover()
+// in useLayer. Polyfill as no-ops so opening a layer doesn't throw in unit
+// tests. jsdom applies no UA `[popover]{display:none}` styling, so layer content
+// is always present in the test DOM (query it by testid); true open/close
+// visibility is covered by e2e.
+if (!HTMLElement.prototype.showPopover) {
+  HTMLElement.prototype.showPopover = () => {};
+  HTMLElement.prototype.hidePopover = () => {};
+  HTMLElement.prototype.togglePopover = () => true;
+}
+
 afterEach(() => {
   cleanup();
 });

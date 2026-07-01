@@ -1,3 +1,4 @@
+import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { ShippingContainer } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -13,7 +14,6 @@ import {
   ListToolbarHeader,
   ListToolbarSearch,
 } from "@/components/ui/list-toolbar";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { type FleetRow, type FleetStatus, fetchFleet, type ImageDigestStatus } from "@/lib/api";
 import { FLEET_STATUSES, type FleetSortKey, filterFleet, sortFleet } from "@/lib/fleet-filters";
@@ -60,11 +60,11 @@ function FleetTableSkeleton() {
     <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
       {[0, 1, 2, 3].map((i) => (
         <div key={i} className="flex items-center gap-4 border-b border-border/30 py-2">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-6 w-12 rounded-full" />
-          <Skeleton className="h-6 w-14 rounded-full" />
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-4 w-40" />
+          <Skeleton width={128} height={16} />
+          <Skeleton width={48} height={24} radius="rounded" />
+          <Skeleton width={56} height={24} radius="rounded" />
+          <Skeleton width={64} height={16} />
+          <Skeleton width={160} height={16} />
         </div>
       ))}
     </div>

@@ -9,18 +9,85 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import TYPE_CHECKING
+import uuid
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from ..agent import AgentBase
     from ..messaging.message import InboundMessage
+    from ..ports.active_jobs import ActiveJobsRecorder
     from .pool import Pool
 
+from roxabi_contracts.jobs.subjects import jobs_steer
+
 from ..messaging.message import Response
+from ..ports.active_jobs import ActiveJobEntry
 from .pool_observer import _TURN_PERSIST_ERRORS
 from .pool_processor_exec import _safe_dispatch, guarded_process_one
 
 log = logging.getLogger(__name__)
+
+
+def _active_jobs_recorder(pool: Pool) -> ActiveJobsRecorder | None:
+    """Fetch the hub's active-jobs recorder via ``PoolContext``, if available.
+
+    Defensive: a context predating the accessor (e.g. a test double) yields
+    ``None`` and the pool runs with no registry side-effects.
+    """
+    getter = getattr(pool._ctx, "active_jobs_recorder", None)
+    if not callable(getter):
+        return None
+    return cast("ActiveJobsRecorder | None", getter())
+
+
+async def _open_active_job(pool: Pool) -> str | None:
+    """Register this run in the active-jobs registry; return its job_id.
+
+    Best-effort side-channel: the registry is observability + routing support,
+    never on the turn's critical path.  ANY failure (registry error, missing
+    recorder, test double) is swallowed so message processing always proceeds.
+    """
+    recorder = _active_jobs_recorder(pool)
+    if recorder is None:
+        return None
+    job_id = uuid.uuid4().hex
+    entry = ActiveJobEntry(
+        job_id=job_id,
+        pool_id=pool.pool_id,
+        status="open",
+        started_at=datetime.now(UTC),
+        steer_subject=jobs_steer(job_id),
+        concurrency_mode="steer",
+    )
+    try:
+        await recorder.open(entry)
+    except Exception:  # noqa: BLE001 — side-channel: never break the turn
+        log.warning(
+            "[pool:%s] active-jobs: open failed — run not registered",
+            pool.pool_id,
+            exc_info=True,
+        )
+        return None
+    return job_id
+
+
+async def _close_active_job(pool: Pool, job_id: str | None) -> None:
+    """Remove this run from the registry; best-effort (TTL heals a miss)."""
+    if job_id is None:
+        return
+    recorder = _active_jobs_recorder(pool)
+    if recorder is None:
+        return
+    try:
+        await recorder.close(job_id)
+    except Exception:  # noqa: BLE001 — side-channel: never break the turn
+        log.warning(
+            "[pool:%s] active-jobs: close failed for %r",
+            pool.pool_id,
+            job_id,
+            exc_info=True,
+        )
 
 
 class PoolProcessor:
@@ -38,7 +105,9 @@ class PoolProcessor:
         """Consume inbox with debounce aggregation and cancel-in-flight."""
         pool = self._pool
         _last_msg: InboundMessage | None = None
+        _job_id: str | None = None
         try:
+            _job_id = await _open_active_job(pool)
             while True:
                 if pool._inbox.empty():
                     break
@@ -94,6 +163,7 @@ class PoolProcessor:
             raise
         finally:
             pool._current_task = None
+            await _close_active_job(pool, _job_id)
 
     async def _process_with_cancel(
         self,

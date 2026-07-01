@@ -1,3 +1,4 @@
+import { Icon } from "@astryxdesign/core/Icon";
 import {
   SideNav,
   SideNavCollapseButton,
@@ -26,14 +27,15 @@ export function AppSideNav() {
   const renderItems = (items: AppNavItem[]) =>
     items.map((item) => {
       const active = isNavItemActive(pathname, item);
-      const Icon = item.Icon;
       return (
         <SideNavItem
           key={item.to}
           label={t(item.labelKey)}
           href={item.to}
           isSelected={active}
-          icon={<Icon className="size-4" weight={active ? "fill" : "regular"} aria-hidden />}
+          // Domain glyph routed through Astryx Icon (#2091). Active state is
+          // conveyed by SideNavItem's isSelected highlight, so no weight swap.
+          icon={<Icon icon={item.Icon} size="sm" />}
         />
       );
     });

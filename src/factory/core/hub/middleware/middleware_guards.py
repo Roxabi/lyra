@@ -1,4 +1,4 @@
-"""Early middleware stages (0–4): trace, platform validation, trust, rate limit."""
+"""Early middleware stages (0–3): trace, platform validation, identity, rate limit."""
 
 from __future__ import annotations
 
@@ -69,28 +69,18 @@ class ValidatePlatformMiddleware:
         return await next(msg, ctx)
 
 
-class ResolveTrustMiddleware:
-    """Stage 2: resolve trust level from Hub authenticator (C3).
+class ResolveIdentityMiddleware:
+    """Stage 2: hub-side identity resolution (C3) — ban list + admin flag.
 
-    Must precede TrustGuardMiddleware.
+    Adapters forward ``trust_level=PUBLIC``. This stage re-resolves identity via
+    the Authenticator (BLOCKED ban check, ``is_admin`` for operator bypass) and
+    drops BLOCKED users before binding or agent authorization (ADR-090).
     """
 
     async def __call__(
         self, msg: InboundMessage, ctx: PipelineContext, next: Next
     ) -> PipelineResult:
         msg = ctx.hub._resolve_message_trust(msg)
-        return await next(msg, ctx)
-
-
-class TrustGuardMiddleware:
-    """Stage 3: drop BLOCKED users (C3). Trust resolved by ResolveTrustMiddleware."""
-
-    async def __call__(
-        self,
-        msg: InboundMessage,
-        ctx: PipelineContext,
-        next: Next,
-    ) -> PipelineResult:
         if msg.trust_level == TrustLevel.BLOCKED:
             log.info(
                 "trust_blocked user=%s platform=%s — message dropped",
@@ -107,7 +97,7 @@ class TrustGuardMiddleware:
 
 
 class RateLimitMiddleware:
-    """Stage 4: drop messages that exceed the per-user rate limit."""
+    """Stage 3: drop messages that exceed the per-user rate limit."""
 
     async def __call__(
         self,

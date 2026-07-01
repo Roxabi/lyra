@@ -8,6 +8,7 @@ describe("nav", () => {
     expect(resolvePageTitle("/jobs")).toEqual({ key: "nav.jobs" });
     expect(resolvePageTitle("/integrations")).toEqual({ key: "nav.integrations" });
     expect(resolvePageTitle("/ops")).toEqual({ key: "nav.ops" });
+    expect(resolvePageTitle("/spans")).toEqual({ key: "nav.spans" });
     expect(resolvePageTitle("/design-system")).toEqual({ key: "nav.designSystem" });
     expect(resolvePageTitle("/users")).toEqual({ key: "nav.users" });
   });

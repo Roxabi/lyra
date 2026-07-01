@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import TYPE_CHECKING
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 
 from factory.dashboard.e2e import (
     e2e_enabled,
@@ -17,15 +19,21 @@ from factory.dashboard.e2e import (
     stub_jobs_steer,
     stub_ops_health,
     stub_ops_logs,
+    stub_pipeline,
     stub_resume,
     stub_sessions_list,
     stub_sessions_turns,
 )
 from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
 from factory.dashboard.otel_client import fetch_spans
+from factory.dashboard.pipeline_stream import (
+    PIPELINE_STREAM_ID,
+    pipeline_sse_events,
+)
 from factory.dashboard.routes.bff_admin import register_admin_routes
 from factory.dashboard.routes.bff_agents import register_agent_routes
 from factory.dashboard.routes.bff_common import map_hub_errors
+from factory.dashboard.stream_tokens import StreamTokenRegistry
 from roxabi_contracts.dashboard import (
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,
@@ -55,7 +63,9 @@ def _sessions_auth_required() -> bool:
 
 
 def build_bff_router(  # noqa: C901, PLR0915
-    adapter: WebAdapter, hub: DashboardHubClient
+    adapter: WebAdapter,
+    hub: DashboardHubClient,
+    tokens: StreamTokenRegistry,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/bff")
 
@@ -225,6 +235,48 @@ def build_bff_router(  # noqa: C901, PLR0915
             if mapped is not None:
                 raise mapped from exc
             raise
+
+    @router.get("/pipeline")
+    async def pipeline_list() -> dict:
+        if e2e_enabled():
+            return stub_pipeline().model_dump()
+        try:
+            return (await hub.pipeline_list()).model_dump()
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
+
+    @router.post("/pipeline/stream-token")
+    async def pipeline_stream_token() -> dict[str, str]:
+        stream_token = tokens.mint(PIPELINE_STREAM_ID)
+        return {"stream_token": stream_token}
+
+    @router.get("/pipeline/stream")
+    async def pipeline_stream(
+        request: Request,
+        token: str | None = Query(default=None),
+    ) -> StreamingResponse:
+        if not tokens.verify(PIPELINE_STREAM_ID, token):
+            raise HTTPException(status_code=403, detail="invalid stream token")
+
+        async def _client_connected() -> bool:
+            return not await request.is_disconnected()
+
+        async def event_gen():
+            try:
+                async for frame in pipeline_sse_events(
+                    hub,
+                    is_connected=_client_connected,
+                ):
+                    yield frame
+            except asyncio.CancelledError:
+                return
+            finally:
+                tokens.revoke(PIPELINE_STREAM_ID)
+
+        return StreamingResponse(event_gen(), media_type="text/event-stream")
 
     @router.post("/sessions/resume")
     async def resume_session(

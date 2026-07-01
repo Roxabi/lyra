@@ -290,16 +290,28 @@ class TestAuthDrift:
 
     def test_daemon_reload_called(self) -> None:
         """converge runs `systemctl --user daemon-reload` once, right after step 4's
-        `make quadlet-install NO_RESTART=1` (which itself skips the reload), so the
-        restart(s) below pick up Quadlet unit content installed/rendered in steps 3-4
-        instead of relaunching from a stale generated unit.
+        `make quadlet-install NO_RESTART=1` (which itself skips the reload) and BEFORE
+        any restart, so the restart(s) below pick up Quadlet unit content
+        installed/rendered in steps 3-4 instead of relaunching from a stale unit.
 
-        Non-tautology: if the daemon-reload were removed from converge.sh, this
-        assertion would fail → RED.
+        Non-tautology: removing the daemon-reload, OR moving it after `_restart_nats`,
+        would fail an assertion here → RED. (Ordering is the whole point of the fix.)
         """
         _, lines = self._run()
-        assert any("daemon-reload" in line for line in lines), (
-            f"expected 'daemon-reload' in systemctl log; got: {lines!r}"
+        reload_idx = next(
+            (i for i, line in enumerate(lines) if "daemon-reload" in line), None
+        )
+        restart_idx = next(
+            (i for i, line in enumerate(lines) if "restart factory-nats" in line),
+            None,
+        )
+        assert reload_idx is not None, f"expected daemon-reload; got: {lines!r}"
+        assert restart_idx is not None, (
+            f"expected restart factory-nats; got: {lines!r}"
+        )
+        assert reload_idx < restart_idx, (
+            f"daemon-reload (idx {reload_idx}) must precede restart factory-nats "
+            f"(idx {restart_idx}); got: {lines!r}"
         )
 
     def test_no_unit_scoped_reload(self) -> None:
@@ -358,16 +370,28 @@ class TestStructuralDrift:
 
     def test_daemon_reload_called(self) -> None:
         """converge runs `systemctl --user daemon-reload` once, right after step 4's
-        `make quadlet-install NO_RESTART=1` (which itself skips the reload), so the
-        restart(s) below pick up Quadlet unit content installed/rendered in steps 3-4
-        instead of relaunching from a stale generated unit.
+        `make quadlet-install NO_RESTART=1` (which itself skips the reload) and BEFORE
+        any restart, so the restart(s) below pick up Quadlet unit content
+        installed/rendered in steps 3-4 instead of relaunching from a stale unit.
 
-        Non-tautology: if the daemon-reload were removed from converge.sh, this
-        assertion would fail → RED.
+        Non-tautology: removing the daemon-reload, OR moving it after `_restart_nats`,
+        would fail an assertion here → RED. (Ordering is the whole point of the fix.)
         """
         _, lines = self._run()
-        assert any("daemon-reload" in line for line in lines), (
-            f"expected 'daemon-reload' in systemctl log; got: {lines!r}"
+        reload_idx = next(
+            (i for i, line in enumerate(lines) if "daemon-reload" in line), None
+        )
+        restart_idx = next(
+            (i for i, line in enumerate(lines) if "restart factory-nats" in line),
+            None,
+        )
+        assert reload_idx is not None, f"expected daemon-reload; got: {lines!r}"
+        assert restart_idx is not None, (
+            f"expected restart factory-nats; got: {lines!r}"
+        )
+        assert reload_idx < restart_idx, (
+            f"daemon-reload (idx {reload_idx}) must precede restart factory-nats "
+            f"(idx {restart_idx}); got: {lines!r}"
         )
 
     def test_no_unit_scoped_reload(self) -> None:

@@ -171,7 +171,15 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@uv run --frozen factory bot init
 	@rm -f "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)/nats.container" \
 	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/factory-nats.container"
-	@for f in deploy/quadlet/*.network deploy/quadlet/*.volume deploy/quadlet/*.pod deploy/quadlet/*.container; do \
+	@# Skip disabled=true units (langfuse ×6 + otel-collector, ADR-097) — mirror the disabled
+	@# enforcement in cluster_plan.py/deploy.sh. Without this, quadlet-install re-installs a
+	@# disabled unit's file that the prior deploy.sh --prune just removed, and the Quadlet
+	@# generator wires it into default.target.wants → langfuse restarts on the next M1 reboot.
+	@# Fail-safe: a parse error yields an empty list → copies everything (the old behaviour).
+	@_disabled=$$(python3 -c "import tomllib; d=tomllib.load(open('deploy/quadlet.toml','rb')); print(' '.join(x[k] for sec,k in (('component','container'),('volume','volume'),('network','network'),('pod','pod')) for x in d.get(sec,{}).values() if x.get('disabled')))" 2>/dev/null); \
+	for f in deploy/quadlet/*.network deploy/quadlet/*.volume deploy/quadlet/*.pod deploy/quadlet/*.container; do \
+		bn=$$(basename "$$f"); \
+		case " $$_disabled " in *" $$bn "*) continue ;; esac; \
 		cp "$$f" "$(QUADLET_DIR)/"; \
 	done
 	@install -d -m 0700 "$(HOME)/.roxabi/factory/nats/jetstream"

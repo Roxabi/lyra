@@ -52,6 +52,33 @@ Rollback: edit `Image=` to previous semver tag → `systemctl --user daemon-relo
 
 ---
 
+## llmCLI cloud gateway
+
+The M₁ always-on cloud LLM gateway — **`llmcli`** (LiteLLM proxy :18091), **`llmcli-xai-forwarder`** (:18645, xAI/Grok OAuth relay), **`llmcli-fw-forwarder`** (:18646, Fireworks) — is deployed from this repo (`deploy/quadlet/llmcli*.container` + `[component.litellm-proxy|xai-forwarder|fw-forwarder]`, `host_roles=["factory-hub"]`). Rationale: HA requires M₁ to answer LLM 24/7 (LiteLLM→cloud), so the always-on gateway belongs with the always-on hub.
+
+**Boundary** — factory owns *deployment* (host placement, converge lifecycle, digest pin, secret wiring); Roxabi/llmCLI owns *code + image* (`ghcr.io/roxabi/llmcli`, built + published by its CI) and the **M₂ local GPU worker** (`llmcli-nats-worker` + engines, `host_roles=["llm-worker"]`, unchanged — deferred). The units are byte-vendored from llmCLI; do not diverge them beyond the digest pin.
+
+**Carve-outs from § Hardening invariants** (intentional — do not "normalize"):
+- `UserNS=keep-id:uid=1502,gid=1502` — the llmCLI image runs as uid 1502 (distinct from factory 1500 / voicecli 1501). The `NoNewPrivileges`/`ReadOnly`/`DropCapability=all` trio is present.
+- The proxy master key is read from `~/.roxabi/llmcli/env/proxy.env` (grandfathered llmCLI data dir, `EnvironmentFile=`), **not** a `type=mount` secret — hence `required_secrets=[]`. Its value must equal `factory-litellm-key` (the bearer `factory-omp` sends); they are the same token today. Hardening to a `type=mount` `LLMCLI_API_KEY_FILE` secret needs an image change (follow-up).
+- xAI OAuth credentials live at `~/.roxabi/llmcli/credentials/` (rw bind-mount, per-host grant family — never a Podman secret, never Syncthing-synced, never copied between hosts).
+
+**Consumers** (ports + container-names are contract — do not rename): `factory-omp` → :18091/v1; Claude Code aliases + xai-research skill → host loopback :18091 / :18645; the proxy reaches the forwarders via roxabi.network DNS.
+
+### llmCLI cloud-gateway image
+
+Pinned by digest (¬autoupdate) so factory controls gateway bumps. To bump:
+
+```bash
+# 1. resolve the desired digest (current good staging on M₁, or a release tag)
+skopeo inspect docker://ghcr.io/roxabi/llmcli:staging --format '{{.Digest}}'
+# 2. set Image=ghcr.io/roxabi/llmcli@sha256:<digest> in all 3 deploy/quadlet/llmcli*.container
+# 3. commit → merge staging → M₁ converge picks it up
+#    (or manual: systemctl --user restart llmcli llmcli-xai-forwarder llmcli-fw-forwarder)
+```
+
+---
+
 ## Provisioning
 
 `provision.sh` — production host post-install script. Run once per machine, or after a full wipe.

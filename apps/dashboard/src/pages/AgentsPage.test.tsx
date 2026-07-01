@@ -185,6 +185,8 @@ describe("AgentDetailPage", () => {
       expect(agentsApi.patchAgentConfig).toHaveBeenCalled();
       expect(agentsApi.putAgentSoul).toHaveBeenCalled();
     });
+    // Success toast renders through the real ToastViewport (info → role=status).
+    expect(await screen.findByText(/Enregistré\./)).toBeTruthy();
   });
 
   it("shows secret lint warning when soul text matches token patterns", async () => {

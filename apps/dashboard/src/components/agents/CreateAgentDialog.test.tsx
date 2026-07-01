@@ -70,7 +70,7 @@ describe("CreateAgentDialog", () => {
     });
   });
 
-  it("shows a specific toast when the agent identifier already exists", async () => {
+  it("shows a specific error banner when the agent identifier already exists", async () => {
     const user = userEvent.setup();
     vi.spyOn(agentsApi, "createAgentConfig").mockRejectedValue(
       new BffApiError(409, "agent 'scout' already exists"),
@@ -80,12 +80,9 @@ describe("CreateAgentDialog", () => {
     await user.type(screen.getByLabelText(/identifiant/i), "scout");
     await user.click(screen.getByRole("button", { name: /^créer$/i }));
 
-    await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith({
-        body: "Un agent avec cet identifiant existe déjà.",
-        type: "error",
-      });
-    });
+    // Errors surface inline (dialog stays open), not via a toast behind the modal.
+    expect(await screen.findByText("Un agent avec cet identifiant existe déjà.")).toBeTruthy();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it("blocks submit for invalid slugs", async () => {

@@ -1,3 +1,4 @@
+import { Banner } from "@astryxdesign/core/Banner";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useToast } from "@astryxdesign/core/Toast";
@@ -58,9 +59,9 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
       reset();
       void navigate({ to: "/agents/$name", params: { name: cfg.name } });
     },
-    onError: (err) => {
-      showToast({ body: bffErrorMessage(err, t, "create"), type: "error" });
-    },
+    // Errors surface inline (Banner below) rather than via a toast: the dialog
+    // stays open for correction, and a toast would render behind the modal's
+    // top layer (dialog is promoted after the toast viewport).
   });
 
   const handleOpenChange = (next: boolean) => {
@@ -92,6 +93,10 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
           createMut.mutate();
         }}
       >
+        {createMut.isError ? (
+          <Banner status="error" title={bffErrorMessage(createMut.error, t, "create")} />
+        ) : null}
+
         <TextInput
           label={t("createName")}
           value={name}

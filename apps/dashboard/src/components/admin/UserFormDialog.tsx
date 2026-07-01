@@ -1,3 +1,4 @@
+import { Banner } from "@astryxdesign/core/Banner";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { TextInput } from "@astryxdesign/core/TextInput";
@@ -89,9 +90,9 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
       onOpenChange(false);
       reset();
     },
-    onError: (err) => {
-      showToast({ body: bffErrorMessage(err, t, isEdit ? "edit" : "create"), type: "error" });
-    },
+    // Errors surface inline (Banner below) rather than via a toast: the dialog
+    // stays open for correction, and a toast would render behind the modal's
+    // top layer (dialog is promoted after the toast viewport).
   });
 
   const handleOpenChange = (next: boolean) => {
@@ -125,6 +126,13 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
           saveMut.mutate();
         }}
       >
+        {saveMut.isError ? (
+          <Banner
+            status="error"
+            title={bffErrorMessage(saveMut.error, t, isEdit ? "edit" : "create")}
+          />
+        ) : null}
+
         {isEdit && user ? (
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">{t("colUser")}</p>

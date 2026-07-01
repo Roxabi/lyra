@@ -88,6 +88,8 @@ describe("JobsPage", () => {
         job_name: "omp",
       });
     });
+    // Success toast renders through the real ToastViewport.
+    expect(await screen.findByText(/job-new/)).toBeTruthy();
   });
 
   it("submits cancel mutation", async () => {

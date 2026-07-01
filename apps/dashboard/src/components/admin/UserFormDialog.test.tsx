@@ -80,7 +80,7 @@ describe("UserFormDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("shows a specific toast on email conflict", async () => {
+  it("shows a specific error banner on email conflict", async () => {
     const user = userEvent.setup();
     vi.spyOn(adminApi, "createAdminUser").mockRejectedValue(
       new BffApiError(409, "email already registered: ops@example.com"),
@@ -91,12 +91,9 @@ describe("UserFormDialog", () => {
     await user.type(screen.getByLabelText(/email/i), "ops@example.com");
     await user.click(screen.getByRole("button", { name: /créer/i }));
 
-    await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith({
-        body: "Cet email est déjà enregistré.",
-        type: "error",
-      });
-    });
+    // Errors surface inline (dialog stays open), not via a toast behind the modal.
+    expect(await screen.findByText("Cet email est déjà enregistré.")).toBeTruthy();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it("shows platform conflict toast on create", async () => {
@@ -111,12 +108,9 @@ describe("UserFormDialog", () => {
     await user.type(screen.getByLabelText(/telegram/i), "99999");
     await user.click(screen.getByRole("button", { name: /créer/i }));
 
-    await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith({
-        body: "Cette identité plateforme est déjà liée à un autre utilisateur.",
-        type: "error",
-      });
-    });
+    expect(
+      await screen.findByText("Cette identité plateforme est déjà liée à un autre utilisateur."),
+    ).toBeTruthy();
   });
 
   it("shows edit-specific toast on patch conflict", async () => {
@@ -137,12 +131,7 @@ describe("UserFormDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /enregistrer/i }));
 
-    await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith({
-        body: "Cet email est déjà enregistré.",
-        type: "error",
-      });
-    });
+    expect(await screen.findByText("Cet email est déjà enregistré.")).toBeTruthy();
   });
 
   it("closes via the Astryx DialogHeader close button", async () => {

@@ -8,6 +8,14 @@ backend:
   framework: typer
   path: src/factory
 
+frontend:
+  package_manager: bun
+  workspaces: [apps/dashboard, packages, brand]
+  lint_cmd: bun run lint
+  format_cmd: bun run format
+  test_cmd: bun run --filter @roxabi-factory/dashboard test
+  build_cmd: bun run build:dashboard
+
 build:
   formatter: ruff
   formatter_config: pyproject.toml
@@ -35,7 +43,21 @@ commands:
   format: uv run ruff format .
   typecheck: uv run pyright
   install: uv sync
+  dev_setup: tools/dev-setup.sh
+  qg: scripts/qg run
   worktree_setup: tools/worktree-setup.sh
+
+# Language/layout conventions — see CONTRIBUTING.md § Language & layout
+conventions:
+  product:
+    backend: python
+    frontend: js_ts
+  tooling:
+    orchestration: bash # scripts/qg, drift wrappers, CI entrypoints
+    quality_gates: tools/ # declared in quality_gates below; invoked only via scripts/qg
+    domain_ops: scripts/ # ACL/deploy scanners; bash entry → python implementation
+  requires:
+    qg_runner: yq # pinned in tools/dev-setup.sh and .github/workflows/ci.yml
 
 artifacts:
   analyses: artifacts/analyses
@@ -51,101 +73,275 @@ standards:
   contributing: docs/GETTING-STARTED.md
 
 quality_gates:
+  lint:
+    enabled: true
+    script: uv run ruff check .
+    stages: [pre-commit, ci]
+
+  typecheck:
+    enabled: true
+    script: uv run pyright
+    stages: [pre-commit, ci]
+
   file_length:
     enabled: true
     max_lines: 300
     metric: sloc
     globs: ["src/**/*.py"]
     exemptions_file: tools/file_exemptions.txt
+    stages: [pre-commit, ci]
+
+  file_length_roxabi_nats:
+    enabled: true
+    script: tools/check_file_length.sh
+    stages: [pre-commit]
+    env:
+      QG_FILE_ROOT: packages/roxabi-nats/src/
+      QG_FILE_EXEMPTIONS: packages/roxabi-nats/tools/file_exemptions.txt
+
+  file_length_roxabi_contracts:
+    enabled: true
+    script: tools/check_file_length.sh
+    stages: [pre-commit]
+    env:
+      QG_FILE_ROOT: packages/roxabi-contracts/src/
+      QG_FILE_EXEMPTIONS: packages/roxabi-contracts/tools/file_exemptions.txt
+
+  file_exemptions:
+    enabled: true
+    script: tools/check_file_exemptions.sh
+    stages: [pre-commit, ci]
+    description: every entry in file_exemptions.txt must have a non-expired expires=YYYY-MM-DD token
+
+  hardcoded_constants:
+    enabled: true
+    script: tools/check_hardcoded_constants.sh
+    stages: [pre-commit, ci]
+    description: block new hardcoded numeric literals in src/factory/core/
 
   folder_size:
     enabled: true
     max_files: 15
     globs: ["src/**"]
     exemptions_file: tools/folder_exemptions.txt
+    stages: [pre-commit, ci]
 
   duplicate_test_basenames:
     enabled: true
     script: tools/check_duplicate_test_basenames.sh
+    stages: [pre-commit, ci]
     source: pyproject.toml [tool.pytest.ini_options].testpaths
 
   import_layers:
     enabled: true
-    stage: pre-push
     config: .importlinter
+    stages: [pre-commit, ci]
 
-  doc_drift:
+  codes_sync:
     enabled: true
-    script: tools/check_doc_drift.py
+    script: uv run python packages/roxabi-contracts/scripts/check_codes_sync.py --write
+    ci_script: |
+      uv run python packages/roxabi-contracts/scripts/check_codes_sync.py || EC=$?
+      [[ ${EC:-0} -eq 0 || ${EC:-0} -eq 2 ]] || exit "${EC:-1}"
+    stages: [pre-commit, ci]
+    files: ^packages/roxabi-contracts/(src/roxabi_contracts/errors\.py|docs/error-codes\.md|scripts/check_codes_sync\.py)$
 
-  doc_semantic_drift:
+  lint_js:
     enabled: true
-    script: tools/check_doc_semantic_drift.py
+    script: bun run lint
+    requires: bun
+    stages: [pre-commit, ci]
+    files: ^(apps/|packages/shared/|brand/|biome\.json|package\.json|bun\.lock)$
+    description: Biome lint on apps/packages/brand (#1771)
+
+  dashboard_unit_test:
+    enabled: true
+    script: bun run --filter @roxabi-factory/dashboard test
+    requires: bun
+    stages: [pre-push, ci]
+    files: ^(apps/dashboard/|packages/shared/|brand/)
+    description: Vitest unit tests for dashboard SPA (#1771)
+
+  dashboard_build:
+    enabled: true
+    script: bun run build:dashboard
+    requires: bun
+    stages: [ci]
+    description: Dashboard SPA production build (#1771)
+
+  dashboard_dist_assert:
+    enabled: true
+    script: test -f apps/dashboard/dist/index.html
+    stages: [ci]
+
+  trufflehog:
+    enabled: true
+    script: trufflehog git file://. --only-verified --fail
+    requires: trufflehog
+    stages: [pre-push]
+
+  check_single_write_tool_display_config:
+    enabled: true
+    script: tools/check_single_write_tool_display_config.sh
+    stages: [pre-push]
 
   no_runtime_toml_bots:
     enabled: true
     script: tools/check_no_runtime_toml_bots.sh
+    stages: [pre-push, ci]
+
+  license:
+    enabled: true
+    script: uv run tools/license_check.py
+    stages: [pre-push, ci]
 
   architecture_snapshot:
     enabled: true
-    stage: pre-push
     script: tools/check_architecture_snapshot.sh
+    stages: [pre-push, ci]
+
+  qg_conf_drift:
+    enabled: true
+    script: bash scripts/check-qg-conf-drift.sh
+    stages: [pre-push, ci]
+
+  acl_specs_drift:
+    enabled: true
+    script: bash scripts/check-acl-specs-drift.sh
+    stages: [pre-push, ci]
+
+  acl_authconf_drift:
+    enabled: true
+    script: bash scripts/check-acl-authconf-drift.sh
+    stages: [pre-push, ci]
 
   debt_expiry:
     enabled: true
-    stage: pre-push
     script: tools/check_debt_expiry.sh
-
-  hardcoded_constants:
-    enabled: true
-    script: tools/check_hardcoded_constants.sh
-    description: block new hardcoded numeric literals in src/factory/core/ (grandfather baseline burned down → retired, #1654/#1698/#1706)
-
-  file_exemptions:
-    enabled: true
-    script: tools/check_file_exemptions.sh
-    description: every entry in file_exemptions.txt must have a non-expired expires=YYYY-MM-DD token
+    stages: [pre-push, ci]
 
   test_sleep:
     enabled: true
-    stage: pre-push
     script: tools/check_test_sleep.sh
+    stages: [pre-push, ci]
+
+  doc_drift:
+    enabled: true
+    script: tools/check_doc_drift.py
+    stages: [ci]
+
+  doc_semantic_drift:
+    enabled: true
+    script: tools/check_doc_semantic_drift.py
+    stages: [ci]
+
+  doc_drift_bundle:
+    enabled: true
+    stages: [ci]
+    description: legacy symbol grep + doc_drift + doc_semantic_drift
 
   secrets_drift:
     enabled: true
-    stage: pre-push
     script: tools/check_secrets_drift.sh
-    description: assert unit Secret= names ⊆ quadlet.toml required_secrets, quadlet.toml == manifest, factory-nats-* seeds have acl-matrix factory+container identities, and required_secrets ↔ secrets-policy.toml [secret.*] (check d, #1901) (changes under deploy/)
+    stages: [pre-push, ci]
 
   volumes_table:
     enabled: true
-    stage: pre-push
     script: tools/check_volumes_table.sh
-    description: verify deployment.md Volumes table prose matches Volume= directives in adapter quadlet templates
+    stages: [pre-push, ci]
 
   quadlet_manifest_install:
     enabled: true
-    stage: pre-push
     script: tools/check_quadlet_manifest_install.sh
-    description: bidirectional manifest↔install — every container/volume/network/pod declared in deploy/quadlet.toml is wired into Makefile quadlet-install (forward, #1867), AND every on-disk unit file in deploy/quadlet/ is declared in quadlet.toml (reverse — orphan-install guard, #1901)
+    stages: [pre-push, ci]
 
   quadlet_component_source:
     enabled: true
     script: tools/check_quadlet_component_source.sh
-    description: every container declared in deploy/quadlet.toml must have a source file at deploy/quadlet/<name>.container or deploy/quadlet/<name>.container.tmpl — prevents S2-class gap where a manifest entry exists but no unit file is present (#2038)
+    stages: [ci]
 
   secrets_source:
     enabled: true
-    stage: pre-push
     script: tools/check_secrets_source.sh
-    description: assert every nats-seed/required secret in secrets-policy.toml has its source file under the factory data dir; skip gracefully when the data dir is absent (CI/dev). optional secrets WARN, not fail (#1901)
+    stages: [pre-push]
 
   str_exc_bus_bound:
     enabled: true
     script: tools/check_str_exc_bus_bound.sh
-    description: block str(exc)/f"{exc}"/repr(exc) from flowing into SanitizedError construction or NATS-bus-bound message fields (SanitizedError discipline #1212, ADR-073)
+    stages: [ci]
 
   omp_pin_lockstep:
     enabled: true
     script: tools/check_omp_pin_lockstep.sh
-    description: assert the omp release pin stays in lockstep across the three files — OMP_SHA256 (deploy/omp-base/Containerfile) == _PINNED_SHA256 (src/factory/adapters/omp/_rpc_digest.py) and OMP_VERSION == Dockerfile factory-omp-base tag — so a version bump can't ship a partial pin → runtime DigestMismatchError (#1873)
+    stages: [ci]
+
+qg:
+  run_order:
+    pre-commit:
+      - lint
+      - typecheck
+      - file_length
+      - file_exemptions
+      - hardcoded_constants
+      - file_length_roxabi_nats
+      - file_length_roxabi_contracts
+      - folder_size
+      - duplicate_test_basenames
+      - import_layers
+      - codes_sync
+      - lint_js
+    pre-push:
+      - dashboard_unit_test
+      - trufflehog
+      - check_single_write_tool_display_config
+      - no_runtime_toml_bots
+      - license
+      - architecture_snapshot
+      - qg_conf_drift
+      - acl_specs_drift
+      - acl_authconf_drift
+      - debt_expiry
+      - test_sleep
+    ci:
+      - dashboard_build
+      - lint_js
+      - dashboard_unit_test
+      - dashboard_dist_assert
+      - file_length
+      - file_exemptions
+      - hardcoded_constants
+      - str_exc_bus_bound
+      - omp_pin_lockstep
+      - qg_conf_drift
+      - duplicate_test_basenames
+      - folder_size
+      - no_runtime_toml_bots
+      - doc_drift_bundle
+      - secrets_drift
+      - quadlet_manifest_install
+      - volumes_table
+      - quadlet_component_source
+      - architecture_snapshot
+      - debt_expiry
+      - test_sleep
+      - import_layers
+      - lint
+      - typecheck
+      - license
+      - codes_sync
+      - acl_specs_drift
+      - acl_authconf_drift
+  profiles:
+    local:
+      - lint_js
+      - lint
+      - typecheck
+      - dashboard_build
+      - dashboard_unit_test
+      - import_layers
+      - acl_specs_drift
+      - acl_authconf_drift
+      - architecture_snapshot
+      - secrets_drift
+      - file_length
+      - folder_size

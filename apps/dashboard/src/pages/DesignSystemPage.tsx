@@ -52,7 +52,9 @@ function Section({
     <Card>
       <Stack gap={4}>
         <Stack gap={1}>
-          <Text type="label">{title}</Text>
+          <Text type="label" as="h3">
+            {title}
+          </Text>
           {description ? <Text type="supporting">{description}</Text> : null}
         </Stack>
         <Stack gap={4}>{children}</Stack>
@@ -223,7 +225,9 @@ export function DesignSystemPage() {
         <Card>
           <Stack gap={4}>
             <Stack gap={1}>
-              <Text type="label">CardTitle</Text>
+              <Text type="label" as="h3">
+                CardTitle
+              </Text>
               <Text type="supporting">CardDescription — texte secondaire sous le titre.</Text>
             </Stack>
             <p className="text-sm">CardContent — contenu principal de la carte.</p>

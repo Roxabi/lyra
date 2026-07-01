@@ -113,7 +113,9 @@ export function JobsPage() {
 
       <Card>
         <Stack gap={4}>
-          <Text type="label">{t("launch.title")}</Text>
+          <Text type="label" as="h3">
+            {t("launch.title")}
+          </Text>
           <Stack gap={3}>
             <div className="flex flex-wrap items-center gap-3">
               <PopoverSelect
@@ -319,7 +321,9 @@ export function JobsPage() {
 
       <Card>
         <Stack gap={4}>
-          <Text type="label">{t("workers.title")}</Text>
+          <Text type="label" as="h3">
+            {t("workers.title")}
+          </Text>
           <Stack gap={2}>
             {agents.map((agent) => {
               const health = status.find((s) => s.agent === agent);

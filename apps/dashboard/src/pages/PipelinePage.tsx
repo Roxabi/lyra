@@ -73,7 +73,9 @@ export function PipelinePage() {
       <Card>
         <Stack gap={4}>
           <Stack gap={3}>
-            <Text type="label">{t("pipeline.tableTitle")}</Text>
+            <Text type="label" as="h3">
+              {t("pipeline.tableTitle")}
+            </Text>
             <div className="flex flex-wrap gap-2">
               {FILTER_OPTIONS.map((filter) => {
                 const active = activeFilters.has(filter);

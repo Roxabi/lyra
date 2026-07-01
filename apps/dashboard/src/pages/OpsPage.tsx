@@ -129,13 +129,15 @@ export function OpsPage() {
           {engines.map((engine) => (
             <Card key={engine.engine}>
               <Stack gap={4} align="start">
-                <Text type="label">{engine.label}</Text>
+                <Text type="label" as="h3">
+                  {engine.label}
+                </Text>
                 <Badge
                   variant={engine.reachable ? "success" : "error"}
                   label={engine.reachable ? tc("status.online") : tc("status.offline")}
                 />
                 {engine.detail ? (
-                  <p className="mt-2 truncate text-xs text-muted-foreground">{engine.detail}</p>
+                  <p className="truncate text-xs text-muted-foreground">{engine.detail}</p>
                 ) : null}
               </Stack>
             </Card>
@@ -153,18 +155,22 @@ export function OpsPage() {
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card data-testid="ops-harness-card">
+        <Card data-testid="ops-harness-card-clipool">
           <Stack gap={4} align="start">
-            <Text type="label">{t("harness.clipool")}</Text>
+            <Text type="label" as="h3">
+              {t("harness.clipool")}
+            </Text>
             <Badge
               variant={clipoolUp ? "success" : "error"}
               label={clipoolUp ? tc("status.online") : tc("status.offline")}
             />
           </Stack>
         </Card>
-        <Card data-testid="ops-harness-card">
+        <Card data-testid="ops-harness-card-omp">
           <Stack gap={4} align="start">
-            <Text type="label">{t("harness.omp")}</Text>
+            <Text type="label" as="h3">
+              {t("harness.omp")}
+            </Text>
             <Badge
               variant={ompUp ? "success" : "error"}
               label={ompUp ? tc("status.online") : tc("status.offline")}
@@ -183,14 +189,16 @@ export function OpsPage() {
             className="flex-wrap"
           >
             <Stack gap={1}>
-              <Text type="label">{t("logs.title")}</Text>
+              <Text type="label" as="h3">
+                {t("logs.title")}
+              </Text>
               {container ? (
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {t("logs.containerFilter", { container })}
                 </p>
               ) : null}
               {logs?.query ? (
-                <p className="mt-1 font-mono text-[10px] text-muted-foreground">{logs.query}</p>
+                <p className="font-mono text-[10px] text-muted-foreground">{logs.query}</p>
               ) : null}
             </Stack>
             {container ? null : (

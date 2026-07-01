@@ -40,7 +40,9 @@ export function SpansPage() {
 
       <Card>
         <Stack gap={4}>
-          <Text type="label">Spans {data ? `(${data.total})` : ""}</Text>
+          <Text type="label" as="h3">
+            Spans {data ? `(${data.total})` : ""}
+          </Text>
           {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
           {isError && <p className="text-sm text-destructive">Failed to load spans.</p>}
           {data && data.items.length === 0 && (
@@ -71,7 +73,9 @@ export function SpansPage() {
       {selected && (
         <Card>
           <Stack gap={4}>
-            <Text type="label">Raw JSON</Text>
+            <Text type="label" as="h3">
+              Raw JSON
+            </Text>
             <pre className="max-h-96 overflow-auto rounded bg-muted p-3 text-xs">
               {JSON.stringify(selected, null, 2)}
             </pre>

@@ -257,7 +257,9 @@ export function AgentDetailPage() {
 
       <Card>
         <Stack gap={4}>
-          <Text type="label">Soul</Text>
+          <Text type="label" as="h3">
+            Soul
+          </Text>
           <Stack gap={4}>
             <Banner
               status="warning"

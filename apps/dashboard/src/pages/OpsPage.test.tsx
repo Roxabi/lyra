@@ -43,8 +43,8 @@ function renderOps() {
 function harnessCard(title: string) {
   const heading = screen.getByText(title);
   // Astryx Card carries no `.dashboard-surface` class; scope by the harness
-  // card's stable data-testid instead.
-  const card = heading.closest('[data-testid="ops-harness-card"]');
+  // card's stable data-testid prefix (per-harness suffix keeps testids unique).
+  const card = heading.closest('[data-testid^="ops-harness-card"]');
   expect(card).not.toBeNull();
   return within(card as HTMLElement);
 }

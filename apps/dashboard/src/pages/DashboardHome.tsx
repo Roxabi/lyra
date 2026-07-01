@@ -131,10 +131,12 @@ export function DashboardHome() {
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card padding={0}>
           <Stack gap={4}>
-            <Stack direction="horizontal" justify="between" align="center">
-              <Text type="label">{t("agents.title")}</Text>
+            <Stack direction="horizontal" justify="between" align="center" className="px-6 pt-6">
+              <Text type="label" as="h3">
+                {t("agents.title")}
+              </Text>
               <Badge variant="neutral" className="tabular-nums" label={rosterAgents.length} />
             </Stack>
             {statusLoading ? <TableRowsSkeleton /> : null}
@@ -186,7 +188,9 @@ export function DashboardHome() {
         <Card>
           <Stack gap={4}>
             <Stack direction="horizontal" justify="between" align="center">
-              <Text type="label">{t("jobs.title")}</Text>
+              <Text type="label" as="h3">
+                {t("jobs.title")}
+              </Text>
               <div className="flex items-center gap-2">
                 <Badge variant="neutral" className="tabular-nums" label={jobs.length} />
                 <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
@@ -228,7 +232,9 @@ export function DashboardHome() {
       <Card>
         <Stack gap={4}>
           <Stack direction="horizontal" justify="between" align="center">
-            <Text type="label">{t("chats.title")}</Text>
+            <Text type="label" as="h3">
+              {t("chats.title")}
+            </Text>
             <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
               <Link to="/chat">{t("chats.openChat")}</Link>
             </Button>

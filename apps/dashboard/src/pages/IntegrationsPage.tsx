@@ -119,7 +119,9 @@ function ConnectorSection({
     <Card>
       <Stack gap={4}>
         <Stack gap={1}>
-          <Text type="label">{title}</Text>
+          <Text type="label" as="h3">
+            {title}
+          </Text>
           <Text type="supporting">{description}</Text>
         </Stack>
         <Stack gap={4}>
@@ -197,7 +199,9 @@ export function IntegrationsPage() {
       <Card>
         <Stack gap={4}>
           <Stack gap={1}>
-            <Text type="label">{t("auth.title")}</Text>
+            <Text type="label" as="h3">
+              {t("auth.title")}
+            </Text>
             <Text type="supporting">{t("auth.hint")}</Text>
           </Stack>
           <div className="flex flex-wrap items-end gap-3">

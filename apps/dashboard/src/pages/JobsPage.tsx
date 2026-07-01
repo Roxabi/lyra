@@ -2,6 +2,14 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Stack } from "@astryxdesign/core/Stack";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "@astryxdesign/core/Table";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
@@ -221,15 +229,14 @@ export function JobsPage() {
 
         {!isLoading && !isError && visibleJobs.length > 0 ? (
           <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-border/50 text-xs">
+            <Table className="min-w-[760px]" dividers="rows" hasHover>
+              <TableHeader>
+                <TableRow isHeaderRow>
                   <SortableTableHeader
                     label={t("table.job")}
                     active={sortKey === "job_id"}
                     direction={sortDirection}
                     onClick={() => onSort("job_id")}
-                    className="px-4 py-2"
                   />
                   <SortableTableHeader
                     label={t("table.agent")}
@@ -237,52 +244,43 @@ export function JobsPage() {
                     direction={sortDirection}
                     onClick={() => onSort("agent")}
                   />
-                  <th className="py-2 pr-3 font-medium text-muted-foreground">
-                    {t("table.platform")}
-                  </th>
+                  <TableHeaderCell scope="col">{t("table.platform")}</TableHeaderCell>
                   <SortableTableHeader
                     label={t("table.status")}
                     active={sortKey === "status"}
                     direction={sortDirection}
                     onClick={() => onSort("status")}
                   />
-                  <th className="py-2 pr-3 font-medium text-muted-foreground">{t("table.mode")}</th>
+                  <TableHeaderCell scope="col">{t("table.mode")}</TableHeaderCell>
                   <SortableTableHeader
                     label={t("table.started")}
                     active={sortKey === "started_at"}
                     direction={sortDirection}
                     onClick={() => onSort("started_at")}
                   />
-                  <th className="py-2 pr-3 font-medium text-muted-foreground">
-                    {t("table.steer")}
-                  </th>
-                  <th className="py-2 pr-4 font-medium text-muted-foreground">
-                    {t("table.actions")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+                  <TableHeaderCell scope="col">{t("table.steer")}</TableHeaderCell>
+                  <TableHeaderCell scope="col">{t("table.actions")}</TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {visibleJobs.map((job) => (
-                  <tr
-                    key={job.job_id}
-                    className="border-b border-border/30 transition-colors last:border-0 hover:bg-muted/15"
-                  >
-                    <td className="px-4 py-2.5 pr-3">
+                  <TableRow key={job.job_id}>
+                    <TableCell>
                       <p className="font-mono text-xs">{job.job_id}</p>
                       <p className="truncate text-[10px] text-muted-foreground">{job.pool_id}</p>
-                    </td>
-                    <td className="py-2.5 pr-3">{job.agent ? displayAgentName(job.agent) : "—"}</td>
-                    <td className="py-2.5 pr-3 capitalize">{job.platform ?? "—"}</td>
-                    <td className="py-2.5 pr-3">
+                    </TableCell>
+                    <TableCell>{job.agent ? displayAgentName(job.agent) : "—"}</TableCell>
+                    <TableCell className="capitalize">{job.platform ?? "—"}</TableCell>
+                    <TableCell>
                       <Badge variant={jobStatusToBadgeVariant(job.status)} label={job.status} />
-                    </td>
-                    <td className="py-2.5 pr-3 text-xs text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
                       {job.concurrency_mode}
-                    </td>
-                    <td className="py-2.5 pr-3 text-xs text-muted-foreground tabular-nums">
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">
                       {new Date(job.started_at).toLocaleString()}
-                    </td>
-                    <td className="py-2.5 pr-3">
+                    </TableCell>
+                    <TableCell>
                       <div className="flex min-w-[12rem] items-center gap-2">
                         <TextInput
                           label={t("table.steerPlaceholder")}
@@ -316,8 +314,8 @@ export function JobsPage() {
                           →
                         </Button>
                       </div>
-                    </td>
-                    <td className="py-2.5 pr-4">
+                    </TableCell>
+                    <TableCell>
                       <Button
                         type="button"
                         variant="secondary"
@@ -328,11 +326,11 @@ export function JobsPage() {
                       >
                         {t("table.cancel")}
                       </Button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         ) : null}
       </div>

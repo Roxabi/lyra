@@ -75,6 +75,9 @@ describe("JobsPage", () => {
     expect(screen.getByText("Lancer un job OMP")).toBeTruthy();
     expect(screen.getAllByText("Lyra").length).toBeGreaterThan(0);
     expect(screen.getAllByText("open").length).toBeGreaterThan(0);
+    // Astryx Table renders real table semantics (role=table + sortable columnheaders).
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: /Agent/i })).toBeTruthy();
   });
 
   it("submits launch mutation", async () => {

@@ -9,6 +9,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 import { createAgentConfig } from "@/lib/agents-api";
+import { bffErrorMessage } from "@/lib/bff-errors";
 import type { HarnessKind } from "@/lib/chats-storage";
 
 const SLUG_RE = /^[a-z][a-z0-9-]*$/;
@@ -56,8 +57,8 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
       reset();
       void navigate({ to: "/agents/$name", params: { name: cfg.name } });
     },
-    onError: () => {
-      toast.error(t("createError"));
+    onError: (err) => {
+      toast.error(bffErrorMessage(err, t, "create"));
     },
   });
 

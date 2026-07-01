@@ -150,6 +150,9 @@ jobs:
       - name: Check quadlet manifest install wiring (quadlet.toml → Makefile/verify/converge)
         run: bash tools/check_quadlet_manifest_install.sh
 
+      - name: Check quadlet component source files (quadlet.toml → deploy/quadlet/<name>.container)
+        run: bash tools/check_quadlet_component_source.sh
+
       - name: Check deployment.md Volumes table matches quadlet Volume= directives
         run: bash tools/check_volumes_table.sh
 

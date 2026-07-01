@@ -5,6 +5,7 @@ import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { useToast } from "@astryxdesign/core/Toast";
 import { Briefcase } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -20,7 +21,6 @@ import {
   ListToolbarSearch,
 } from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
-import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { displayAgentName } from "@/lib/agents";
 import {
@@ -40,6 +40,7 @@ export function JobsPage() {
   const { t } = useTranslation("jobs");
   const { t: tc } = useTranslation("common");
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [launchAgent, setLaunchAgent] = useState("");
   const [launchPrompt, setLaunchPrompt] = useState("");
   const [steerTexts, setSteerTexts] = useState<Record<string, string>>({});
@@ -83,32 +84,32 @@ export function JobsPage() {
       }),
     onSuccess: (res) => {
       if (res.accepted) {
-        toast.success(t("launch.launched", { jobId: res.job_id }));
+        showToast({ body: t("launch.launched", { jobId: res.job_id }), type: "info" });
       } else {
-        toast.error(res.message);
+        showToast({ body: res.message, type: "error" });
       }
       setLaunchPrompt("");
       void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
     },
-    onError: () => toast.error(t("launch.launchFailed")),
+    onError: () => showToast({ body: t("launch.launchFailed"), type: "error" }),
   });
 
   const steerMutation = useMutation({
     mutationFn: ({ jobId, text }: { jobId: string; text: string }) => steerJob(jobId, text),
     onSuccess: (_res, vars) => {
       setSteerTexts((prev) => ({ ...prev, [vars.jobId]: "" }));
-      toast.success(t("steer.sent", { jobId: vars.jobId }));
+      showToast({ body: t("steer.sent", { jobId: vars.jobId }), type: "info" });
     },
-    onError: () => toast.error(t("steer.failed")),
+    onError: () => showToast({ body: t("steer.failed"), type: "error" }),
   });
 
   const cancelMutation = useMutation({
     mutationFn: (jobId: string) => cancelJob(jobId),
     onSuccess: (_res, jobId) => {
-      toast.success(t("cancel.sent", { jobId }));
+      showToast({ body: t("cancel.sent", { jobId }), type: "info" });
       void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
     },
-    onError: () => toast.error(t("cancel.failed")),
+    onError: () => showToast({ body: t("cancel.failed"), type: "error" }),
   });
 
   function onSort(nextKey: JobsSortKey) {

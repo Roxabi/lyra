@@ -125,6 +125,33 @@ def _create_db_with_sentinel(path: Path) -> None:
 
 
 class TestEnsureAuthDbSchema:
+    def test_migrates_legacy_users_table_without_email(self, tmp_path: Path) -> None:
+        """Regression — pre-email auth.db must not crash hub bootstrap."""
+        db_path = tmp_path / "auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE users ("
+            "id TEXT PRIMARY KEY, display_name TEXT, "
+            "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        conn.commit()
+        conn.close()
+
+        _ensure_auth_db_schema(tmp_path)
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+            assert "email" in cols
+            index = conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='index' AND name='idx_users_email'"
+            ).fetchone()
+            assert index is not None
+        finally:
+            conn.close()
+
     @pytest.mark.asyncio
     async def test_allows_simultaneous_auth_db_store_connections(
         self, tmp_path: Path

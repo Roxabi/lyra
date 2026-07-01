@@ -37,7 +37,9 @@ EXPECTED_CONTAINERS = [
     "factory-otel",
     # llmCLI cloud gateway — deployment owned by factory (vendored from Roxabi/llmCLI).
     # Enabled + declared after factory-otel, so they join the converge restart set.
-    "llmcli",
+    # Proxy container renamed llmcli → factory-litellm (factory-<component> convention;
+    # avoids a filename collision with llmCLI's own M₂ llmcli.container).
+    "factory-litellm",
     "llmcli-xai-forwarder",
     "llmcli-fw-forwarder",
 ]

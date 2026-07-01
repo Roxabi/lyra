@@ -3,11 +3,7 @@ import { BffApiError } from "@/lib/bff-api";
 
 type FormMode = "create" | "edit";
 
-export function bffErrorMessage(
-  err: unknown,
-  t: TFunction,
-  mode: FormMode,
-): string {
+export function bffErrorMessage(err: unknown, t: TFunction, mode: FormMode): string {
   if (!(err instanceof BffApiError)) {
     return t(mode === "edit" ? "editError" : "createError");
   }

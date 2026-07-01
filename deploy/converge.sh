@@ -63,6 +63,15 @@ _do_converge() {
     echo "==> factory: rendering templates + aux units..."
     make -C "${FACTORY_DIR}" quadlet-install NO_RESTART=1
 
+    # 4b) NO_RESTART=1 above also skips daemon-reload (the reload lives solely in
+    # deploy/quadlet-install-verify.sh, which the NO_RESTART branch never runs). Reload
+    # here, unconditionally, so systemd regenerates .service units from the Quadlet
+    # content steps 3-4 just installed/rendered (bot add/remove → Secret= churn in
+    # factory-telegram/-discord.container, image digest bumps, hardening edits) BEFORE
+    # any restart below — else the restarts relaunch from the stale generated unit.
+    echo "==> systemd: reloading user daemon (pick up Quadlet unit changes)..."
+    systemctl --user daemon-reload
+
     # 5) Pull voiceCLI if present (HEAD tracked in convergence stamp)
     VOICE_DIR="${VOICE_DIR:-${HOME}/projects/voiceCLI}"
     if [ -d "${VOICE_DIR}/.git" ]; then

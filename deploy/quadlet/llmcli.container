@@ -1,0 +1,54 @@
+[Unit]
+Description=llmCLI LiteLLM proxy (:18091)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+# Vendored from Roxabi/llmCLI (deploy/quadlet/). Deployment owned by roxabi-factory
+# (M₁ 24/7 cloud gateway, factory-hub role); the image is still built + published by
+# llmCLI CI. Pinned by digest so factory controls gateway bumps — ¬autoupdate label.
+# Bump recipe → deploy/AGENTS.md § llmCLI cloud-gateway image.
+Image=ghcr.io/roxabi/llmcli@sha256:3d52ccf3397b7b6e487833869eeb3b6a9c01d68426b4a3aaf0452b2a706f8217
+ContainerName=llmcli
+# Bridge membership enables container-to-container DNS routing (closes #60):
+# other services on roxabi.network reach this proxy as `http://llmcli:18091`
+# instead of hardcoded LAN IPs. PublishPort below keeps host-side clients
+# (Claude Code aliases, ssh/tailnet) reaching :18091 via loopback.
+Network=roxabi.network
+PublishPort=18091:18091
+Volume=%h/.roxabi/llmcli:/home/llmcli/.roxabi/llmcli:ro,Z
+EnvironmentFile=%h/.roxabi/llmcli/env/proxy.env
+Environment=LLMCLI_PROXY_PORT=18091
+Environment=LLMCLI_PROXY_HOST=0.0.0.0
+UserNS=keep-id:uid=1502,gid=1502
+Exec=proxy
+HealthCmd=pgrep -f litellm
+HealthInterval=30s
+HealthStartPeriod=15s
+NoNewPrivileges=true
+DropCapability=all
+# ReadOnly rootfs — host-validated 2026-06-16 (D-6 ops-audit, M₂). LiteLLM writes
+# the merged proxy config to ~/.local/state/llmcli/proxy.config.yaml; all runtime
+# writes (incl. a completion under load) land on the tmpfs set below — 0 EROFS.
+# mode=1777: a root-owned 0755 tmpfs EACCESes for the non-root uid 1502. The :ro
+# config mount above is unaffected. GPU units (llmcli-nats-worker) are EXCLUDED —
+# nvidia CDI hooks (create-symlinks/update-ldcache) mutate the rootfs → EROFS.
+ReadOnly=true
+Tmpfs=/tmp:mode=1777
+Tmpfs=/home/llmcli/.local:mode=1777
+Tmpfs=/home/llmcli/.cache:mode=1777
+Tmpfs=/home/llmcli/.config:mode=1777
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20s
+# RestartForceExitStatus: skip restart on provider-key (1) and litellm-missing (127) errors
+RestartForceExitStatus=1 127
+# Memory caps — contain a runaway to its cgroup instead of a global OOM freeze
+# (2026-06-01 M₂ freeze). LiteLLM proxy is lightweight; 2G/3G is ample headroom.
+MemoryHigh=2G
+MemoryMax=3G
+
+[Install]
+WantedBy=default.target

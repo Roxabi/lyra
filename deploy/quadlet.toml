@@ -133,6 +133,33 @@ container = "factory-otel.container"
 required_secrets = ["factory_otel_token"]
 host_roles = ["factory-hub"]
 
+# --- llmCLI cloud gateway (vendored from Roxabi/llmCLI) ----------------------
+# LiteLLM proxy (:18091) + xAI/Grok forwarder (:18645) + Fireworks forwarder
+# (:18646). Deployment owned here — M₁ always-on cloud LLM gateway (HA: M₁ must
+# answer LLM 24/7). Image is built + published by llmCLI CI, pinned by digest in
+# the .container files (¬autoupdate). Local GPU inference (llmcli-nats-worker,
+# M₂) stays in Roxabi/llmCLI. required_secrets=[]: the proxy master key is read
+# from ~/.roxabi/llmcli/env/proxy.env (grandfathered llmcli data dir), not a
+# Podman secret — hardening to a type=mount _FILE secret is a tracked follow-up.
+[component.litellm-proxy]
+container = "llmcli.container"
+required_secrets = []
+env_file = "~/.roxabi/llmcli/env/proxy.env"
+host_roles = ["factory-hub"]
+
+[component.xai-forwarder]
+container = "llmcli-xai-forwarder.container"
+required_secrets = []
+# xAI OAuth credentials via rw bind-mount (~/.roxabi/llmcli/credentials — per-host,
+# never a Podman secret, never Syncthing-synced); see the .container file.
+host_roles = ["factory-hub"]
+
+[component.fw-forwarder]
+container = "llmcli-fw-forwarder.container"
+required_secrets = []
+env_file = "~/.roxabi/llmcli/env/proxy.env"
+host_roles = ["factory-hub"]
+
 [volume.data]
 volume = "factory-data.volume"
 host_roles = ["factory-hub"]

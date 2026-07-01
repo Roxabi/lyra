@@ -269,6 +269,25 @@ class TestDashboardBffRealPath:
         nc.request.assert_awaited_once()
         assert nc.request.await_args.args[0] == SUBJECTS.fleet_list
 
+    def test_pipeline_stream_requires_token(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+    ) -> None:
+        tc, _adapter, _nc = wired_client
+        res = tc.get("/api/bff/pipeline/stream")
+        assert res.status_code == 403
+
+    def test_pipeline_stream_token_mints(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _adapter, _nc = wired_client
+        token_res = tc.post("/api/bff/pipeline/stream-token")
+        assert token_res.status_code == 200
+        assert token_res.json()["stream_token"]
+
     def test_fleet_list_e2e_stub(
         self,
         wired_client: tuple[TestClient, WebAdapter, AsyncMock],

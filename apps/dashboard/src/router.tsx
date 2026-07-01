@@ -15,6 +15,7 @@ import { FleetPage } from "@/pages/FleetPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { JobsPage } from "@/pages/JobsPage";
 import { OpsPage } from "@/pages/OpsPage";
+import { PipelinePage } from "@/pages/PipelinePage";
 import { SpansPage } from "@/pages/SpansPage";
 
 interface RouterContext {
@@ -85,6 +86,12 @@ const fleetRoute = createRoute({
   component: FleetPage,
 });
 
+const pipelineRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/pipeline",
+  component: PipelinePage,
+});
+
 const designSystemRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/design-system",
@@ -112,6 +119,7 @@ const routeTree = rootRoute.addChildren([
   integrationsRoute,
   agentsRoute,
   agentDetailRoute,
+  pipelineRoute,
   fleetRoute,
   obsRoute,
   spansRoute,

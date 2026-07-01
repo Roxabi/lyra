@@ -124,6 +124,26 @@ class TestFailOpen:
 # ---------------------------------------------------------------------------
 
 
+class TestAdminBypass:
+    async def test_admin_bypasses_without_grant(self) -> None:
+        """ADR-090 §1: [admin].user_ids bypass agent grant check via is_admin."""
+        from factory.core.hub.hub_protocol import Binding
+
+        msg = make_inbound_message(user_id="tg:user:admin")
+        msg = dataclasses.replace(msg, is_admin=True)
+        binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
+        ctx = _make_ctx(binding=binding, agent=MagicMock())
+        authorizer = _make_authorizer(allowed=False)
+        mw = AuthorizeAgentMiddleware(authorizer=authorizer)
+        next_fn = _make_next()
+
+        result = await mw(msg, ctx, next_fn)
+
+        next_fn.assert_awaited_once_with(msg, ctx)
+        authorizer.authorize.assert_not_called()
+        assert result is _PASS
+
+
 class TestAuthorizedPath:
     async def test_authorized_passes_through(self) -> None:
         """When authorizer returns allowed=True, call next unchanged."""
@@ -435,8 +455,8 @@ class TestPipelineComposition:
 
         stages = build_default_pipeline(_make_hub())._middlewares
 
-        assert len(stages) == 11
-        assert isinstance(stages[7], AuthorizeAgentMiddleware)
+        assert len(stages) == 10
+        assert isinstance(stages[6], AuthorizeAgentMiddleware)
 
     async def test_authorizer_forwarded_to_stage(self) -> None:
         from factory.core.hub.middleware import build_default_pipeline

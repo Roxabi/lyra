@@ -12,9 +12,8 @@ from .middleware_stages import (
     MessagePrepMiddleware,
     RateLimitMiddleware,
     ResolveBindingMiddleware,
-    ResolveTrustMiddleware,
+    ResolveIdentityMiddleware,
     TraceMiddleware,
-    TrustGuardMiddleware,
     ValidatePlatformMiddleware,
 )
 
@@ -28,8 +27,7 @@ __all__ = [
     "MessagePrepMiddleware",
     "RateLimitMiddleware",
     "ResolveBindingMiddleware",
-    "ResolveTrustMiddleware",
+    "ResolveIdentityMiddleware",
     "TraceMiddleware",
-    "TrustGuardMiddleware",
     "ValidatePlatformMiddleware",
 ]

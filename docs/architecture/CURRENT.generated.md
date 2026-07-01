@@ -213,6 +213,10 @@
 - **Required secrets:** factory-nats-discord, factory_blobstore_token
 - **Host roles:** factory-hub
 
+### fw-forwarder
+- **Container:** llmcli-fw-forwarder.container
+- **Host roles:** factory-hub
+
 ### gh-helper
 - **Container:** factory-gh-helper.container
 - **Required secrets:** factory-gh-pem, factory-nats-gh-helper
@@ -250,6 +254,10 @@
 
 ### langfuse-worker
 - **Container:** factory-langfuse-worker.container
+- **Host roles:** factory-hub
+
+### litellm-proxy
+- **Container:** llmcli.container
 - **Host roles:** factory-hub
 
 ### loki
@@ -291,6 +299,10 @@
 ### turn-writer
 - **Container:** factory-turn-writer.container
 - **Required secrets:** factory-nats-turn-writer
+- **Host roles:** factory-hub
+
+### xai-forwarder
+- **Container:** llmcli-xai-forwarder.container
 - **Host roles:** factory-hub
 
 ---

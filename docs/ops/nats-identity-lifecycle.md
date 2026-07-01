@@ -39,7 +39,7 @@ Expected output: `STATE=added` on the first run. A second run on the same host (
 **3. Validate lifecycle fields.**
 
 ```bash
-bash scripts/check-acl-matrix-retired.sh
+uv run factory-check-acl-retired
 ```
 
 Expected output: `ok — acl-matrix lifecycle fields valid`
@@ -104,7 +104,7 @@ If the identity appears as `requester` or `responder` in any flow entry, remove 
 **3. Validate lifecycle fields.**
 
 ```bash
-bash scripts/check-acl-matrix-retired.sh  # validates status, created_at, retired_at on ALL identities
+uv run factory-check-acl-retired  # validates status, created_at, retired_at on ALL identities
 ```
 
 Expected output: `ok — acl-matrix lifecycle fields valid`
@@ -163,7 +163,7 @@ This is optional — the file is inert after step 7.
 
 ---
 
-## CI checks — what `check-acl-matrix-retired.sh` validates
+## CI checks — what `factory-check-acl-retired` validates
 
 The script iterates every identity in `acl-matrix.json` and asserts:
 
@@ -188,7 +188,7 @@ A `--retire <name>` subcommand for `factory-acl` is planned. It will automate st
 
 - [`deploy/nats/acl-matrix.json`](../../deploy/nats/acl-matrix.json) — identity registry
 - [`scripts/gen_nkeys.py`](../../scripts/gen_nkeys.py) / `factory-acl` — seed generation and auth.conf rendering
-- [`scripts/check-acl-matrix-retired.sh`](../../scripts/check-acl-matrix-retired.sh) — lifecycle field validator
+- [`scripts/check_acl_matrix_retired.py`](../../scripts/check_acl_matrix_retired.py) — lifecycle field validator (`uv run factory-check-acl-retired` / `scripts/qg run acl_matrix_retired`)
 - [`scripts/render_acl_spec.py`](../../scripts/render_acl_spec.py) + [`scripts/render_acl_parity.py`](../../scripts/render_acl_parity.py) — spec table and parity fixture generators (`make nats-regen-specs`)
 - [`scripts/check-acl-specs-drift.sh`](../../scripts/check-acl-specs-drift.sh) — spec/fixture drift gate (CI + pre-push)
 - [nkey Rotation Runbook](nkey-rotation.md) — for suspected seed compromise (different scenario)

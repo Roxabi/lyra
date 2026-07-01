@@ -1,7 +1,9 @@
+import { Card } from "@astryxdesign/core/Card";
+import { Stack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { fetchSpans, type SpanRow } from "@/lib/api";
 
@@ -37,10 +39,10 @@ export function SpansPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Spans {data ? `(${data.total})` : ""}</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <Stack gap={4}>
+          <Text type="label" as="h3">
+            Spans {data ? `(${data.total})` : ""}
+          </Text>
           {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
           {isError && <p className="text-sm text-destructive">Failed to load spans.</p>}
           {data && data.items.length === 0 && (
@@ -65,19 +67,19 @@ export function SpansPage() {
               ))}
             </ul>
           )}
-        </CardContent>
+        </Stack>
       </Card>
 
       {selected && (
         <Card>
-          <CardHeader>
-            <CardTitle>Raw JSON</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <Stack gap={4}>
+            <Text type="label" as="h3">
+              Raw JSON
+            </Text>
             <pre className="max-h-96 overflow-auto rounded bg-muted p-3 text-xs">
               {JSON.stringify(selected, null, 2)}
             </pre>
-          </CardContent>
+          </Stack>
         </Card>
       )}
     </div>

@@ -1,6 +1,10 @@
 import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
+import { Card } from "@astryxdesign/core/Card";
+import { ClickableCard } from "@astryxdesign/core/ClickableCard";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { Stack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { List, Moon, Robot, SquaresFour, Sun } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
@@ -16,7 +20,6 @@ import { PageIntro } from "@/components/layout/PageIntro";
 import { ModelPicker } from "@/components/ModelPicker";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
@@ -46,12 +49,14 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <Card className="dashboard-surface border-border/60 shadow-none">
-      <CardHeader className="pb-4">
-        <CardTitle className="text-base font-semibold">{title}</CardTitle>
-        {description ? <CardDescription>{description}</CardDescription> : null}
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
+    <Card>
+      <Stack gap={4}>
+        <Stack gap={1}>
+          <Text type="label">{title}</Text>
+          {description ? <Text type="supporting">{description}</Text> : null}
+        </Stack>
+        <Stack gap={4}>{children}</Stack>
+      </Stack>
     </Card>
   );
 }
@@ -215,18 +220,22 @@ export function DesignSystemPage() {
       </Section>
 
       <Section title="Card" description="Variants tone, elevated et interactive.">
-        <Card className="border-border/60 shadow-none">
-          <CardHeader>
-            <CardTitle>CardTitle</CardTitle>
-            <CardDescription>CardDescription — texte secondaire sous le titre.</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <Card>
+          <Stack gap={4}>
+            <Stack gap={1}>
+              <Text type="label">CardTitle</Text>
+              <Text type="supporting">CardDescription — texte secondaire sous le titre.</Text>
+            </Stack>
             <p className="text-sm">CardContent — contenu principal de la carte.</p>
-          </CardContent>
+          </Stack>
         </Card>
-        <Card interactive className="max-w-xs border-border/60">
-          <CardContent className="p-4 text-sm">Carte interactive — hover + scale.</CardContent>
-        </Card>
+        <ClickableCard
+          label="Carte interactive — hover + scale."
+          onClick={() => {}}
+          className="max-w-xs"
+        >
+          <p className="text-sm">Carte interactive — hover + scale.</p>
+        </ClickableCard>
       </Section>
 
       <Section

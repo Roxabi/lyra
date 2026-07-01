@@ -1,5 +1,8 @@
 import { Badge } from "@astryxdesign/core/Badge";
+import { Card } from "@astryxdesign/core/Card";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { Stack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { Briefcase } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +10,6 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
@@ -109,39 +111,40 @@ export function JobsPage() {
     <div className="space-y-6 pb-8">
       <PageIntro>{t("subtitle")}</PageIntro>
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base">{t("launch.title")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <PopoverSelect
-              label={t("launch.agentLabel")}
-              value={selectedAgent}
-              options={agents.map((a) => ({
-                value: a,
-                label: displayAgentName(a),
-              }))}
-              onChange={setLaunchAgent}
+      <Card>
+        <Stack gap={4}>
+          <Text type="label">{t("launch.title")}</Text>
+          <Stack gap={3}>
+            <div className="flex flex-wrap items-center gap-3">
+              <PopoverSelect
+                label={t("launch.agentLabel")}
+                value={selectedAgent}
+                options={agents.map((a) => ({
+                  value: a,
+                  label: displayAgentName(a),
+                }))}
+                onChange={setLaunchAgent}
+              />
+              <Badge variant="neutral" label="factory.jobs.omp" />
+            </div>
+            <TextArea
+              label={t("launch.promptLabel")}
+              isLabelHidden
+              value={launchPrompt}
+              onChange={(next) => setLaunchPrompt(next)}
+              placeholder={t("launch.promptPlaceholder")}
+              rows={3}
             />
-            <Badge variant="neutral" label="factory.jobs.omp" />
-          </div>
-          <TextArea
-            label={t("launch.promptLabel")}
-            isLabelHidden
-            value={launchPrompt}
-            onChange={(next) => setLaunchPrompt(next)}
-            placeholder={t("launch.promptPlaceholder")}
-            rows={3}
-          />
-          <Button
-            type="button"
-            disabled={!launchPrompt.trim() || !selectedAgent || launchMutation.isPending}
-            onClick={() => launchMutation.mutate()}
-          >
-            {launchMutation.isPending ? t("launch.submitting") : t("launch.submit")}
-          </Button>
-        </CardContent>
+            <Button
+              type="button"
+              className="self-start"
+              disabled={!launchPrompt.trim() || !selectedAgent || launchMutation.isPending}
+              onClick={() => launchMutation.mutate()}
+            >
+              {launchMutation.isPending ? t("launch.submitting") : t("launch.submit")}
+            </Button>
+          </Stack>
+        </Stack>
       </Card>
 
       <div className="space-y-4">
@@ -314,32 +317,32 @@ export function JobsPage() {
         ) : null}
       </div>
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base">{t("workers.title")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {agents.map((agent) => {
-            const health = status.find((s) => s.agent === agent);
-            return (
-              <div
-                key={agent}
-                className="flex items-center justify-between rounded-lg bg-background/40 px-3 py-2.5"
-              >
-                <div>
-                  <p className="text-sm font-medium">{displayAgentName(agent)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Harness {health?.harness ?? "claude-cli"}
-                  </p>
+      <Card>
+        <Stack gap={4}>
+          <Text type="label">{t("workers.title")}</Text>
+          <Stack gap={2}>
+            {agents.map((agent) => {
+              const health = status.find((s) => s.agent === agent);
+              return (
+                <div
+                  key={agent}
+                  className="flex items-center justify-between rounded-lg bg-background/40 px-3 py-2.5"
+                >
+                  <div>
+                    <p className="text-sm font-medium">{displayAgentName(agent)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Harness {health?.harness ?? "claude-cli"}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={health?.online ? "success" : "neutral"}
+                    label={health?.online ? tc("status.active") : tc("status.inactive")}
+                  />
                 </div>
-                <Badge
-                  variant={health?.online ? "success" : "neutral"}
-                  label={health?.online ? tc("status.active") : tc("status.inactive")}
-                />
-              </div>
-            );
-          })}
-        </CardContent>
+              );
+            })}
+          </Stack>
+        </Stack>
       </Card>
     </div>
   );

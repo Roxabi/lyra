@@ -1,10 +1,12 @@
 import { Badge } from "@astryxdesign/core/Badge";
+import { Card } from "@astryxdesign/core/Card";
+import { Stack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   type ConnectorInstallation,
@@ -114,48 +116,50 @@ function ConnectorSection({
   });
 
   return (
-    <Card className="dashboard-surface border-border/60 shadow-none">
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {children}
-        <div className="space-y-2">
-          <p className="text-sm font-medium">{registerLabel}</p>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[12rem] flex-1">
-              <label htmlFor={fieldId} className="mb-1 block text-xs text-muted-foreground">
-                {fieldLabel}
-              </label>
-              <Input
-                id={fieldId}
-                value={externalId}
-                onChange={(e) => setExternalId(e.target.value)}
-                placeholder={fieldLabel}
-              />
+    <Card>
+      <Stack gap={4}>
+        <Stack gap={1}>
+          <Text type="label">{title}</Text>
+          <Text type="supporting">{description}</Text>
+        </Stack>
+        <Stack gap={4}>
+          {children}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">{registerLabel}</p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[12rem] flex-1">
+                <label htmlFor={fieldId} className="mb-1 block text-xs text-muted-foreground">
+                  {fieldLabel}
+                </label>
+                <Input
+                  id={fieldId}
+                  value={externalId}
+                  onChange={(e) => setExternalId(e.target.value)}
+                  placeholder={fieldLabel}
+                />
+              </div>
+              <Button
+                disabled={!externalId.trim()}
+                loading={registerMutation.isPending}
+                onClick={() => registerMutation.mutate()}
+              >
+                {registerLabel}
+              </Button>
             </div>
-            <Button
-              disabled={!externalId.trim()}
-              loading={registerMutation.isPending}
-              onClick={() => registerMutation.mutate()}
-            >
-              {registerLabel}
-            </Button>
           </div>
-        </div>
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p>
-        ) : null}
-        {isError ? <p className="text-sm text-destructive">{t("errors.load")}</p> : null}
-        {data ? (
-          <InstallationTable
-            installations={data.installations}
-            onDisconnect={(id) => disconnectMutation.mutate(id)}
-            disconnectingId={disconnectingId}
-          />
-        ) : null}
-      </CardContent>
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p>
+          ) : null}
+          {isError ? <p className="text-sm text-destructive">{t("errors.load")}</p> : null}
+          {data ? (
+            <InstallationTable
+              installations={data.installations}
+              onDisconnect={(id) => disconnectMutation.mutate(id)}
+              disconnectingId={disconnectingId}
+            />
+          ) : null}
+        </Stack>
+      </Stack>
     </Card>
   );
 }
@@ -190,25 +194,27 @@ export function IntegrationsPage() {
     <div className="space-y-6">
       <PageIntro>{t("subtitle")}</PageIntro>
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base">{t("auth.title")}</CardTitle>
-          <p className="text-sm text-muted-foreground">{t("auth.hint")}</p>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[16rem] flex-1">
-            <Input
-              type="password"
-              value={tokenDraft}
-              onChange={(e) => setTokenDraft(e.target.value)}
-              placeholder={t("auth.placeholder")}
-              autoComplete="off"
-            />
+      <Card>
+        <Stack gap={4}>
+          <Stack gap={1}>
+            <Text type="label">{t("auth.title")}</Text>
+            <Text type="supporting">{t("auth.hint")}</Text>
+          </Stack>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[16rem] flex-1">
+              <Input
+                type="password"
+                value={tokenDraft}
+                onChange={(e) => setTokenDraft(e.target.value)}
+                placeholder={t("auth.placeholder")}
+                autoComplete="off"
+              />
+            </div>
+            <Button variant="outline" onClick={() => setOperatorToken(tokenDraft)}>
+              {t("auth.save")}
+            </Button>
           </div>
-          <Button variant="outline" onClick={() => setOperatorToken(tokenDraft)}>
-            {t("auth.save")}
-          </Button>
-        </CardContent>
+        </Stack>
       </Card>
 
       {catalogLoading ? (

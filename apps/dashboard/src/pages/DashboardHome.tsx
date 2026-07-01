@@ -1,5 +1,8 @@
 import { Badge } from "@astryxdesign/core/Badge";
+import { Card } from "@astryxdesign/core/Card";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { Stack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { Briefcase, ChatCircleDots, Robot, Warning } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -8,7 +11,6 @@ import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { displayAgentName } from "@/lib/agents";
 import {
@@ -129,12 +131,12 @@ export function DashboardHome() {
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="dashboard-surface border-border/60 shadow-none">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-semibold">{t("agents.title")}</CardTitle>
-            <Badge variant="neutral" className="tabular-nums" label={rosterAgents.length} />
-          </CardHeader>
-          <CardContent className="p-0">
+        <Card>
+          <Stack gap={4}>
+            <Stack direction="horizontal" justify="between" align="center">
+              <Text type="label">{t("agents.title")}</Text>
+              <Badge variant="neutral" className="tabular-nums" label={rosterAgents.length} />
+            </Stack>
             {statusLoading ? <TableRowsSkeleton /> : null}
             {!statusLoading && rosterAgents.length === 0 ? (
               <div className="px-4 pb-4">
@@ -178,89 +180,93 @@ export function DashboardHome() {
                 </table>
               </div>
             ) : null}
-          </CardContent>
+          </Stack>
         </Card>
 
-        <Card className="dashboard-surface border-border/60 shadow-none">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-semibold">{t("jobs.title")}</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge variant="neutral" className="tabular-nums" label={jobs.length} />
-              <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
-                <Link to="/jobs">{tc("actions.viewAll")}</Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {jobsLoading ? <ListRowsSkeleton rows={Math.max(jobs.length, 3)} /> : null}
-            {!jobsLoading && jobs.length === 0 ? (
-              <EmptyState
-                icon={Briefcase}
-                title={t("jobs.empty")}
-                hint={t("jobs.emptyHint")}
-                className="py-8"
-              />
-            ) : null}
-            {!jobsLoading && jobs.length > 0
-              ? jobs.map((job) => (
-                  <div
-                    key={job.job_id}
-                    className="flex items-center justify-between gap-3 rounded-md bg-muted/30 px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-mono text-xs">{job.job_id}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {job.agent ? displayAgentName(job.agent) : "—"}
-                      </p>
+        <Card>
+          <Stack gap={4}>
+            <Stack direction="horizontal" justify="between" align="center">
+              <Text type="label">{t("jobs.title")}</Text>
+              <div className="flex items-center gap-2">
+                <Badge variant="neutral" className="tabular-nums" label={jobs.length} />
+                <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+                  <Link to="/jobs">{tc("actions.viewAll")}</Link>
+                </Button>
+              </div>
+            </Stack>
+            <Stack gap={2}>
+              {jobsLoading ? <ListRowsSkeleton rows={Math.max(jobs.length, 3)} /> : null}
+              {!jobsLoading && jobs.length === 0 ? (
+                <EmptyState
+                  icon={Briefcase}
+                  title={t("jobs.empty")}
+                  hint={t("jobs.emptyHint")}
+                  className="py-8"
+                />
+              ) : null}
+              {!jobsLoading && jobs.length > 0
+                ? jobs.map((job) => (
+                    <div
+                      key={job.job_id}
+                      className="flex items-center justify-between gap-3 rounded-md bg-muted/30 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-xs">{job.job_id}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {job.agent ? displayAgentName(job.agent) : "—"}
+                        </p>
+                      </div>
+                      <Badge variant={jobStatusToBadgeVariant(job.status)} label={job.status} />
                     </div>
-                    <Badge variant={jobStatusToBadgeVariant(job.status)} label={job.status} />
-                  </div>
-                ))
-              : null}
-          </CardContent>
+                  ))
+                : null}
+            </Stack>
+          </Stack>
         </Card>
       </div>
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-sm font-semibold">{t("chats.title")}</CardTitle>
-          <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
-            <Link to="/chat">{t("chats.openChat")}</Link>
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {previewTabs.length === 0 ? (
-            <EmptyState
-              icon={ChatCircleDots}
-              title={t("chats.empty")}
-              hint={t("chats.emptyHint")}
-              action={
-                agents.length > 0 ? (
-                  <Button size="sm" asChild>
-                    <Link to="/chat">{t("chats.openChat")}</Link>
+      <Card>
+        <Stack gap={4}>
+          <Stack direction="horizontal" justify="between" align="center">
+            <Text type="label">{t("chats.title")}</Text>
+            <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+              <Link to="/chat">{t("chats.openChat")}</Link>
+            </Button>
+          </Stack>
+          <Stack gap={2}>
+            {previewTabs.length === 0 ? (
+              <EmptyState
+                icon={ChatCircleDots}
+                title={t("chats.empty")}
+                hint={t("chats.emptyHint")}
+                action={
+                  agents.length > 0 ? (
+                    <Button size="sm" asChild>
+                      <Link to="/chat">{t("chats.openChat")}</Link>
+                    </Button>
+                  ) : undefined
+                }
+                className="py-8"
+              />
+            ) : (
+              previewTabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className="flex items-center justify-between gap-3 rounded-md bg-muted/30 px-3 py-2"
+                >
+                  <AgentIdentity
+                    agentId={tab.agent}
+                    avatarSize="sm"
+                    subtitle={`${tab.harness} · ${tab.model}`}
+                  />
+                  <Button variant="secondary" size="sm" className="h-8 shrink-0 text-xs" asChild>
+                    <Link to="/chat">{tc("actions.open")}</Link>
                   </Button>
-                ) : undefined
-              }
-              className="py-8"
-            />
-          ) : (
-            previewTabs.map((tab) => (
-              <div
-                key={tab.id}
-                className="flex items-center justify-between gap-3 rounded-md bg-muted/30 px-3 py-2"
-              >
-                <AgentIdentity
-                  agentId={tab.agent}
-                  avatarSize="sm"
-                  subtitle={`${tab.harness} · ${tab.model}`}
-                />
-                <Button variant="secondary" size="sm" className="h-8 shrink-0 text-xs" asChild>
-                  <Link to="/chat">{tc("actions.open")}</Link>
-                </Button>
-              </div>
-            ))
-          )}
-        </CardContent>
+                </div>
+              ))
+            )}
+          </Stack>
+        </Stack>
       </Card>
     </div>
   );

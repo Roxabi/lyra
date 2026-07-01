@@ -1,9 +1,11 @@
 import { Badge, type BadgeVariant } from "@astryxdesign/core/Badge";
+import { Card } from "@astryxdesign/core/Card";
+import { Stack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePipelineRuns } from "@/hooks/usePipelineRuns";
 import type { PipelineRun, PipelineStageStatus } from "@/lib/api";
 import { filterPipelineRuns, isPipelineRowStale, type PipelineFilter } from "@/lib/pipeline";
@@ -68,91 +70,91 @@ export function PipelinePage() {
 
       {isError ? <p className="text-sm text-destructive">{t("pipeline.loadError")}</p> : null}
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardHeader className="space-y-3 pb-2">
-          <CardTitle className="text-sm text-muted-foreground">
-            {t("pipeline.tableTitle")}
-          </CardTitle>
-          <div className="flex flex-wrap gap-2">
-            {FILTER_OPTIONS.map((filter) => {
-              const active = activeFilters.has(filter);
-              return (
-                <Button
-                  key={filter}
-                  type="button"
-                  size="sm"
-                  variant={active ? "default" : "outline"}
-                  onClick={() => toggleFilter(filter)}
+      <Card>
+        <Stack gap={4}>
+          <Stack gap={3}>
+            <Text type="label">{t("pipeline.tableTitle")}</Text>
+            <div className="flex flex-wrap gap-2">
+              {FILTER_OPTIONS.map((filter) => {
+                const active = activeFilters.has(filter);
+                return (
+                  <Button
+                    key={filter}
+                    type="button"
+                    size="sm"
+                    variant={active ? "default" : "outline"}
+                    onClick={() => toggleFilter(filter)}
+                  >
+                    {t(`pipeline.filters.${filter}`)}
+                  </Button>
+                );
+              })}
+            </div>
+          </Stack>
+          <Stack gap={4}>
+            {isLoading ? (
+              <p className="py-4 text-sm text-muted-foreground">{t("pipeline.loading")}</p>
+            ) : visibleRuns.length === 0 ? (
+              <p className="py-4 text-sm text-muted-foreground">
+                {runs.length === 0 ? t("pipeline.empty") : t("pipeline.noMatches")}
+              </p>
+            ) : (
+              visibleRuns.map((row: PipelineRun) => (
+                <div
+                  key={`${row.repo}:${row.pr_number}`}
+                  className="rounded-lg border border-border/50 bg-background/40 p-4"
                 >
-                  {t(`pipeline.filters.${filter}`)}
-                </Button>
-              );
-            })}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {isLoading ? (
-            <p className="py-4 text-sm text-muted-foreground">{t("pipeline.loading")}</p>
-          ) : visibleRuns.length === 0 ? (
-            <p className="py-4 text-sm text-muted-foreground">
-              {runs.length === 0 ? t("pipeline.empty") : t("pipeline.noMatches")}
-            </p>
-          ) : (
-            visibleRuns.map((row: PipelineRun) => (
-              <div
-                key={`${row.repo}:${row.pr_number}`}
-                className="rounded-lg border border-border/50 bg-background/40 p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-mono text-xs text-muted-foreground">
-                      #{row.pr_number}
-                      {row.head_ref ? ` · ${row.head_ref}` : ""}
-                    </p>
-                    {row.html_url ? (
-                      <a
-                        href={row.html_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm font-medium text-foreground hover:underline"
-                      >
-                        {row.title}
-                      </a>
-                    ) : (
-                      <p className="text-sm font-medium">{row.title}</p>
-                    )}
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs text-muted-foreground">
+                        #{row.pr_number}
+                        {row.head_ref ? ` · ${row.head_ref}` : ""}
+                      </p>
+                      {row.html_url ? (
+                        <a
+                          href={row.html_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm font-medium text-foreground hover:underline"
+                        >
+                          {row.title}
+                        </a>
+                      ) : (
+                        <p className="text-sm font-medium">{row.title}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isPipelineRowStale(row.last_event_at) ? (
+                        <Badge variant="error" label={t("pipeline.stale")} />
+                      ) : null}
+                      {row.reviewed ? (
+                        <Badge variant="success" label={t("pipeline.reviewed")} />
+                      ) : (
+                        <Badge variant="neutral" label={t("pipeline.notReviewed")} />
+                      )}
+                      {!row.open ? <Badge variant="neutral" label={t("pipeline.merged")} /> : null}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {isPipelineRowStale(row.last_event_at) ? (
-                      <Badge variant="error" label={t("pipeline.stale")} />
-                    ) : null}
-                    {row.reviewed ? (
-                      <Badge variant="success" label={t("pipeline.reviewed")} />
-                    ) : (
-                      <Badge variant="neutral" label={t("pipeline.notReviewed")} />
-                    )}
-                    {!row.open ? <Badge variant="neutral" label={t("pipeline.merged")} /> : null}
+                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                    <StageBadge label={t("pipeline.columns.ci")} status={row.ci_status} />
+                    <StageBadge label={t("pipeline.columns.merge")} status={row.merge_status} />
+                    <StageBadge label={t("pipeline.columns.publish")} status={row.publish_status} />
+                    <StageBadge label={t("pipeline.columns.m1")} status={row.m1_deploy_status} />
+                    <StageBadge label={t("pipeline.columns.cf")} status={row.cf_deploy_status} />
                   </div>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                  <StageBadge label={t("pipeline.columns.ci")} status={row.ci_status} />
-                  <StageBadge label={t("pipeline.columns.merge")} status={row.merge_status} />
-                  <StageBadge label={t("pipeline.columns.publish")} status={row.publish_status} />
-                  <StageBadge label={t("pipeline.columns.m1")} status={row.m1_deploy_status} />
-                  <StageBadge label={t("pipeline.columns.cf")} status={row.cf_deploy_status} />
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {t("pipeline.lastEvent", { age: formatLastEvent(row.last_event_at) })}
-                </p>
-                {row.checks.length > 0 ? (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {row.checks.map((c) => `${c.name}:${c.conclusion ?? c.status}`).join(" · ")}
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {t("pipeline.lastEvent", { age: formatLastEvent(row.last_event_at) })}
                   </p>
-                ) : null}
-              </div>
-            ))
-          )}
-        </CardContent>
+                  {row.checks.length > 0 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {row.checks.map((c) => `${c.name}:${c.conclusion ?? c.status}`).join(" · ")}
+                    </p>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </Stack>
+        </Stack>
       </Card>
     </div>
   );

@@ -39,6 +39,8 @@ RUN bun run build:dashboard
 #   docker buildx imagetools inspect --format '{{.Manifest.Digest}}' ghcr.io/roxabi/base-svc:latest
 FROM ghcr.io/roxabi/base-svc@sha256:42b1d64e6e4a98d0840539aee73f3c3a43ab46683c9d6fe777b5cc725f5629c7 AS svc-runtime
 
+ARG ROXABI_BUILD_REVISION=""
+
 USER root
 
 # UID 1500 pinned per ADR-053 (Quadlet container UID stability)
@@ -46,6 +48,10 @@ RUN useradd -u 1500 -m factory
 
 COPY --from=builder --chown=factory:factory /app /app
 COPY --from=dashboard-builder --chown=factory:factory /app/apps/dashboard/dist /app/apps/dashboard/dist
+RUN if [ -n "$ROXABI_BUILD_REVISION" ]; then \
+      printf '{"revision":"%s"}\n' "$ROXABI_BUILD_REVISION" > /app/.roxabi-build-info.json \
+      && chown factory:factory /app/.roxabi-build-info.json; \
+    fi
 
 WORKDIR /app
 
@@ -62,6 +68,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 # NOTE: amd64 child digest (valid — single-platform build). Re-pin to the multi-arch INDEX
 # digest before adding `platforms` to docker-bake.hcl (see base-svc note above).
 FROM ghcr.io/roxabi/base@sha256:dab0e1477f5e6cea6d8090e0f15421cfb2cbcd237dace12717afba5d9be14bbc AS agent-runtime
+
+ARG ROXABI_BUILD_REVISION=""
 
 USER root
 
@@ -93,6 +101,10 @@ RUN useradd -u 1500 -m factory \
 COPY --from=ghcr.io/roxabi/factory-omp-base:16.1.23 /opt/omp/omp /opt/omp/omp
 
 COPY --from=builder --chown=factory:factory /app /app
+RUN if [ -n "$ROXABI_BUILD_REVISION" ]; then \
+      printf '{"revision":"%s"}\n' "$ROXABI_BUILD_REVISION" > /app/.roxabi-build-info.json \
+      && chown factory:factory /app/.roxabi-build-info.json; \
+    fi
 
 # ── factory-gh helper user (#1078) ─────────────────────────────────────────────
 # uid 1501 ≠ 1500 (factory's uid) so the token cache file

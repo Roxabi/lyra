@@ -18,6 +18,9 @@ from roxabi_contracts.dashboard import (
     DashboardJobsSteerResponse,
     DashboardOpsHealthResponse,
     DashboardOpsLogsResponse,
+    DashboardPipelineCheck,
+    DashboardPipelineResponse,
+    DashboardPipelineRun,
     DashboardSession,
     DashboardSessionsListResponse,
     DashboardSessionsResumeResponse,
@@ -179,6 +182,55 @@ def stub_ops_logs(
                 labels={"job": "factory-journal"},
             ),
         ],
+    )
+
+
+def stub_pipeline() -> DashboardPipelineResponse:
+    return DashboardPipelineResponse(
+        runs=[
+            DashboardPipelineRun(
+                repo="Roxabi/roxabi-factory",
+                pr_number=1760,
+                title="feat(dashboard): pipeline PR view",
+                head_sha="e2e-head-sha",
+                head_ref="feat/pipeline-dashboard",
+                html_url="https://github.com/Roxabi/roxabi-factory/pull/1760",
+                reviewed=True,
+                open=True,
+                ci_status="success",
+                merge_status="pending",
+                publish_status="n/a",
+                m1_deploy_status="n/a",
+                cf_deploy_status="n/a",
+                checks=[
+                    DashboardPipelineCheck(
+                        name="CI",
+                        status="completed",
+                        conclusion="success",
+                    ),
+                ],
+                last_event_at="2026-06-30T12:00:00+00:00",
+                updated_at="2026-06-30T12:00:00+00:00",
+            ),
+            DashboardPipelineRun(
+                repo="Roxabi/roxabi-factory",
+                pr_number=1700,
+                title="chore: merged example (E2E stub)",
+                head_sha="e2e-merged-sha",
+                head_ref="staging",
+                html_url="https://github.com/Roxabi/roxabi-factory/pull/1700",
+                reviewed=True,
+                open=False,
+                ci_status="success",
+                merge_status="success",
+                publish_status="success",
+                m1_deploy_status="pending",
+                cf_deploy_status="success",
+                checks=[],
+                last_event_at="2026-06-29T18:00:00+00:00",
+                updated_at="2026-06-29T18:00:00+00:00",
+            ),
+        ]
     )
 
 

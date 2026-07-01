@@ -288,9 +288,11 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         from factory.bootstrap.factory.dashboard_rpc import start_dashboard_rpc
         from factory.bootstrap.fleet_ingest import start_fleet_ingest
         from factory.bootstrap.fleet_reporter import start_fleet_reporter
+        from factory.bootstrap.pipeline_ingest import start_pipeline_ingest
 
         await start_fleet_ingest(hub, nc)
         fleet_reporter_task = await start_fleet_reporter(nc)
+        await start_pipeline_ingest(hub, nc, _audio_js)
         await start_dashboard_rpc(hub, nc)
 
         await announce_hub_ready(nc)

@@ -263,6 +263,7 @@ quality_gates:
   secrets_source:
     enabled: true
     script: tools/check_secrets_source.sh
+    # ci: wired for parity; skips (exit 0) when ~/.roxabi/factory absent on runners
     stages: [pre-push, ci]
 
   str_exc_bus_bound:
@@ -378,8 +379,8 @@ qg:
       - acl_authconf_drift
       - architecture_snapshot
       - secrets_drift
-      - volumes_table
       - quadlet_manifest_install
+      - volumes_table
       - secrets_source
       - file_length
       - folder_size

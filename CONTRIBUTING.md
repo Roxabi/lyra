@@ -79,7 +79,7 @@ bun run --filter @roxabi-factory/dashboard test   # vitest — pre-push when das
 Git hooks run quality gates locally:
 
 - **commit** — ruff, pyright, biome (`lint-js` when FE paths change), file/folder size, import layers, …
-- **pre-push** — dashboard vitest (when `apps/dashboard/`, `packages/shared/`, or `brand/` changes), trufflehog, ACL drift, debt expiry, architecture snapshot, …
+- **pre-push** — dashboard vitest (when FE paths change), trufflehog, ACL drift, deploy integrity (`secrets_drift`, `quadlet_manifest_install`, `volumes_table`, `secrets_source`), debt expiry, architecture snapshot, … (full list: `docs/ops/quality-gates.md`)
 
 Install both hook types once:
 

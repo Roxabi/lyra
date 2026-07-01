@@ -9,7 +9,7 @@ Canonical source: `roxabi-plugins/plugins/dev-core/tools/` — ¬edit project-si
 
 **Languages:** gate shell entrypoints are bash; parsing-heavy gates may use Python. Orchestration (`scripts/qg`) is bash + yq only.
 
-**Deploy gates in `tools/`:** `check_secrets_source.sh`, `check_secrets_drift.sh`, `check_volumes_table.sh`, `check_quadlet_manifest_install.sh`, `check_quadlet_component_source.sh` — declared in `stack.yml`, run via `scripts/qg` (pre-push, ci, and/or `profiles.local`).
+**Deploy gates in `tools/`:** `check_secrets_drift.sh`, `check_quadlet_manifest_install.sh`, `check_volumes_table.sh`, `check_secrets_source.sh` — pre-push, ci, and `profiles.local` (see `docs/ops/quality-gates.md` § Deploy gates). `check_quadlet_component_source.sh` is **ci-only**.
 
 ## Wiring
 

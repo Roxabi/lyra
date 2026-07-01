@@ -1,0 +1,48 @@
+[Unit]
+Description=llmCLI Fireworks forwarder (:18646)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+# Vendored from Roxabi/llmCLI — deployment owned by roxabi-factory (M₁ cloud gateway).
+# Image built + published by llmCLI CI; pinned by digest here (¬autoupdate) so factory
+# controls bumps. Bump recipe → deploy/AGENTS.md § llmCLI cloud-gateway image.
+Image=ghcr.io/roxabi/llmcli@sha256:3d52ccf3397b7b6e487833869eeb3b6a9c01d68426b4a3aaf0452b2a706f8217
+ContainerName=llmcli-fw-forwarder
+# No PublishPort — internal to roxabi.network only (reachable as
+# http://llmcli-fw-forwarder:18646 from other containers on roxabi.network)
+Network=roxabi.network
+EnvironmentFile=%h/.roxabi/llmcli/env/proxy.env
+Environment=LLMCLI_FORWARDER_PROVIDER=fireworks
+Environment=LLMCLI_FORWARDER_PORT=18646
+UserNS=keep-id:uid=1502,gid=1502
+Exec=forwarder
+# NB: Quadlet strips a trailing quote from a HealthCmd value that ends in one
+# (python -c "...'...'..." → unterminated shell string → probe always errors →
+# false unhealthy, ~13d). Ending the value with a non-quote (|| exit 1) keeps the
+# inner quoting intact so this HTTP /health probe generates and runs correctly.
+HealthCmd=python -c 'import urllib.request; urllib.request.urlopen("http://localhost:18646/health", timeout=5)' || exit 1
+HealthInterval=30s
+HealthStartPeriod=15s
+NoNewPrivileges=true
+DropCapability=all
+# ReadOnly rootfs — host-validated 2026-06-16 (D-6 ops-audit). Thin relay; runtime
+# writes (lib caches, /tmp) land on the tmpfs set below — 0 EROFS at boot. Uniform
+# with the proxy. mode=1777: a root-owned 0755 tmpfs EACCESes for non-root uid 1502.
+ReadOnly=true
+Tmpfs=/tmp:mode=1777
+Tmpfs=/home/llmcli/.local:mode=1777
+Tmpfs=/home/llmcli/.cache:mode=1777
+Tmpfs=/home/llmcli/.config:mode=1777
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20s
+# Memory caps — contain a runaway to its cgroup instead of a global OOM freeze
+# (2026-06-01 M₂ freeze). Tiny relay; 1G/1.5G is generous.
+MemoryHigh=1G
+MemoryMax=1536M
+
+[Install]
+WantedBy=default.target

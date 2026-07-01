@@ -231,7 +231,7 @@ export function JobsPage() {
           <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
             <Table className="min-w-[760px]" dividers="rows" hasHover>
               <TableHeader>
-                <TableRow>
+                <TableRow isHeaderRow>
                   <SortableTableHeader
                     label={t("table.job")}
                     active={sortKey === "job_id"}

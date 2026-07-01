@@ -134,7 +134,7 @@ export function AdminPage() {
           <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
             <Table className="min-w-[720px]" dividers="rows" hasHover>
               <TableHeader>
-                <TableRow>
+                <TableRow isHeaderRow>
                   <TableHeaderCell scope="col">{t("colDisplayName")}</TableHeaderCell>
                   <TableHeaderCell scope="col">{t("colEmail")}</TableHeaderCell>
                   <TableHeaderCell scope="col">{t("colTelegram")}</TableHeaderCell>

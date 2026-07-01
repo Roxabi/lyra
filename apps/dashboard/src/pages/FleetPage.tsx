@@ -155,7 +155,7 @@ export function FleetPage() {
         <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
           <Table className="min-w-[820px]" dividers="rows" hasHover>
             <TableHeader>
-              <TableRow>
+              <TableRow isHeaderRow>
                 <SortableTableHeader
                   label={t("fleet.columns.name")}
                   active={sortKey === "container_name"}

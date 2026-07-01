@@ -11,23 +11,15 @@ export interface FilterChipProps {
   children: string;
   onClick?: () => void;
   disabled?: boolean;
-  className?: string;
 }
 
-export function FilterChip({
-  active = false,
-  children,
-  onClick,
-  disabled,
-  className,
-}: FilterChipProps) {
+export function FilterChip({ active = false, children, onClick, disabled }: FilterChipProps) {
   return (
     <ToggleButton
       label={children}
       isPressed={active}
       onPressedChange={() => onClick?.()}
       isDisabled={disabled}
-      className={className}
     />
   );
 }

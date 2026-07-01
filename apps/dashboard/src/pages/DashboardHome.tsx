@@ -162,20 +162,27 @@ export function DashboardHome() {
               <div className="overflow-x-auto">
                 <Table dividers="rows" hasHover>
                   <TableHeader>
-                    <TableRow>
-                      <TableHeaderCell scope="col">{t("agents.colAgent")}</TableHeaderCell>
+                    <TableRow isHeaderRow>
+                      {/* pl-6/pr-6 realign the edge columns with the Card's
+                          px-6 title row — Astryx edge-compensation collapses to
+                          8px under Card padding={0} (--container-padding-*=0). */}
+                      <TableHeaderCell scope="col" className="pl-6">
+                        {t("agents.colAgent")}
+                      </TableHeaderCell>
                       <TableHeaderCell scope="col">{t("agents.colHarness")}</TableHeaderCell>
-                      <TableHeaderCell scope="col">{t("agents.colStatus")}</TableHeaderCell>
+                      <TableHeaderCell scope="col" className="pr-6">
+                        {t("agents.colStatus")}
+                      </TableHeaderCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rosterAgents.map((s) => (
                       <TableRow key={s.agent}>
-                        <TableCell>
+                        <TableCell className="pl-6">
                           <AgentIdentity agentId={s.agent} avatarSize="sm" />
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">{s.harness}</TableCell>
-                        <TableCell>
+                        <TableCell className="pr-6">
                           <Badge
                             variant={s.online ? "success" : "error"}
                             label={s.online ? tc("status.online") : tc("status.offline")}

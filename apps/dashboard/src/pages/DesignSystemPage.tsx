@@ -289,7 +289,7 @@ export function DesignSystemPage() {
         />
         <Table className="max-w-md" dividers="rows" hasHover>
           <TableHeader>
-            <TableRow>
+            <TableRow isHeaderRow>
               <SortableTableHeader label="Agent" active direction="asc" onClick={() => {}} />
               <TableHeaderCell scope="col">Statut</TableHeaderCell>
             </TableRow>

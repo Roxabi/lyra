@@ -334,7 +334,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
         <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
           <Table className="min-w-[980px]" dividers="rows" hasHover>
             <TableHeader>
-              <TableRow>
+              <TableRow isHeaderRow>
                 <TableHeaderCell scope="col">{t("colAgent")}</TableHeaderCell>
                 <TableHeaderCell scope="col">{t("colTagline")}</TableHeaderCell>
                 <TableHeaderCell scope="col">{t("colHarness")}</TableHeaderCell>

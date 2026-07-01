@@ -7,7 +7,9 @@ describe("HarnessPicker", () => {
   it("lists Clipool and OMP options", async () => {
     const user = userEvent.setup();
     render(<HarnessPicker value="claude-cli" onChange={vi.fn()} />);
-    await user.click(screen.getByRole("button", { name: /Clipool/i }));
+    const combobox = screen.getByRole("combobox");
+    expect(combobox.textContent).toContain("Clipool");
+    await user.click(combobox);
     expect(screen.getByRole("option", { name: /OMP/i })).toBeTruthy();
   });
 
@@ -20,7 +22,7 @@ describe("HarnessPicker", () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<HarnessPicker value="claude-cli" onChange={onChange} />);
-    await user.click(screen.getByRole("button", { name: /Clipool/i }));
+    await user.click(screen.getByRole("combobox"));
     await user.click(screen.getByRole("option", { name: /OMP/i }));
     expect(onChange).toHaveBeenCalledWith("omp-rpc");
   });

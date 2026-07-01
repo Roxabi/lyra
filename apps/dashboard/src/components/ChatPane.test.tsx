@@ -24,7 +24,13 @@ describe("ChatPane", () => {
     const user = userEvent.setup();
     const onUpdate = vi.fn();
     render(<ChatPane tab={tab} health={undefined} onUpdate={onUpdate} />);
-    await user.click(screen.getByRole("button", { name: /Clipool/i }));
+    // ChatPane renders two Selector comboboxes (harness + model); pick the
+    // harness one by its displayed value.
+    const harnessCombobox = screen
+      .getAllByRole("combobox")
+      .find((cb) => cb.textContent?.includes("Clipool"));
+    if (!harnessCombobox) throw new Error("harness combobox not found");
+    await user.click(harnessCombobox);
     await user.click(screen.getByRole("option", { name: /OMP/i }));
     expect(onUpdate).toHaveBeenCalledWith({
       harness: "omp-rpc",

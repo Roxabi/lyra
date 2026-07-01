@@ -1,11 +1,11 @@
 import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 import { type AdminUserAccess, createAdminUser, patchAdminUser } from "@/lib/admin-api";
 import { fetchAgentsConfigList } from "@/lib/agents-api";
@@ -118,64 +118,47 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
           </div>
         ) : null}
 
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor="user-name">
-            {t("fieldName")}
-          </label>
-          <Input
-            id="user-name"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder={t("fieldNamePlaceholder")}
-            autoComplete="name"
-          />
-        </div>
+        <TextInput
+          label={t("fieldName")}
+          value={displayName}
+          onChange={(v) => setDisplayName(v)}
+          placeholder={t("fieldNamePlaceholder")}
+          htmlName="name"
+          width="100%"
+        />
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor="user-email">
-            {t("fieldEmail")}
-          </label>
-          <Input
-            id="user-email"
+          <TextInput
+            label={t("fieldEmail")}
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(v) => setEmail(v)}
             placeholder={t("fieldEmailPlaceholder")}
-            autoComplete="email"
+            htmlName="email"
+            width="100%"
+            status={
+              !emailValid && email.trim().length > 0
+                ? { type: "error", message: t("fieldEmailInvalid") }
+                : undefined
+            }
           />
-          {!emailValid && email.trim().length > 0 ? (
-            <p className="text-xs text-destructive">{t("fieldEmailInvalid")}</p>
-          ) : null}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="user-telegram">
-              {t("fieldTelegram")}
-            </label>
-            <Input
-              id="user-telegram"
-              value={telegramUid}
-              onChange={(e) => setTelegramUid(e.target.value)}
-              placeholder={t("fieldTelegramPlaceholder")}
-              className="font-mono text-xs"
-              inputMode="numeric"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="user-discord">
-              {t("fieldDiscord")}
-            </label>
-            <Input
-              id="user-discord"
-              value={discordUid}
-              onChange={(e) => setDiscordUid(e.target.value)}
-              placeholder={t("fieldDiscordPlaceholder")}
-              className="font-mono text-xs"
-              inputMode="numeric"
-            />
-          </div>
+          <TextInput
+            label={t("fieldTelegram")}
+            value={telegramUid}
+            onChange={(v) => setTelegramUid(v)}
+            placeholder={t("fieldTelegramPlaceholder")}
+            width="100%"
+          />
+          <TextInput
+            label={t("fieldDiscord")}
+            value={discordUid}
+            onChange={(v) => setDiscordUid(v)}
+            placeholder={t("fieldDiscordPlaceholder")}
+            width="100%"
+          />
         </div>
 
         <div className="space-y-2">

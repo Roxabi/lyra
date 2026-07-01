@@ -95,8 +95,8 @@ def test_stale_container_count_message_has_no_hardcoded_count() -> None:
     """
     rule = next(r for r in RULES if r.rule_id == "stale_container_count")
     assert not re.search(
-        r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
-        r"\s+(?:Quadlet\s+)?containers?\b",
+        r"\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+        r"thirteen|fourteen|fifteen|sixteen)\s+(?:Quadlet\s+)?containers?\b",
         rule.message,
         re.IGNORECASE,
     ), f"fix-message must not hardcode a container count: {rule.message!r}"

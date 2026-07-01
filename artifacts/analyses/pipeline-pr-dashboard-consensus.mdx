@@ -1,0 +1,200 @@
+---
+title: "PR Pipeline Dashboard — Expert Consensus (5-panel)"
+status: consensus-reached
+date: 2026-06-30
+panel: architect, axial-drift, product-lead, devops, adversarial
+confidence: medium
+parent_epic: 1760
+related: [2006, 2008, 2009, 1772, 1767, 091, 094, 096]
+proposed_adr: 097-pr-pipeline-read-model
+---
+
+## Problem
+
+Operator wants a **control-plane dashboard** (`#1760`) showing the full release chain per PR:
+
+```
+PR → CI → label reviewed → merged
+  ├─ cas 1 : publish image → M₁ pull + converge
+  └─ cas 2 : CF Pages/Workers deploy (complémentaire, post-merge)
+```
+
+Event-driven via **ingress + fleet + CF**, not GitHub API polling every 5s.
+
+## Panel
+
+| Expert | Verdict |
+|---|---|
+| **architect** | Conditional approve — hub projector + `pipeline.db` + RPC; ADR-097 required |
+| **axial-drift** | Conditionally sound — stage reducers N+M; reject #1772 conflation |
+| **product-lead** | Ship before #2009 — P1 after thin SSE fanout; not Sentinelle home |
+| **devops** | Feasible v2 correlation — fleet SHA proof blocked until bake + payload fix |
+| **adversarial** | NO-GO as sole source of truth — skepticism-first v0 only |
+
+## Consensus recommendation
+
+**CONDITIONAL GO** — build **PR Pipeline** as a **#1760 child panel** (new issue), **before Sentinelle Discord (#2009)**, using an event-driven **hub-side projector** (same placement pattern as fleet obs), with **explicit non-authoritative UX** until correlation hardening is proven.
+
+### Architecture (ratified)
+
+```
+GitHub ingress ──► factory.event.github.*
+CF ingress     ──► factory.event.cloudflare.*
+Fleet reporter ──► factory.metric.host.container_report
+(future)       ──► factory.event.host.converge.completed
+                        │
+                        ▼
+              PipelineProjector (in factory-hub)
+                        │
+                        ▼
+                 pipeline.db (SQLite, plane ④)
+                        │
+          factory.dashboard.pipeline.list (NATS RPC)
+                        │
+          factory-dashboard BFF GET /api/bff/pipeline
+          (+ SSE fanout after #1992 phase ≥1)
+```
+
+**Rejected placements:**
+- Dashboard BFF as JetStream consumer (ADR-094 violation)
+- Sentinelle module owning the read model (#2009 = Discord push, not browser board)
+- Pure GitHub API polling as primary transport
+- New `factory-pipeline` container (v1)
+
+### Stage machine (ratified)
+
+| Stage | Source | v1 proof |
+|---|---|---|
+| `ci` | `check_run.*`, `workflow_run.*` (PR) | aggregate worst conclusion |
+| `reviewed` | `pull_request.labeled` | label `reviewed` present |
+| `merged` | `pull_request.closed` + merged | GitHub event |
+| `publish` | `workflow_run.completed` name=publish | conclusion=success + head_sha |
+| `m1_deploy` | fleet quorum + optional converge event | **not** hub alone |
+| `cf_deploy` | `pages.deployment.*` | structured mapping; Workers = GitHub workflow |
+
+Pre-merge: `publish` / `m1_deploy` / `cf_deploy` show **N/A** (greyed timeline).
+
+### Cas 1 — M₁ (clarification panel)
+
+**Existing infra the panel ratified as reusable:**
+
+| Mechanism | Role |
+|---|---|
+| `factory-post-autoupdate.timer` | digest drift → pull → converge |
+| `.converge-stamp` fields 4–5 | `:staging-svc` / `:staging` digest fingerprint |
+| Fleet `/fleet` + `ContainerReport.image_revision` | runtime witness (plane ③) |
+| Block 6 fleet goal (deferred) | registry vs running STALE badge |
+
+**Ratified M₁ deploy proof (v1):**
+
+```
+m1_deploy_ok :=
+  publish workflow success
+  ∧ ∀ c ∈ INSTRUMENTED_QUORUM (min: hub, telegram, discord, dashboard, clipool):
+      fleet[c].status == "ok"
+      ∧ fleet[c].image_revision == publish.head_sha
+      ∧ fleet[c].age_s < 90
+```
+
+**NOT sufficient:** single-container match, revision without fresh report, revision without digest converge.
+
+**Recommended addition:** `factory.event.host.roxabituwer.converge.completed` from `converge.sh` after stamp write — deploy completion certificate for auth-only / git-only converges.
+
+**Timing SLA (post-publish → quorum match):** p50 ~6 min, p99 ~14 min (timer stagger `*:0/5` → `*:2/5` → `*:4/5`).
+
+### Cas 2 — CF (clarification panel)
+
+**Ratified:** CF is **complementary post-merge**, not CI substitute.
+
+| Surface | Event path | v1 scope |
+|---|---|---|
+| **Pages** | `factory.event.cloudflare.*.pages.deployment.*` | In scope — configure CF Notifications webhook (already wired on M₁) |
+| **Workers** | CF text heuristics unreliable | **Out of v1** — use GitHub `workflow_run` if Workers deploy via CI |
+
+**CF correlation:** project registry `(cf_project → repo, branch)` + parse structured `data` (capture real payload via redeliver; **stop relying on text heuristics alone** for v1 green).
+
+### MVP scope (product ratified)
+
+**In:**
+- Open PRs + merged last 24h (roxabi-factory only)
+- Row: PR #, title, CI aggregate, `reviewed`, 5-stage stepper
+- 3 filter chips: CI red · Awaiting reviewed · Deploy pending
+- Event-driven updates; **one-shot GitHub cold bootstrap** on load (not poll loop)
+- Default state: **unknown / awaiting signal** — never false green
+
+**Out (v2+):**
+- Multi-repo / satellites
+- Merge queue detail, full check drill-down
+- Workers CF proof
+- Authoritative merge decisions from dashboard
+
+### UX guardrails (adversarial + product — unanimous)
+
+1. Banner: **NOT FOR MERGE DECISIONS** — GitHub checks remain canonical
+2. Never infer `reviewed`-worthiness from dashboard alone
+3. Show `last_event_at` + stale TTL per row
+4. Deploy stages: `pending` / `uncorrelated` / `partial` — not binary green
+
+## Merge gates (blocking ξ — panel consensus)
+
+| # | Gate | Owner | Blocks |
+|---|---|---|---|
+| G1 | Extend ingress payloads (`pr.number`, `head.sha`, `labels`, `workflow_run.head_sha`) + contract fixtures | ingress + contracts | projector |
+| G2 | Bake `image_revision` into images (`.roxabi-build-info.json` or `IMAGE_REVISION` env) | publish + quadlet | m1_deploy correlation |
+| G3 | `pipeline.db` + hub `PipelineProjector` + `factory.dashboard.pipeline.list` RPC | hub | UI |
+| G4 | Projector idempotency (`delivery_id` table; CF stable keys) | hub | prod |
+| G5 | Cold-start GitHub reconciliation on projector boot | hub | correctness after outage |
+| G6 | ADR-097 (correlation rules, stage enum, boundaries vs #1772 / Sentinelle) | docs | merge |
+| G7 | SSE pipeline channel requires #1992 auth (or poll-only v0) | dashboard | adversarial unblock |
+| G8 | Amend ADR-094 note: panels use hub RPC+SSE, not dashboard NATS subscribe | docs | axial |
+
+## Alternatives rejected
+
+| Alternative | Proposed by | Rejected because |
+|---|---|---|
+| GitHub API 5s polling | earlier draft | Duplicate truth, rate limits, misses M₁/CF legs |
+| Sentinelle #2009 first | default backlog | No verification surface; noisy Discord without board |
+| Fold into #1772 jobs view | — | Wrong events (internal factory vs external ingress) |
+| `image_revision` on hub only | naive design | Shared image, 11 containers, staggered restarts |
+| CF text heuristic as proof | current ingress | Brittle; preview/rollback/i18n false positives |
+| In-memory projector only | fleet analogy | PR lifetimes > 24h; hub restart loses state |
+
+## Dissent recorded
+
+| Expert | Position |
+|---|---|
+| **adversarial** | Would delay **any** SSE until #1992; accepts poll-only v0 with 30s hub RPC if SSE blocked |
+| **product-lead** | Wants SSE in v1 for liveness — accepts gated on G7 |
+| **devops** | Wants `converge.completed` in v1, not optional — architect agrees "recommended v1.1" |
+
+## Sequencing (panel agreement)
+
+```
+1. G1 + G2 (ingress payload + image SHA bake)     ~1 PR
+2. G3 + G6 (projector + ADR-097)                   ~1–2 PR
+3. Dashboard /pipeline page (poll 30s, no SSE)   ~1 PR  ← v0 skepticism-first
+4. G4 + G5 (idempotency + cold bootstrap)          ~1 PR
+5. G7 SSE upgrade                                   after #1992
+6. #2009 Sentinelle (pr_ci_red, deploy_fail)       reuses same projector/read model
+7. Block 6 fleet STALE digest                       polish
+```
+
+## Success criteria (6 months)
+
+| Metric | Target |
+|---|---|
+| Merge → operator confirms deploy via dashboard | < 5 min median |
+| Deploy stage false-green rate | < 5% |
+| Release days without GitHub PR tab | ≥ 70% |
+| Open PR CI state fresh (< 2 min of event) | ≥ 80% |
+
+## Confidence
+
+**Medium** — architecture aligns with shipped patterns (ingress, fleet, ADR-094). Correlation algebra and `image_revision` instrumentation remain unproven in prod. Adversarial panel correctly flags that v0 must under-report rather than over-promise.
+
+## Next actions
+
+1. Create issue: `feat(dashboard): PR pipeline projector + /pipeline panel` under #1760
+2. Draft ADR-097 from this consensus
+3. Close/designate #2051 ops as done (secrets provisioned 2026-06-30)
+4. Do **not** start #2009 Discord until G1–G3 land

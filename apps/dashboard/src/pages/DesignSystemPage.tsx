@@ -1,3 +1,5 @@
+import { Badge } from "@astryxdesign/core/Badge";
+import { Banner } from "@astryxdesign/core/Banner";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { List, Moon, Robot, SquaresFour, Sun } from "@phosphor-icons/react";
@@ -13,8 +15,6 @@ import { HarnessPicker } from "@/components/HarnessPicker";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { ModelPicker } from "@/components/ModelPicker";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -177,12 +177,12 @@ export function DesignSystemPage() {
 
       <Section title="Badge">
         <Row label="Variants">
-          <Badge variant="default">Default</Badge>
-          <Badge variant="secondary">Secondary</Badge>
-          <Badge variant="success">Success</Badge>
-          <Badge variant="warning">Warning</Badge>
-          <Badge variant="destructive">Destructive</Badge>
-          <Badge variant="outline">Outline</Badge>
+          <Badge variant="info" label="Default" />
+          <Badge variant="neutral" label="Secondary" />
+          <Badge variant="success" label="Success" />
+          <Badge variant="warning" label="Warning" />
+          <Badge variant="error" label="Destructive" />
+          <Badge variant="neutral" label="Outline" />
         </Row>
         <Row label="AgentStatusBadge">
           <AgentStatusBadge health={ONLINE_HEALTH} />
@@ -207,11 +207,11 @@ export function DesignSystemPage() {
         </Row>
       </Section>
 
-      <Section title="Alert" description="Bandeaux d'état — destructive, warning, info, success.">
-        <Alert variant="destructive">Message d'erreur critique.</Alert>
-        <Alert variant="warning">Avertissement — modifications non enregistrées.</Alert>
-        <Alert variant="info">Information contextuelle.</Alert>
-        <Alert variant="success">Action réussie.</Alert>
+      <Section title="Banner" description="Bandeaux d'état — info, warning, error, success.">
+        <Banner status="error" title="Message d'erreur critique." />
+        <Banner status="warning" title="Avertissement — modifications non enregistrées." />
+        <Banner status="info" title="Information contextuelle." />
+        <Banner status="success" title="Action réussie." />
       </Section>
 
       <Section title="Card" description="Variants tone, elevated et interactive.">

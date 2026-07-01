@@ -1,8 +1,8 @@
+import { Badge } from "@astryxdesign/core/Badge";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,9 +47,10 @@ function InstallationTable({
             <p className="truncate font-mono text-sm">{row.external_id}</p>
           </div>
           <div className="flex items-center gap-3">
-            <Badge variant={row.enabled ? "success" : "secondary"}>
-              {row.enabled ? t("table.enabled") : t("table.disabled")}
-            </Badge>
+            <Badge
+              variant={row.enabled ? "success" : "neutral"}
+              label={row.enabled ? t("table.enabled") : t("table.disabled")}
+            />
             {row.enabled ? (
               <Button
                 variant="outline"

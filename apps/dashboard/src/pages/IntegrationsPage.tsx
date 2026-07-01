@@ -2,12 +2,12 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
 import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   type ConnectorInstallation,
   deleteConnectorInstallation,
@@ -88,7 +88,6 @@ function ConnectorSection({
   const { t } = useTranslation("integrations");
   const { t: tc } = useTranslation("common");
   const queryClient = useQueryClient();
-  const fieldId = useId();
   const [externalId, setExternalId] = useState("");
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
 
@@ -130,14 +129,12 @@ function ConnectorSection({
             <p className="text-sm font-medium">{registerLabel}</p>
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[12rem] flex-1">
-                <label htmlFor={fieldId} className="mb-1 block text-xs text-muted-foreground">
-                  {fieldLabel}
-                </label>
-                <Input
-                  id={fieldId}
+                <TextInput
+                  label={fieldLabel}
                   value={externalId}
-                  onChange={(e) => setExternalId(e.target.value)}
+                  onChange={(v) => setExternalId(v)}
                   placeholder={fieldLabel}
+                  width="100%"
                 />
               </div>
               <Button
@@ -206,12 +203,14 @@ export function IntegrationsPage() {
           </Stack>
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[16rem] flex-1">
-              <Input
+              <TextInput
                 type="password"
+                label={t("auth.placeholder")}
+                isLabelHidden
                 value={tokenDraft}
-                onChange={(e) => setTokenDraft(e.target.value)}
+                onChange={(v) => setTokenDraft(v)}
                 placeholder={t("auth.placeholder")}
-                autoComplete="off"
+                width="100%"
               />
             </div>
             <Button variant="outline" onClick={() => setOperatorToken(tokenDraft)}>

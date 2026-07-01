@@ -4,6 +4,7 @@ import { Card } from "@astryxdesign/core/Card";
 import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -14,7 +15,6 @@ import { HarnessPicker } from "@/components/HarnessPicker";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 import {
   fetchAgentConfig,
@@ -205,35 +205,24 @@ export function AgentDetailPage() {
       <Card>
         <Stack gap={4}>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label
-                className="text-xs font-medium text-muted-foreground"
-                htmlFor="agent-display-name"
-              >
-                {t("displayName")}
-              </label>
-              <Input
-                id="agent-display-name"
-                value={displayName}
-                onChange={(e) => {
-                  setDisplayName(e.target.value);
-                  setDirty(true);
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground" htmlFor="agent-tagline">
-                {t("tagline")}
-              </label>
-              <Input
-                id="agent-tagline"
-                value={tagline}
-                onChange={(e) => {
-                  setTagline(e.target.value);
-                  setDirty(true);
-                }}
-              />
-            </div>
+            <TextInput
+              label={t("displayName")}
+              value={displayName}
+              onChange={(v) => {
+                setDisplayName(v);
+                setDirty(true);
+              }}
+              width="100%"
+            />
+            <TextInput
+              label={t("tagline")}
+              value={tagline}
+              onChange={(v) => {
+                setTagline(v);
+                setDirty(true);
+              }}
+              width="100%"
+            />
           </div>
           <div className="flex flex-wrap gap-4">
             <HarnessPicker

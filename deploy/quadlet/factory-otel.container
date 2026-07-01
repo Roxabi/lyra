@@ -32,6 +32,11 @@ Restart=on-failure
 TimeoutStopSec=130
 RestartSec=10
 CPUQuota=100%
+# Pre-create the otel-raw.db bind-mount source (line: Volume=…/otel-raw.db) so podman
+# never fails `statfs … no such file or directory` (status=125) or auto-creates it as a
+# directory when the file is missing at (re)start — the factory-otel restart race
+# (9× restart-failed on boot -1, 2026-07-01). touch is idempotent and non-truncating.
+ExecStartPre=/usr/bin/touch %h/.roxabi/factory/otel-raw.db
 
 [Install]
 WantedBy=default.target

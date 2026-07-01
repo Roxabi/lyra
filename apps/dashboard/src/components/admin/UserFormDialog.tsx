@@ -1,10 +1,10 @@
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { toast } from "@/components/ui/sonner";
 import { type AdminUserAccess, createAdminUser, patchAdminUser } from "@/lib/admin-api";
@@ -93,16 +93,29 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
     },
   });
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) reset();
+    onOpenChange(next);
+  };
+
+  const title = isEdit ? t("editTitle") : t("createTitle");
+
   return (
+    // Kept mounted (isOpen toggles) so Astryx's close effect runs its
+    // focus-restore-to-opener — unmounting on close would skip it (no cleanup).
+    // `aria-label` names the modal (Astryx doesn't wire aria-labelledby→title).
     <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-      title={isEdit ? t("editTitle") : t("createTitle")}
-      description={isEdit ? t("editDescription") : t("createDescription")}
+      isOpen={open}
+      onOpenChange={handleOpenChange}
+      purpose="form"
+      width="28rem"
+      aria-label={title}
     >
+      <DialogHeader
+        title={title}
+        subtitle={isEdit ? t("editDescription") : t("createDescription")}
+        onOpenChange={handleOpenChange}
+      />
       <form
         className="space-y-4"
         onSubmit={(e) => {

@@ -67,13 +67,17 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
     onOpenChange(next);
   };
 
-  // Astryx Dialog renders its native <dialog> (and children) even when closed;
-  // gate on `open` to keep the closed form subtree out of the tree (matches the
-  // prior behavior and avoids duplicate mounted content).
-  if (!open) return null;
-
   return (
-    <Dialog isOpen={open} onOpenChange={handleOpenChange} purpose="form" width="28rem">
+    // Kept mounted (isOpen toggles) so Astryx's close effect runs its
+    // focus-restore-to-opener — unmounting on close would skip it (no cleanup).
+    // `aria-label` names the modal (Astryx doesn't wire aria-labelledby→title).
+    <Dialog
+      isOpen={open}
+      onOpenChange={handleOpenChange}
+      purpose="form"
+      width="28rem"
+      aria-label={t("createTitle")}
+    >
       <DialogHeader
         title={t("createTitle")}
         subtitle={t("createDescription")}

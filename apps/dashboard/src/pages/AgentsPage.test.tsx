@@ -13,6 +13,13 @@ import * as agentsApi from "@/lib/agents-api";
 import { ShellTitleProvider } from "@/lib/shell-title";
 import { AgentDetailPage, AgentsListPage } from "@/pages/AgentsPage";
 
+// The panel keeps a closed CreateAgentDialog mounted (Astryx native <dialog>),
+// whose default harness/model pickers render "Clipool"/"sonnet" too. Scope list
+// assertions outside the dialog subtree to avoid duplicate-match errors.
+function listText(matcher: RegExp | string) {
+  return screen.getAllByText(matcher).filter((el) => !el.closest("dialog"));
+}
+
 function renderAgentsList() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -97,8 +104,8 @@ describe("AgentsListPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Lyra")).toBeTruthy();
     });
-    expect(screen.getByText(/Clipool/)).toBeTruthy();
-    expect(screen.getByText(/sonnet/)).toBeTruthy();
+    expect(listText(/Clipool/).length).toBeGreaterThan(0);
+    expect(listText(/sonnet/).length).toBeGreaterThan(0);
   });
 
   it("switches between card and table views with toolbar search", async () => {
@@ -115,7 +122,7 @@ describe("AgentsListPage", () => {
     expect(screen.getAllByText("Éditer").length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("radio", { name: /Vue cartes/i }));
-    expect(screen.getByText("Clipool")).toBeTruthy();
+    expect(listText("Clipool").length).toBeGreaterThan(0);
   });
 });
 

@@ -98,16 +98,21 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
     onOpenChange(next);
   };
 
-  // Astryx Dialog renders its native <dialog> (and children) even when closed —
-  // a real browser hides it via UA CSS, but that keeps the whole form subtree
-  // mounted. Gate on `open` to keep closed-dialog content out of the tree
-  // (matches the prior behavior and avoids duplicate fields/labels).
-  if (!open) return null;
+  const title = isEdit ? t("editTitle") : t("createTitle");
 
   return (
-    <Dialog isOpen={open} onOpenChange={handleOpenChange} purpose="form" width="28rem">
+    // Kept mounted (isOpen toggles) so Astryx's close effect runs its
+    // focus-restore-to-opener — unmounting on close would skip it (no cleanup).
+    // `aria-label` names the modal (Astryx doesn't wire aria-labelledby→title).
+    <Dialog
+      isOpen={open}
+      onOpenChange={handleOpenChange}
+      purpose="form"
+      width="28rem"
+      aria-label={title}
+    >
       <DialogHeader
-        title={isEdit ? t("editTitle") : t("createTitle")}
+        title={title}
         subtitle={isEdit ? t("editDescription") : t("createDescription")}
         onOpenChange={handleOpenChange}
       />

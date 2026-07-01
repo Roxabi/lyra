@@ -308,6 +308,13 @@ quality_gates:
     stages: [ci]
     description: Astryx design-system setup health (Node floor, core<->cli alignment, peer deps) — #2088
 
+  theme_build_drift:
+    enabled: true
+    script: bash scripts/check-theme-build-drift.sh
+    requires: bun
+    stages: [ci]
+    description: committed roxabi built/ theme artifacts must match a fresh build of the source (#2089)
+
 qg:
   run_order:
     pre-commit:
@@ -375,6 +382,7 @@ qg:
       - inbox_prefix
       - subject_literals
       - astryx_doctor
+      - theme_build_drift
   profiles:
     local:
       - lint_js

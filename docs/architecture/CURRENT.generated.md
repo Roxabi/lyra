@@ -257,7 +257,7 @@
 - **Host roles:** factory-hub
 
 ### litellm-proxy
-- **Container:** llmcli.container
+- **Container:** factory-litellm.container
 - **Host roles:** factory-hub
 
 ### loki

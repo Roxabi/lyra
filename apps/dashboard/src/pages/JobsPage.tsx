@@ -5,6 +5,7 @@ import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { useToast } from "@astryxdesign/core/Toast";
 import { Briefcase } from "@phosphor-icons/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -20,11 +21,10 @@ import {
   ListToolbarSearch,
 } from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
-import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { useJobsLive } from "@/hooks/useJobsLive";
 import { displayAgentName } from "@/lib/agents";
-import { fetchAgentStatus, fetchAgents, launchJob, steerJob } from "@/lib/api";
+import { cancelJob, fetchAgentStatus, fetchAgents, launchJob, steerJob } from "@/lib/api";
 import { jobStatusToBadgeVariant } from "@/lib/job-status";
 import { filterJobs, type JobsSortKey, sortJobs, uniqueJobStatuses } from "@/lib/jobs-filters";
 import { type SortDirection, toggleSort } from "@/lib/sort";
@@ -33,6 +33,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 export function JobsPage() {
   const { t } = useTranslation("jobs");
   const { t: tc } = useTranslation("common");
+  const showToast = useToast();
   const [launchAgent, setLaunchAgent] = useState("");
   const [launchPrompt, setLaunchPrompt] = useState("");
   const [steerTexts, setSteerTexts] = useState<Record<string, string>>({});
@@ -68,22 +69,30 @@ export function JobsPage() {
       }),
     onSuccess: (res) => {
       if (res.accepted) {
-        toast.success(t("launch.launched", { jobId: res.job_id }));
+        showToast({ body: t("launch.launched", { jobId: res.job_id }), type: "info" });
       } else {
-        toast.error(res.message);
+        showToast({ body: res.message, type: "error" });
       }
       setLaunchPrompt("");
     },
-    onError: () => toast.error(t("launch.launchFailed")),
+    onError: () => showToast({ body: t("launch.launchFailed"), type: "error" }),
   });
 
   const steerMutation = useMutation({
     mutationFn: ({ jobId, text }: { jobId: string; text: string }) => steerJob(jobId, text),
     onSuccess: (_res, vars) => {
       setSteerTexts((prev) => ({ ...prev, [vars.jobId]: "" }));
-      toast.success(t("steer.sent", { jobId: vars.jobId }));
+      showToast({ body: t("steer.sent", { jobId: vars.jobId }), type: "info" });
     },
-    onError: () => toast.error(t("steer.failed")),
+    onError: () => showToast({ body: t("steer.failed"), type: "error" }),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (jobId: string) => cancelJob(jobId),
+    onSuccess: (_res, jobId) => {
+      showToast({ body: t("cancel.sent", { jobId }), type: "info" });
+    },
+    onError: () => showToast({ body: t("cancel.failed"), type: "error" }),
   });
 
   function onSort(nextKey: JobsSortKey) {
@@ -244,8 +253,11 @@ export function JobsPage() {
                     direction={sortDirection}
                     onClick={() => onSort("started_at")}
                   />
-                  <th className="py-2 pr-4 font-medium text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium text-muted-foreground">
                     {t("table.steer")}
+                  </th>
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">
+                    {t("table.actions")}
                   </th>
                 </tr>
               </thead>
@@ -270,7 +282,7 @@ export function JobsPage() {
                     <td className="py-2.5 pr-3 text-xs text-muted-foreground tabular-nums">
                       {new Date(job.started_at).toLocaleString()}
                     </td>
-                    <td className="py-2.5 pr-4">
+                    <td className="py-2.5 pr-3">
                       <div className="flex min-w-[12rem] items-center gap-2">
                         <TextInput
                           label={t("table.steerPlaceholder")}
@@ -304,6 +316,18 @@ export function JobsPage() {
                           →
                         </Button>
                       </div>
+                    </td>
+                    <td className="py-2.5 pr-4">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 text-xs active:scale-[0.98]"
+                        disabled={cancelMutation.isPending}
+                        onClick={() => cancelMutation.mutate(job.job_id)}
+                      >
+                        {t("table.cancel")}
+                      </Button>
                     </td>
                   </tr>
                 ))}

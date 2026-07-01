@@ -6,15 +6,11 @@ import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
 import * as agentsApi from "@/lib/agents-api";
 import { BffApiError } from "@/lib/bff-api";
 
-const toastSuccess = vi.fn();
-const toastError = vi.fn();
+const showToast = vi.fn();
 const navigate = vi.fn();
 
-vi.mock("@/components/ui/sonner", () => ({
-  toast: {
-    success: (...args: unknown[]) => toastSuccess(...args),
-    error: (...args: unknown[]) => toastError(...args),
-  },
+vi.mock("@astryxdesign/core/Toast", () => ({
+  useToast: () => showToast,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -36,8 +32,7 @@ function renderDialog() {
 
 describe("CreateAgentDialog", () => {
   beforeEach(() => {
-    toastSuccess.mockReset();
-    toastError.mockReset();
+    showToast.mockReset();
     navigate.mockReset();
   });
 
@@ -67,7 +62,7 @@ describe("CreateAgentDialog", () => {
         tagline: "",
       });
     });
-    expect(toastSuccess).toHaveBeenCalledWith("Agent scout créé.");
+    expect(showToast).toHaveBeenCalledWith({ body: "Agent scout créé.", type: "info" });
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(navigate).toHaveBeenCalledWith({
       to: "/agents/$name",
@@ -75,7 +70,7 @@ describe("CreateAgentDialog", () => {
     });
   });
 
-  it("shows a specific toast when the agent identifier already exists", async () => {
+  it("shows a specific error banner when the agent identifier already exists", async () => {
     const user = userEvent.setup();
     vi.spyOn(agentsApi, "createAgentConfig").mockRejectedValue(
       new BffApiError(409, "agent 'scout' already exists"),
@@ -85,9 +80,9 @@ describe("CreateAgentDialog", () => {
     await user.type(screen.getByLabelText(/identifiant/i), "scout");
     await user.click(screen.getByRole("button", { name: /^créer$/i }));
 
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith("Un agent avec cet identifiant existe déjà.");
-    });
+    // Errors surface inline (dialog stays open), not via a toast behind the modal.
+    expect(await screen.findByText("Un agent avec cet identifiant existe déjà.")).toBeTruthy();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it("blocks submit for invalid slugs", async () => {
@@ -99,5 +94,12 @@ describe("CreateAgentDialog", () => {
     const submit = screen.getByRole("button", { name: /^créer$/i });
     expect((submit as HTMLButtonElement).disabled).toBe(true);
     expect(createAgentConfig).not.toHaveBeenCalled();
+  });
+
+  it("closes via the Astryx DialogHeader close button", async () => {
+    const user = userEvent.setup();
+    const { onOpenChange } = renderDialog();
+    await user.click(screen.getByRole("button", { name: /close/i }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

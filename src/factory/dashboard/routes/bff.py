@@ -14,6 +14,7 @@ from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
     stub_fleet,
+    stub_jobs_cancel,
     stub_jobs_launch,
     stub_jobs_list,
     stub_jobs_steer,
@@ -39,6 +40,8 @@ from factory.dashboard.routes.bff_agents import register_agent_routes
 from factory.dashboard.routes.bff_common import map_hub_errors
 from factory.dashboard.stream_tokens import StreamTokenRegistry
 from roxabi_contracts.dashboard import (
+    DashboardJobsCancelRequest,
+    DashboardJobsCancelResponse,
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
@@ -192,6 +195,20 @@ def build_bff_router(  # noqa: C901, PLR0915
                 tokens.revoke(JOBS_STREAM_ID)
 
         return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+    @router.post("/jobs/cancel")
+    async def cancel_job(
+        body: DashboardJobsCancelRequest,
+    ) -> DashboardJobsCancelResponse:
+        if e2e_enabled():
+            return stub_jobs_cancel(body.job_id)
+        try:
+            return await hub.cancel_job(body.job_id)
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     @router.get("/sessions/turns")
     async def list_session_turns(

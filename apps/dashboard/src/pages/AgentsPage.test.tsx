@@ -1,3 +1,4 @@
+import { ToastViewport } from "@astryxdesign/core/Toast";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
@@ -13,6 +14,13 @@ import * as agentsApi from "@/lib/agents-api";
 import { ShellTitleProvider } from "@/lib/shell-title";
 import { AgentDetailPage, AgentsListPage } from "@/pages/AgentsPage";
 
+// The panel keeps a closed CreateAgentDialog mounted (Astryx native <dialog>),
+// whose default harness/model pickers render "Clipool"/"sonnet" too. Scope list
+// assertions outside the dialog subtree to avoid duplicate-match errors.
+function listText(matcher: RegExp | string) {
+  return screen.getAllByText(matcher).filter((el) => !el.closest("dialog"));
+}
+
 function renderAgentsList() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -25,9 +33,11 @@ function renderAgentsList() {
   });
   void router.load();
   return render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <ToastViewport>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ToastViewport>,
   );
 }
 
@@ -48,11 +58,13 @@ function renderAgentDetail() {
   });
   void router.load();
   return render(
-    <QueryClientProvider client={queryClient}>
-      <ShellTitleProvider>
-        <RouterProvider router={router} />
-      </ShellTitleProvider>
-    </QueryClientProvider>,
+    <ToastViewport>
+      <QueryClientProvider client={queryClient}>
+        <ShellTitleProvider>
+          <RouterProvider router={router} />
+        </ShellTitleProvider>
+      </QueryClientProvider>
+    </ToastViewport>,
   );
 }
 
@@ -97,8 +109,8 @@ describe("AgentsListPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Lyra")).toBeTruthy();
     });
-    expect(screen.getByText(/Clipool/)).toBeTruthy();
-    expect(screen.getByText(/sonnet/)).toBeTruthy();
+    expect(listText(/Clipool/).length).toBeGreaterThan(0);
+    expect(listText(/sonnet/).length).toBeGreaterThan(0);
   });
 
   it("switches between card and table views with toolbar search", async () => {
@@ -115,7 +127,7 @@ describe("AgentsListPage", () => {
     expect(screen.getAllByText("Éditer").length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("radio", { name: /Vue cartes/i }));
-    expect(screen.getByText("Clipool")).toBeTruthy();
+    expect(listText("Clipool").length).toBeGreaterThan(0);
   });
 });
 
@@ -173,6 +185,8 @@ describe("AgentDetailPage", () => {
       expect(agentsApi.patchAgentConfig).toHaveBeenCalled();
       expect(agentsApi.putAgentSoul).toHaveBeenCalled();
     });
+    // Success toast renders through the real ToastViewport (info → role=status).
+    expect(await screen.findByText(/Enregistré\./)).toBeTruthy();
   });
 
   it("shows secret lint warning when soul text matches token patterns", async () => {

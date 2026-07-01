@@ -1,12 +1,13 @@
+import { Banner } from "@astryxdesign/core/Banner";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { useToast } from "@astryxdesign/core/Toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { toast } from "@/components/ui/sonner";
 import { type AdminUserAccess, createAdminUser, patchAdminUser } from "@/lib/admin-api";
 import { fetchAgentsConfigList } from "@/lib/agents-api";
 import { bffErrorMessage } from "@/lib/bff-errors";
@@ -22,6 +23,7 @@ interface UserFormDialogProps {
 export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps) {
   const { t } = useTranslation("admin");
   const qc = useQueryClient();
+  const showToast = useToast();
   const isEdit = Boolean(user);
 
   const [displayName, setDisplayName] = useState("");
@@ -83,26 +85,39 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
       return createAdminUser(body);
     },
     onSuccess: () => {
-      toast.success(isEdit ? t("editSuccess") : t("createSuccess"));
+      showToast({ body: isEdit ? t("editSuccess") : t("createSuccess"), type: "info" });
       void qc.invalidateQueries({ queryKey: ["admin-access"] });
       onOpenChange(false);
       reset();
     },
-    onError: (err) => {
-      toast.error(bffErrorMessage(err, t, isEdit ? "edit" : "create"));
-    },
+    // Errors surface inline (Banner below) rather than via a toast: the dialog
+    // stays open for correction, and a toast would render behind the modal's
+    // top layer (dialog is promoted after the toast viewport).
   });
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) reset();
+    onOpenChange(next);
+  };
+
+  const title = isEdit ? t("editTitle") : t("createTitle");
+
   return (
+    // Kept mounted (isOpen toggles) so Astryx's close effect runs its
+    // focus-restore-to-opener — unmounting on close would skip it (no cleanup).
+    // `aria-label` names the modal (Astryx doesn't wire aria-labelledby→title).
     <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-      title={isEdit ? t("editTitle") : t("createTitle")}
-      description={isEdit ? t("editDescription") : t("createDescription")}
+      isOpen={open}
+      onOpenChange={handleOpenChange}
+      purpose="form"
+      width="28rem"
+      aria-label={title}
     >
+      <DialogHeader
+        title={title}
+        subtitle={isEdit ? t("editDescription") : t("createDescription")}
+        onOpenChange={handleOpenChange}
+      />
       <form
         className="space-y-4"
         onSubmit={(e) => {
@@ -111,6 +126,13 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
           saveMut.mutate();
         }}
       >
+        {saveMut.isError ? (
+          <Banner
+            status="error"
+            title={bffErrorMessage(saveMut.error, t, isEdit ? "edit" : "create")}
+          />
+        ) : null}
+
         {isEdit && user ? (
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">{t("colUser")}</p>

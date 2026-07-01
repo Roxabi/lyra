@@ -215,7 +215,12 @@ write_convergence_state() {
 # Stdout (one word):
 #   none       — no change (current == last, or last == "none" sentinel meaning no stamp)
 #   auth       — ONLY auth_sha (field 2) differs; all structural fields are identical
-#   structural — at least one structural field differs (git, units, voice, image digests)
+#   code-only  — ONLY git_head (field 0) differs; every tracked artifact (units, auth, voice,
+#                image digests) is unchanged. The caller must resolve this via a paths git-diff
+#                (see _code_change_is_inert): a docs/CI-only commit is inert (skip), while a
+#                source change whose new units/image are not installed/pulled yet at gate time
+#                must still run a full converge. Fail-safe: undecidable → structural.
+#   structural — at least one structural field differs (git+artifact, units, voice, image digests)
 #
 # The function always succeeds (exit 0); callers branch on stdout.
 _classify_drift() {
@@ -253,6 +258,19 @@ _classify_drift() {
     IFS=':' read -r last_git last_unit last_auth last_voice last_img_svc last_img_stg <<< "${last}"
     IFS=':' read -r cur_git  cur_unit  cur_auth  cur_voice  cur_img_svc  cur_img_stg  <<< "${current}"
 
+    # code-only: git HEAD advanced but every tracked artifact is unchanged. Emitted so the
+    # caller can cheaply skip a full converge for a docs/CI-only commit (paths git-diff),
+    # while still converging when a source change's units/image aren't installed/pulled yet.
+    if [ "${last_git}"     != "${cur_git}"     ] \
+    && [ "${last_unit}"    =  "${cur_unit}"    ] \
+    && [ "${last_auth}"    =  "${cur_auth}"    ] \
+    && [ "${last_voice}"   =  "${cur_voice}"   ] \
+    && [ "${last_img_svc}" =  "${cur_img_svc}" ] \
+    && [ "${last_img_stg}" =  "${cur_img_stg}" ]; then
+        echo "code-only"
+        return 0
+    fi
+
     # Check structural fields first (image digests are structural — containers must restart)
     if [ "${last_git}"      != "${cur_git}"      ] \
     || [ "${last_unit}"     != "${cur_unit}"     ] \
@@ -266,5 +284,46 @@ _classify_drift() {
     # Structural fields match; auth_sha is the only thing that can differ here
     # (we already ruled out full equality above).
     echo "auth"
+    return 0
+}
+
+# Decide whether a 'code-only' drift (git HEAD advanced, no tracked artifact changed) is INERT —
+# i.e. the commit range touches only non-runtime files and needs no converge/restart.
+#
+#   _code_change_is_inert <last_fingerprint> <current_fingerprint>
+#
+# Returns 0 (inert → safe to skip) ONLY if EVERY file changed between the two stamps' git_head
+# (field 0) matches a conservative non-runtime allowlist (docs / tests / CI / artifacts / *.md).
+# Returns 1 (NOT inert → run a full converge) for any runtime-relevant path (src, packages, apps,
+# deploy, tools, config, Dockerfile, lockfiles, …) AND for any undecidable case (a git_head is
+# "none"/empty, or `git diff` fails because a commit is missing). This is a NEGATIVE allowlist:
+# a mis-classification can only ever over-restart (current behaviour), never silently under-restart.
+_code_change_is_inert() {
+    local last_git cur_git changed p
+    last_git=$(cut -d: -f1 <<< "${1}")
+    cur_git=$(cut -d: -f1 <<< "${2}")
+
+    # Both commits must be real and resolvable — else fail-safe to a full converge.
+    [ -n "${last_git}" ] && [ "${last_git}" != "none" ] || return 1
+    [ -n "${cur_git}" ]  && [ "${cur_git}"  != "none" ] || return 1
+
+    changed=$(cd "${FACTORY_DIR}" && git diff --name-only "${last_git}" "${cur_git}" 2>/dev/null) \
+        || return 1
+    # Empty diff = identical trees (e.g. a no-op/empty commit) → genuinely inert.
+    [ -z "${changed}" ] && return 0
+
+    # `*.md`/`*.txt` are inert anywhere in the tree: no runtime config is a bind-mounted,
+    # read-at-startup .md/.txt today (all mounted config is *.json/*.conf/*.yml/*.toml — grep
+    # `Volume=` in deploy/quadlet/ before ever adding one), and any .md/.txt baked into the image
+    # moves image digest fields 4/5, so factory-post-autoupdate's independent digest poll still
+    # converges the fleet even when this git-diff path skips. Adversarially reviewed (0 holes).
+    while IFS= read -r p; do
+        [ -z "${p}" ] && continue
+        case "${p}" in
+            docs/*|tests/*|artifacts/*|.github/*) ;;
+            *.md|*.txt|LICENSE|CHANGELOG|CHANGELOG.md|.gitignore|.editorconfig|.pre-commit-config.yaml) ;;
+            *) return 1 ;;  # a runtime-relevant path changed → NOT inert → full converge
+        esac
+    done <<< "${changed}"
     return 0
 }

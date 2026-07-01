@@ -7,8 +7,13 @@ import { I18nextProvider } from "react-i18next";
 import "./index.css";
 import { roxabiTheme } from "@/astryx-theme/built/roxabi";
 import i18n from "@/i18n";
+import { registerAppIcons } from "@/lib/astryx-icons";
 import { useTheme } from "@/lib/use-theme";
 import { router } from "@/router";
+
+// Populate Astryx's global icon registry with Phosphor glyphs before render, so
+// design-system chrome (chevrons, close, check, …) uses the app's icon set (#2091).
+registerAppIcons();
 
 const queryClient = new QueryClient({
   defaultOptions: {

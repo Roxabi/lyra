@@ -1,5 +1,8 @@
 import { Badge } from "@astryxdesign/core/Badge";
+import { Card } from "@astryxdesign/core/Card";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { Stack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { Robot } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
@@ -7,7 +10,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListToolbar, ListToolbarHeader, ListToolbarSearch } from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
@@ -33,11 +35,11 @@ function EngineCardsSkeleton() {
       aria-label={t("actions.loading")}
     >
       {[0, 1, 2].map((i) => (
-        <Card key={i} className="dashboard-surface border-border/60 shadow-none">
-          <CardContent className="space-y-3 pt-6">
+        <Card key={i}>
+          <Stack gap={3}>
             <Skeleton width={96} height={16} />
             <Skeleton width={64} height={24} radius="rounded" />
-          </CardContent>
+          </Stack>
         </Card>
       ))}
     </div>
@@ -125,81 +127,89 @@ export function OpsPage() {
       {!enginesLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {engines.map((engine) => (
-            <Card key={engine.engine} className="dashboard-surface border-border/60 shadow-none">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">{engine.label}</CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Card key={engine.engine}>
+              <Stack gap={4} align="start">
+                <Text type="label" as="h3">
+                  {engine.label}
+                </Text>
                 <Badge
                   variant={engine.reachable ? "success" : "error"}
                   label={engine.reachable ? tc("status.online") : tc("status.offline")}
                 />
                 {engine.detail ? (
-                  <p className="mt-2 truncate text-xs text-muted-foreground">{engine.detail}</p>
+                  <p className="truncate text-xs text-muted-foreground">{engine.detail}</p>
                 ) : null}
-              </CardContent>
+              </Stack>
             </Card>
           ))}
           {enginesError ? (
-            <Card className="dashboard-surface border-border/60 shadow-none sm:col-span-2 lg:col-span-3">
-              <CardContent className="pt-6">
+            <Card className="sm:col-span-2 lg:col-span-3">
+              <Stack gap={4}>
                 <p className="text-sm text-destructive" role="alert">
                   {t("engines.loadError")}
                 </p>
-              </CardContent>
+              </Stack>
             </Card>
           ) : null}
         </div>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="dashboard-surface border-border/60 shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">{t("harness.clipool")}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card data-testid="ops-harness-card-clipool">
+          <Stack gap={4} align="start">
+            <Text type="label" as="h3">
+              {t("harness.clipool")}
+            </Text>
             <Badge
               variant={clipoolUp ? "success" : "error"}
               label={clipoolUp ? tc("status.online") : tc("status.offline")}
             />
-          </CardContent>
+          </Stack>
         </Card>
-        <Card className="dashboard-surface border-border/60 shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">{t("harness.omp")}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card data-testid="ops-harness-card-omp">
+          <Stack gap={4} align="start">
+            <Text type="label" as="h3">
+              {t("harness.omp")}
+            </Text>
             <Badge
               variant={ompUp ? "success" : "error"}
               label={ompUp ? tc("status.online") : tc("status.offline")}
             />
-          </CardContent>
+          </Stack>
         </Card>
       </div>
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
-          <div>
-            <CardTitle className="text-base">{t("logs.title")}</CardTitle>
-            {container ? (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {t("logs.containerFilter", { container })}
-              </p>
-            ) : null}
-            {logs?.query ? (
-              <p className="mt-1 font-mono text-[10px] text-muted-foreground">{logs.query}</p>
-            ) : null}
-          </div>
-          {container ? null : (
-            <PopoverSelect
-              label={t("logs.presetLabel")}
-              value={logPreset}
-              options={LOG_PRESET_OPTIONS}
-              onChange={(v) => setLogPreset(v as OpsLogPreset)}
-            />
-          )}
-        </CardHeader>
-        <CardContent>
+      <Card>
+        <Stack gap={4}>
+          <Stack
+            direction="horizontal"
+            justify="between"
+            align="center"
+            gap={4}
+            className="flex-wrap"
+          >
+            <Stack gap={1}>
+              <Text type="label" as="h3">
+                {t("logs.title")}
+              </Text>
+              {container ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("logs.containerFilter", { container })}
+                </p>
+              ) : null}
+              {logs?.query ? (
+                <p className="font-mono text-[10px] text-muted-foreground">{logs.query}</p>
+              ) : null}
+            </Stack>
+            {container ? null : (
+              <PopoverSelect
+                label={t("logs.presetLabel")}
+                value={logPreset}
+                options={LOG_PRESET_OPTIONS}
+                onChange={(v) => setLogPreset(v as OpsLogPreset)}
+              />
+            )}
+          </Stack>
           {logsLoading ? <LogsSkeleton /> : null}
           {logsError ? (
             <p className="text-sm text-destructive" role="alert">
@@ -229,7 +239,7 @@ export function OpsPage() {
               ))}
             </div>
           ) : null}
-        </CardContent>
+        </Stack>
       </Card>
 
       <div className="space-y-4">

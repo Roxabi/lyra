@@ -60,8 +60,10 @@ def _patch_start_worker(pool: OmpPool, client: MagicMock, bridge: MagicMock) -> 
       - Does NOT touch _verify_digest or omp_rpc
     """
 
-    async def _fake_start_worker() -> _PoolWorker:
-        worker = _PoolWorker(client=client, bridge=bridge)
+    async def _fake_start_worker(*, system_prompt: str = "") -> _PoolWorker:
+        worker = _PoolWorker(
+            client=client, bridge=bridge, system_prompt=system_prompt
+        )
         pool._all.append(worker)
         return worker
 
@@ -81,12 +83,14 @@ def _make_pool(cap: int = 4) -> tuple[OmpPool, list[MagicMock], list[MagicMock]]
     # Force cap via a new semaphore (avoids env var interaction at construction time)
     pool._sem = asyncio.Semaphore(cap)
 
-    async def _multi_start_worker() -> _PoolWorker:
+    async def _multi_start_worker(*, system_prompt: str = "") -> _PoolWorker:
         client = _mock_rpc_client()
         bridge = _mock_bridge()
         clients.append(client)
         bridges.append(bridge)
-        worker = _PoolWorker(client=client, bridge=bridge)
+        worker = _PoolWorker(
+            client=client, bridge=bridge, system_prompt=system_prompt
+        )
         pool._all.append(worker)
         return worker
 
@@ -331,41 +335,72 @@ class TestOmpPool:
 
 @pytest.mark.asyncio
 async def test_acquire_cold_session_applies_system_prompt() -> None:
-    """OMP V2: same opaque soul string applied at session boundary."""
+    """OMP V2: opaque soul baked in at RpcClient construction; respawn on change."""
     from factory.core.persona import compose_soul_document_from_markdown
 
     soul_md = "## Identity\nParity soul\n"
     composed = compose_soul_document_from_markdown(soul_md)
 
-    client = _mock_rpc_client()
-    client.set_system_prompt = MagicMock()
-    bridge = _mock_bridge()
-    pool = OmpPool(omp_bin=Path("/fake/omp"), provider="litellm", model="grok-4-fast")
-    _patch_start_worker(pool, client, bridge)
+    pool, clients, _ = _make_pool()
     await pool.register(MagicMock())
 
     worker = await pool.acquire(None, system_prompt=composed)
     assert worker.system_prompt == composed
-    client.set_system_prompt.assert_called_once_with(composed)
+    assert worker is pool._all[0]
+    assert len(clients) == 1
 
-    # Persona edit → new prompt triggers re-apply on next cold acquire.
-    client.set_system_prompt.reset_mock()
-    client.new_session.reset_mock()
+    pool.release(worker)
+
     new_composed = compose_soul_document_from_markdown("## Identity\nEdited soul\n")
     worker2 = await pool.acquire(None, system_prompt=new_composed)
     assert worker2.system_prompt == new_composed
-    client.set_system_prompt.assert_called_with(new_composed)
+    assert len(clients) == 2
+    clients[0].stop.assert_called_once()
+    clients[1].new_session.assert_called_once()
+
+    await pool.aclose()
 
 
-def test_apply_omp_system_prompt_matches_clipool_opaque_string() -> None:
-    """Hub compose output is harness-opaque — OMP receives the same str as clipool."""
-    from factory.adapters.omp.omp_pool import _apply_omp_system_prompt
+@pytest.mark.asyncio
+async def test_start_worker_passes_append_system_prompt() -> None:
+    """RpcClient receives append_system_prompt — the only upstream soul hook."""
+    import sys
+
     from factory.core.persona import compose_soul_document_from_markdown
 
-    composed = compose_soul_document_from_markdown("## Identity\nShared harness soul\n")
-    client = MagicMock()
-    client.set_system_prompt = MagicMock()
-    _apply_omp_system_prompt(client, composed)
-    client.set_system_prompt.assert_called_once_with(composed)
-    assert isinstance(composed, str)
-    assert "Shared harness soul" in composed
+    composed = compose_soul_document_from_markdown("## Identity\nRpc soul\n")
+    pool = OmpPool(omp_bin=Path("/fake/omp"), provider="litellm", model="grok-4-fast")
+    await pool.register(_NC)
+
+    captured_kwargs: dict = {}
+    fake_bridge = _mock_bridge()
+
+    class _CapturingFakeOmpRpc:
+        def RpcClient(self, **kwargs: object) -> MagicMock:  # noqa: N802
+            captured_kwargs.update(kwargs)
+            return _mock_rpc_client()
+
+    sys.modules["omp_rpc"] = _CapturingFakeOmpRpc()  # type: ignore[assignment]
+    try:
+        with (
+            patch(
+                "factory.adapters.omp._rpc_bridge._verify_digest",
+                return_value=None,
+            ),
+            patch(
+                "factory.adapters.omp._rpc_bridge.RpcBridge",
+                return_value=fake_bridge,
+            ),
+            patch(
+                "factory.adapters.omp._model_catalogue.resolve_startup_model",
+                return_value="grok-test-non-reasoning",
+            ),
+        ):
+            await pool.acquire(None, system_prompt=composed)
+    finally:
+        sys.modules.pop("omp_rpc", None)
+
+    assert captured_kwargs.get("append_system_prompt") == composed
+    assert "set_system_prompt" not in captured_kwargs
+
+    await pool.aclose()

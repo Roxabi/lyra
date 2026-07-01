@@ -5,7 +5,8 @@
 | | |
 |---|---|
 | **Audit date** | 2026-06-30 (consolidated 2026-07-01) |
-| **Repo / branch** | `roxabi-factory` @ `staging` (`42b50ee8`, after ff-pull of PR #2070) |
+| **Remediation addendum** | 2026-07-01 — PRs #2077, #2084, #2085, #2086 mergées ; voir **Part 0b** |
+| **Repo / branch** | `roxabi-factory` @ `staging` (`42b50ee8` at audit time; remediation @ `c67dd4ce`+) |
 | **Week window** | 392 commits since 2026-06-23 (base `2714b361` → `staging`), ~1151 files, +40k/-7k |
 | **Scope** | whole-repo + last-week delta + cross-repo deploy (`~/projects` cluster installer) |
 | **Method** | ground-truth gates → 26 read-only finders (8 domains × repo/week/cross-repo) → adversarial per-finding verify (crit/high) → map-reduce synthesis |
@@ -21,6 +22,7 @@ This audit ran twice. **Run-1** (69 agents) lost 6 finders: both `axial-drift` f
 ## Table of contents
 
 - **Part 0 — Independent verification (Claude lead)** — P0 spot-checks, with caveats the verify agents missed
+- **Part 0b — Remediation status (2026-07-01)** — session audit merges + open plan items
 - **Part I — Executive synthesis (reduce step)** — full `AUDIT-SUMMARY.md`: debt score, severity totals, cross-domain merges, thematic clusters, P0/P1 tables, axial-drift table, SSoT/duplication table, deploy section, metrics dashboard, top-10 quick wins
 - **Part II — Full domain detail (all findings verbatim)**
   - architecture · axial-drift · security · ssot · deploy · week-subsystem · contracts · error-async
@@ -46,6 +48,34 @@ The verify stage labels many findings `CONFIRMED`, but those verdicts come from 
 
 **Actionable read:** the **dashboard cluster (P0-1 + P0-2 + P1 rebind)** is the one to fix first — same PR (#2070), same day, hand-confirmed, Tailnet-reachable, possibly already on the staging→ghcr image path. P0-3/P0-4/P0-5 are strong leads needing one confirmation step each.
 
+> **Numérotation Part 0 vs executive summary:** dans ce tableau, P0-3 = ACL adapters, P0-4 = OMP, P0-5 = cluster_plan. Dans Part I / `AUDIT-SUMMARY.md`, P0-3 = cluster_plan, P0-4 = ACL, P0-5 = OMP. Même findings, ordre différent.
+
+---
+
+# Part 0b — Remediation status (2026-07-01)
+
+Session audit 2026-06-30 : **4 PRs mergées** sur `staging`. Les shards `by-domain/*.md` et le corps de Part I restent le snapshot d'audit ; cette section est la source de vérité pour le statut courant.
+
+| PR | Contenu | Findings / items clos | État |
+|---|---|---|---|
+| [#2077](https://github.com/Roxabi/roxabi-factory/pull/2077) | quick-wins + gate #2038 | Quick wins #1–4 ; P1-4, P1-5, P1-8, P1-9 ; `check_quadlet_component_source` wired | ✅ mergée |
+| [#2084](https://github.com/Roxabi/roxabi-factory/pull/2084) | `stale_container_count` sans compte hardcodé | ssot doc-drift gate message | ✅ mergée |
+| [#2085](https://github.com/Roxabi/roxabi-factory/pull/2085) | `ingress.toml` auto-provision | provenance : ingress.toml never provisioned | ✅ mergée |
+| [#2086](https://github.com/Roxabi/roxabi-factory/pull/2086) | `converge.sh` daemon-reload après `NO_RESTART=1` | provenance : converge daemon-reload skip ; test ordre reload → restart | ✅ mergée — **vérif M₁** au prochain auto-converge |
+
+**Plan session — 4 items encore ouverts:**
+
+| Item | Finding | Décision |
+|---|---|---|
+| obs hardening | P1-7 `FleetReporter` crash guard | ✅ implémenté — try/except construction+publish + tests |
+| omp (P0-5 exec. summary) | `set_system_prompt` no-op | Respawn + `append_system_prompt` (reco opérateur) |
+| acl (P0-4 exec. summary) | telegram/discord `STREAM.NAMES` | ✅ grants backportés ; restart NATS au merge |
+| cluster-plan (P0-3 exec. summary) | `cluster_plan.py` `--prune` | ✅ `ROLE_GUARD` soft preflight (projects-meta) |
+
+**Non traités cette session:** P0-1 dashboard BFF auth, P0-2 jobs/steer IDOR, et le reste du backlog P1–P3.
+
+Détail triage / quick wins : [`AUDIT-SUMMARY.md` § Remediation + Triage + Quick wins](./AUDIT-SUMMARY.md).
+
 ---
 
 # Part I — Executive synthesis (reduce step)
@@ -56,7 +86,7 @@ Reduce pass over **8 domain shards** (architecture, axial-drift, security, ssot,
 
 **All 16 quality gates pass clean** (ccc-index, importlinter 15/15, doc_drift, doc_semantic_drift, secrets_drift, secrets_source, quadlet_manifest_install, quadlet_component_source, str_exc_bus_bound, hardcoded_constants, file_length, folder_size, test_sleep, omp_pin_lockstep, architecture_snapshot, volumes_table). Green-CI gives **zero protection** against 4 of this audit's 5 P0 findings — the dashboard-BFF auth bypass, the jobs/steer IDOR, the unbackported NATS ACL grant, and the OMP `set_system_prompt` API mismatch — none of these are gate-checkable today.
 
-> **Data provenance note**: `by-domain/ssot.md` and `by-domain/deploy.md` each report that a *different, larger* prior finding set previously existed at their file paths (e.g. ssot: 31 raw/29 deduped findings incl. `quadlet_component_source gate never wired`, `ingress.toml never provisioned`; deploy: `converge.sh:64 NO_RESTART=1` permanent daemon-reload skip, `cluster_plan.py:75-82 managed_repos allowlist silent-drop`). Those findings are **not REFUTED**, just absent from the JSON input handed to this reduce pass, and were overwritten per each domain synthesis's explicit instructions. They should be reconciled in a follow-up pass rather than treated as resolved.
+> **Data provenance note**: `by-domain/ssot.md` and `by-domain/deploy.md` each report that a *different, larger* prior finding set previously existed at their file paths. **Reconciled 2026-07-01 (Part 0b):** `quadlet_component_source` gate (#2077), `ingress.toml` provisioning (#2085), `converge.sh` daemon-reload (#2086) — **RESOLVED**. Still open: `cluster_plan.py` managed_repos allowlist silent-drop. Domain shards remain verbatim.
 
 ### Executive summary
 
@@ -823,10 +853,13 @@ Workflow({ scriptPath: "~/projects/roxabi-factory/artifacts/plans/full-audit.wf.
 ```
 Tunables at the top of the script: `WEEK_SINCE`, `VERIFY_SEVERITIES`, the `FINDERS[]` matrix.
 
-**Proposed next actions (awaiting operator go — nothing filed/deployed):**
-1. **Check M₁ live** — `ssh roxabituwer` (read-only): is the vulnerable dashboard image actually deployed/running?
-2. **Patch dashboard cluster** — P0-1 + P0-2 + P1 rebind, one worktree → PR `--base staging` (wire `require_operator` on `bff.py`/`bff_admin.py`/`bff_agents.py` + ownership check on `jobs/steer` + require the operator token secret).
-3. **File the 5 P0 + 13 P1** via `roxabi-issues:issue-triage` (native labels/relations; check epic #2034 first to avoid overlap on P0-3/P0-5 deploy items).
-4. **Confirm the caveated P0s** — P0-3 (roxabi-nats kv.watch fallback), P0-4 (`omp_rpc` at M₁ runtime), P0-5 (`cluster_plan.py` --prune path).
+**Remediation done (2026-07-01):** see **Part 0b** — #2077 quick-wins + gate #2038, #2084 stale_container_count, #2085 ingress.toml, #2086 converge daemon-reload.
 
-*Consolidated by the Claude lead on 2026-07-01. Parts I and II are the verbatim agent output (headings demoted one level); Part 0 and the appendices are lead-authored.*
+**Next actions (updated 2026-07-01):**
+1. **Vérif M₁ #2086** — au prochain auto-converge : log `==> systemd: reloading user daemon` avant les restarts ; confirmer qu'un changement d'unit Quadlet est pris en compte (pas de restart depuis unit périmée).
+2. ~~**obs hardening**~~ — P1-7 clos : crash guard `FleetReporter` (construction+publish).
+3. **omp P0-5** — respawn worker + `append_system_prompt` (reporté).
+4. **Dashboard cluster (priorité sécurité)** — P0-1 + P0-2 + P1 rebind : `require_operator` + ownership `jobs/steer`.
+5. **Triage backlog** — file remaining P0/P1 via `roxabi-issues:issue-triage` (check epic #2034).
+
+*Consolidated by the Claude lead on 2026-07-01; remediation addendum same date. Parts I and II are verbatim audit snapshots; Part 0, 0b, and appendices are lead-authored.*

@@ -33,6 +33,49 @@ async def test_publish_payload_shape(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_invalid_container_name_does_not_crash_or_publish() -> None:
+    """P1-7: report construction errors must not kill the fleet-reporter task."""
+    nc = AsyncMock()
+    reporter = FleetReporter(
+        nc,
+        container_name="bad.name",
+        image_ref="ghcr.io/roxabi/factory:staging-svc",
+    )
+    await reporter._publish_once()
+    nc.publish.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_publish_failure_is_swallowed() -> None:
+    nc = AsyncMock()
+    nc.publish.side_effect = RuntimeError("nats down")
+    reporter = FleetReporter(
+        nc,
+        container_name="factory-hub",
+        image_ref="ghcr.io/roxabi/factory:staging-svc",
+    )
+    await reporter._publish_once()
+
+
+@pytest.mark.asyncio
+async def test_run_survives_invalid_container_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sidecar loop must keep running when every publish attempt fails."""
+    monkeypatch.setenv("CONTAINER_NAME", "bad.name")
+    monkeypatch.setenv("IMAGE_REF", "ghcr.io/roxabi/factory:staging-svc")
+    nc = AsyncMock()
+    reporter = FleetReporter(nc, interval_s=0.01)
+    task = asyncio.create_task(reporter.run(), name="fleet-reporter")
+    await asyncio.sleep(0.05)
+    assert not task.done()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    nc.publish.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_missing_container_name_exits_without_publish(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

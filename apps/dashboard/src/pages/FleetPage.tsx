@@ -1,5 +1,13 @@
 import { Badge, type BadgeVariant } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "@astryxdesign/core/Table";
 import { ShippingContainer } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -145,15 +153,14 @@ export function FleetPage() {
 
       {!isLoading && visibleRows.length > 0 ? (
         <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-border/60 text-xs">
+          <Table className="min-w-[820px]" dividers="rows" hasHover>
+            <TableHeader>
+              <TableRow>
                 <SortableTableHeader
                   label={t("fleet.columns.name")}
                   active={sortKey === "container_name"}
                   direction={sortDirection}
                   onClick={() => onSort("container_name")}
-                  className="px-4 py-2"
                 />
                 <SortableTableHeader
                   label={t("fleet.columns.status")}
@@ -161,37 +168,27 @@ export function FleetPage() {
                   direction={sortDirection}
                   onClick={() => onSort("status")}
                 />
-                <th className="py-2 pr-4 font-medium text-muted-foreground">
-                  {t("fleet.columns.imageDigest")}
-                </th>
+                <TableHeaderCell scope="col">{t("fleet.columns.imageDigest")}</TableHeaderCell>
                 <SortableTableHeader
                   label={t("fleet.columns.health")}
                   active={sortKey === "health"}
                   direction={sortDirection}
                   onClick={() => onSort("health")}
                 />
-                <th className="py-2 pr-4 font-medium text-muted-foreground">
-                  {t("fleet.columns.image")}
-                </th>
-                <th className="py-2 pr-4 font-medium text-muted-foreground">
-                  {t("fleet.columns.revision")}
-                </th>
+                <TableHeaderCell scope="col">{t("fleet.columns.image")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("fleet.columns.revision")}</TableHeaderCell>
                 <SortableTableHeader
                   label={t("fleet.columns.age")}
                   active={sortKey === "age_s"}
                   direction={sortDirection}
                   onClick={() => onSort("age_s")}
-                  className="py-2 pr-4"
                 />
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {visibleRows.map((row: FleetRow) => (
-                <tr
-                  key={row.container_name}
-                  className="border-b border-border/40 transition-colors last:border-0 hover:bg-muted/15"
-                >
-                  <td className="px-4 py-2 pr-4 font-mono text-xs">
+                <TableRow key={row.container_name}>
+                  <TableCell className="font-mono text-xs">
                     <Link
                       to="/ops"
                       search={{ container: row.container_name }}
@@ -199,33 +196,33 @@ export function FleetPage() {
                     >
                       {row.container_name}
                     </Link>
-                  </td>
-                  <td className="py-2 pr-4">
+                  </TableCell>
+                  <TableCell>
                     <Badge
                       variant={statusVariant(row.status)}
                       label={t(`fleet.status.${row.status}`)}
                     />
-                  </td>
-                  <td className="py-2 pr-4">
+                  </TableCell>
+                  <TableCell>
                     <Badge
                       variant={digestVariant(row.image_digest_status)}
                       label={t(`fleet.imageDigest.${row.image_digest_status}`)}
                     />
-                  </td>
-                  <td className="py-2 pr-4 capitalize text-muted-foreground">{row.health}</td>
-                  <td className="max-w-[220px] truncate py-2 pr-4 text-xs text-muted-foreground">
+                  </TableCell>
+                  <TableCell className="capitalize text-muted-foreground">{row.health}</TableCell>
+                  <TableCell className="max-w-[220px] truncate text-xs text-muted-foreground">
                     {row.image_ref}
-                  </td>
-                  <td className="py-2 pr-4 font-mono text-xs text-muted-foreground">
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
                     {row.image_revision ?? "—"}
-                  </td>
-                  <td className="py-2 pr-4 text-muted-foreground tabular-nums">
+                  </TableCell>
+                  <TableCell className="text-muted-foreground tabular-nums">
                     {formatAge(row.age_s)}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       ) : null}
     </div>

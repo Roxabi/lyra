@@ -1,5 +1,13 @@
 import { Badge } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "@astryxdesign/core/Table";
 import { PencilSimple, Plus } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -124,32 +132,31 @@ export function AdminPage() {
 
         {!isLoading && !isError && filtered.length > 0 ? (
           <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-border/50 text-xs text-muted-foreground">
-                  <th className="px-4 py-2 pr-4 font-medium">{t("colDisplayName")}</th>
-                  <th className="py-2 pr-4 font-medium">{t("colEmail")}</th>
-                  <th className="py-2 pr-4 font-medium">{t("colTelegram")}</th>
-                  <th className="py-2 pr-4 font-medium">{t("colDiscord")}</th>
-                  <th className="py-2 pr-4 font-medium">{t("colAgents")}</th>
-                  <th className="py-2 pr-4 pl-2 text-right font-medium">{t("colAction")}</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table className="min-w-[720px]" dividers="rows" hasHover>
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell scope="col">{t("colDisplayName")}</TableHeaderCell>
+                  <TableHeaderCell scope="col">{t("colEmail")}</TableHeaderCell>
+                  <TableHeaderCell scope="col">{t("colTelegram")}</TableHeaderCell>
+                  <TableHeaderCell scope="col">{t("colDiscord")}</TableHeaderCell>
+                  <TableHeaderCell scope="col">{t("colAgents")}</TableHeaderCell>
+                  <TableHeaderCell scope="col" className="text-right">
+                    {t("colAction")}
+                  </TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filtered.map((u) => (
-                  <tr
-                    key={u.user_id}
-                    className="border-b border-border/30 last:border-0 hover:bg-muted/20"
-                  >
-                    <td className="px-4 py-3 pr-4 text-sm font-medium">{u.display_name ?? "—"}</td>
-                    <td className="py-3 pr-4 text-sm text-muted-foreground">{u.email ?? "—"}</td>
-                    <td className="py-3 pr-4">
+                  <TableRow key={u.user_id}>
+                    <TableCell className="font-medium">{u.display_name ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{u.email ?? "—"}</TableCell>
+                    <TableCell>
                       <PresenceBadge present={u.telegram != null} />
-                    </td>
-                    <td className="py-3 pr-4">
+                    </TableCell>
+                    <TableCell>
                       <PresenceBadge present={u.discord != null} />
-                    </td>
-                    <td className="py-3 pr-4">
+                    </TableCell>
+                    <TableCell>
                       <div className="flex flex-wrap gap-1.5">
                         {u.agents.length > 0 ? (
                           u.agents.map((agent) => (
@@ -164,8 +171,8 @@ export function AdminPage() {
                           <span className="text-xs text-muted-foreground">{t("noAgents")}</span>
                         )}
                       </div>
-                    </td>
-                    <td className="py-3 pr-4 pl-2 text-right">
+                    </TableCell>
+                    <TableCell className="text-right">
                       <Button
                         type="button"
                         variant="outline"
@@ -176,11 +183,11 @@ export function AdminPage() {
                         <PencilSimple className="size-3.5" aria-hidden />
                         {t("editUser")}
                       </Button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         ) : null}
       </div>

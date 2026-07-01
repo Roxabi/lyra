@@ -1,6 +1,21 @@
 import { Badge } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
-import { CaretRight, PencilSimple, Plus, Robot, SquaresFour, Table } from "@phosphor-icons/react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "@astryxdesign/core/Table";
+import {
+  CaretRight,
+  PencilSimple,
+  Plus,
+  Robot,
+  SquaresFour,
+  Table as TableIcon,
+} from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -188,7 +203,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
 
   const viewOptions = [
     { value: "cards" as const, label: t("viewCards"), icon: SquaresFour },
-    { value: "table" as const, label: t("viewTable"), icon: Table },
+    { value: "table" as const, label: t("viewTable"), icon: TableIcon },
   ];
 
   return (
@@ -317,53 +332,30 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
 
       {!isLoading && !isError && filtered.length > 0 && view === "table" ? (
         <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-border/50 text-xs text-muted-foreground">
-                <th scope="col" className="px-4 py-2 pr-4 font-medium">
-                  {t("colAgent")}
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  {t("colTagline")}
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  {t("colHarness")}
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  {t("colModel")}
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  {t("colTelegram")}
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  {t("colDiscord")}
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  {t("colEmail")}
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  {t("colSoul")}
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  {t("colSoulSize")}
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  {t("colUpdated")}
-                </th>
-                <th scope="col" className="py-2 pr-4 pl-2 text-right font-medium">
+          <Table className="min-w-[980px]" dividers="rows" hasHover>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell scope="col">{t("colAgent")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("colTagline")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("colHarness")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("colModel")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("colTelegram")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("colDiscord")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("colEmail")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("colSoul")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("colSoulSize")}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t("colUpdated")}</TableHeaderCell>
+                <TableHeaderCell scope="col" className="text-right">
                   {t("colAction")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+                </TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {filtered.map((a) => {
                 const persona = getAgentPersona(a.name);
                 return (
-                  <tr
-                    key={a.name}
-                    className="group border-b border-border/30 transition-colors last:border-0 hover:bg-muted/20"
-                  >
-                    <td className="px-4 py-3 pr-4">
+                  <TableRow key={a.name}>
+                    <TableCell>
                       <Link
                         to="/agents/$name"
                         params={{ name: a.name }}
@@ -371,47 +363,49 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                       >
                         <AgentIdentity agentId={a.name} avatarSize="sm" />
                       </Link>
-                    </td>
-                    <td className="max-w-[140px] py-3 pr-4 text-xs text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="max-w-[140px] text-xs text-muted-foreground">
                       <span className="line-clamp-2">{persona.tagline}</span>
-                    </td>
-                    <td className="py-3 pr-4">
+                    </TableCell>
+                    <TableCell>
                       <Badge
                         variant="neutral"
                         className="font-mono text-[10px]"
                         label={harnessLabel(a.backend)}
                       />
-                    </td>
-                    <td className="py-3 pr-4 font-mono text-xs text-muted-foreground">{a.model}</td>
-                    <td className="py-3 pr-4">
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {a.model}
+                    </TableCell>
+                    <TableCell>
                       <PresenceBadge present={a.has_telegram} namespace="agents" />
-                    </td>
-                    <td className="py-3 pr-4">
+                    </TableCell>
+                    <TableCell>
                       <PresenceBadge present={a.has_discord} namespace="agents" />
-                    </td>
-                    <td className="py-3 pr-4">
+                    </TableCell>
+                    <TableCell>
                       <PresenceBadge present={a.has_email} namespace="agents" />
-                    </td>
-                    <td className="py-3 pr-4">
+                    </TableCell>
+                    <TableCell>
                       <Badge
                         variant={a.has_soul ? "success" : "warning"}
                         label={a.has_soul ? t("hasSoul") : t("noSoul")}
                       />
-                    </td>
-                    <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">
                       {formatSoulSize(a.soul_document_bytes, t)}
-                    </td>
-                    <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">
                       {formatUpdated(a.updated_at)}
-                    </td>
-                    <td className="py-3 pr-4 pl-2 text-right">
+                    </TableCell>
+                    <TableCell className="text-right">
                       <EditButton agentName={a.name} />
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       ) : null}
     </div>

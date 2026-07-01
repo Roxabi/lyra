@@ -1,4 +1,5 @@
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
@@ -25,22 +26,21 @@ export function ListToolbar({
 export function ListToolbarHeader({
   meta,
   actions,
+  label = "En-tête de liste",
   className,
 }: {
   meta: React.ReactNode;
   actions?: React.ReactNode;
+  label?: string;
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-3 border-b border-border/70 pb-3",
-        className,
-      )}
-    >
-      <p className="text-sm font-medium text-foreground">{meta}</p>
-      {actions ? <div className="shrink-0">{actions}</div> : null}
-    </div>
+    <Toolbar
+      label={label}
+      className={cn("justify-between border-b border-border/70 pb-3", className)}
+      startContent={<p className="text-sm font-medium text-foreground">{meta}</p>}
+      endContent={actions ? <div className="shrink-0">{actions}</div> : undefined}
+    />
   );
 }
 
@@ -75,22 +75,32 @@ export function ListToolbarSearch({
 export function ListToolbarControls({
   filters,
   view,
+  label = "Filtres et affichage",
   className,
 }: {
   filters?: React.ReactNode;
   view?: React.ReactNode;
+  label?: string;
   className?: string;
 }) {
   if (!filters && !view) return null;
 
   return (
-    <div className={cn("flex w-full items-center gap-2", className)}>
-      {filters ? <div className="flex min-w-0 shrink-0 items-center gap-2">{filters}</div> : null}
-      {view ? (
-        <div className="ml-auto flex shrink-0 items-center justify-end gap-2 [&_[role=group]]:inline-flex">
-          {view}
-        </div>
-      ) : null}
-    </div>
+    <Toolbar
+      label={label}
+      className={cn("w-full justify-between", className)}
+      startContent={
+        filters ? (
+          <div className="flex min-w-0 shrink-0 items-center gap-2">{filters}</div>
+        ) : undefined
+      }
+      endContent={
+        view ? (
+          <div className="flex shrink-0 items-center justify-end gap-2 [&_[role=group]]:inline-flex">
+            {view}
+          </div>
+        ) : undefined
+      }
+    />
   );
 }

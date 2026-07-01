@@ -28,19 +28,26 @@ describe("JobsPage", () => {
         online: true,
       },
     ]);
-    vi.spyOn(api, "fetchJobs").mockResolvedValue([
-      {
-        job_id: "job-abc",
-        pool_id: "web:smoke:agent:lyra",
-        agent: "lyra",
-        platform: "web",
-        status: "open",
-        started_at: "2026-06-28T12:00:00+00:00",
-        concurrency_mode: "steer",
-        worker_loc: "clipool-worker",
-        steer_subject: "factory.job.job-abc.steer",
-      },
-    ]);
+    vi.spyOn(api, "postJobsStreamToken").mockResolvedValue({ stream_token: "tok" });
+    vi.spyOn(api, "openJobsStream").mockImplementation((_token, onEvent) => {
+      onEvent({
+        type: "snapshot",
+        jobs: [
+          {
+            job_id: "job-abc",
+            pool_id: "web:smoke:agent:lyra",
+            agent: "lyra",
+            platform: "web",
+            status: "open",
+            started_at: "2026-06-28T12:00:00+00:00",
+            concurrency_mode: "steer",
+            worker_loc: "clipool-worker",
+            steer_subject: "factory.job.job-abc.steer",
+          },
+        ],
+      });
+      return { close: vi.fn() } as unknown as EventSource;
+    });
     vi.spyOn(api, "launchJob").mockResolvedValue({
       accepted: true,
       job_id: "job-new",

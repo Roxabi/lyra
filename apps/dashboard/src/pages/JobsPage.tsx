@@ -6,7 +6,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Briefcase } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
@@ -22,8 +22,9 @@ import {
 import { PopoverSelect } from "@/components/ui/popover-select";
 import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
+import { useJobsLive } from "@/hooks/useJobsLive";
 import { displayAgentName } from "@/lib/agents";
-import { fetchAgentStatus, fetchAgents, fetchJobs, launchJob, steerJob } from "@/lib/api";
+import { fetchAgentStatus, fetchAgents, launchJob, steerJob } from "@/lib/api";
 import { jobStatusToBadgeVariant } from "@/lib/job-status";
 import { filterJobs, type JobsSortKey, sortJobs, uniqueJobStatuses } from "@/lib/jobs-filters";
 import { type SortDirection, toggleSort } from "@/lib/sort";
@@ -32,7 +33,6 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 export function JobsPage() {
   const { t } = useTranslation("jobs");
   const { t: tc } = useTranslation("common");
-  const queryClient = useQueryClient();
   const [launchAgent, setLaunchAgent] = useState("");
   const [launchPrompt, setLaunchPrompt] = useState("");
   const [steerTexts, setSteerTexts] = useState<Record<string, string>>({});
@@ -48,15 +48,7 @@ export function JobsPage() {
     queryFn: () => fetchAgentStatus(),
     refetchInterval: 15_000,
   });
-  const {
-    data: jobs = [],
-    isLoading,
-    isError,
-  } = useQuery({
-    queryKey: ["jobs-live"],
-    queryFn: fetchJobs,
-    refetchInterval: 5_000,
-  });
+  const { jobs, isLoading, isError } = useJobsLive();
 
   const selectedAgent = launchAgent || agents[0] || "";
   const statusOptions = useMemo(() => uniqueJobStatuses(jobs), [jobs]);
@@ -81,7 +73,6 @@ export function JobsPage() {
         toast.error(res.message);
       }
       setLaunchPrompt("");
-      void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
     },
     onError: () => toast.error(t("launch.launchFailed")),
   });

@@ -196,6 +196,29 @@ export async function fetchJobs(): Promise<DashboardJob[]> {
   return data.jobs;
 }
 
+export type JobsStreamEvent =
+  | { type: "snapshot"; jobs: DashboardJob[] }
+  | { type: "ping" }
+  | { type: "error"; message: string };
+
+export async function postJobsStreamToken(): Promise<{ stream_token: string }> {
+  const res = await fetch("/api/bff/jobs/stream-token", { method: "POST" });
+  if (!res.ok) throw new Error("jobs stream token failed");
+  return res.json() as Promise<{ stream_token: string }>;
+}
+
+export function openJobsStream(
+  streamToken: string,
+  onEvent: (ev: JobsStreamEvent) => void,
+): EventSource {
+  const url = `/api/bff/jobs/stream?token=${encodeURIComponent(streamToken)}`;
+  const source = new EventSource(url);
+  source.onmessage = (msg) => {
+    onEvent(JSON.parse(msg.data) as JobsStreamEvent);
+  };
+  return source;
+}
+
 export async function launchJob(body: {
   agent: string;
   prompt: string;

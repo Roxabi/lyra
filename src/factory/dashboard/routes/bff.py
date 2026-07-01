@@ -24,6 +24,10 @@ from factory.dashboard.e2e import (
     stub_sessions_list,
     stub_sessions_turns,
 )
+from factory.dashboard.jobs_stream import (
+    JOBS_STREAM_ID,
+    jobs_sse_events,
+)
 from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
 from factory.dashboard.otel_client import fetch_spans
 from factory.dashboard.pipeline_stream import (
@@ -158,6 +162,36 @@ def build_bff_router(  # noqa: C901, PLR0915
             if mapped is not None:
                 raise mapped from exc
             raise
+
+    @router.post("/jobs/stream-token")
+    async def jobs_stream_token() -> dict[str, str]:
+        stream_token = tokens.mint(JOBS_STREAM_ID)
+        return {"stream_token": stream_token}
+
+    @router.get("/jobs/stream")
+    async def jobs_stream(
+        request: Request,
+        token: str | None = Query(default=None),
+    ) -> StreamingResponse:
+        if not tokens.verify(JOBS_STREAM_ID, token):
+            raise HTTPException(status_code=403, detail="invalid stream token")
+
+        async def _client_connected() -> bool:
+            return not await request.is_disconnected()
+
+        async def event_gen():
+            try:
+                async for frame in jobs_sse_events(
+                    hub,
+                    is_connected=_client_connected,
+                ):
+                    yield frame
+            except asyncio.CancelledError:
+                return
+            finally:
+                tokens.revoke(JOBS_STREAM_ID)
+
+        return StreamingResponse(event_gen(), media_type="text/event-stream")
 
     @router.get("/sessions/turns")
     async def list_session_turns(

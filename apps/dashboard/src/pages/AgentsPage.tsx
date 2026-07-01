@@ -1,3 +1,4 @@
+import { TextArea } from "@astryxdesign/core/TextArea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -13,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
-import { Textarea } from "@/components/ui/textarea";
 import {
   fetchAgentConfig,
   fetchAgentSoul,
@@ -271,10 +271,14 @@ export function AgentDetailPage() {
               </Button>
             ))}
           </div>
-          <Textarea
-            className="min-h-[240px] font-mono text-sm"
+          <TextArea
+            label={t("soulSectionEditor", { section: tab })}
+            isLabelHidden
+            size="sm"
+            data-mono
             value={sections[tab] ?? ""}
-            onChange={(e) => onSectionChange(tab, e.target.value)}
+            onChange={(next) => onSectionChange(tab, next)}
+            rows={12}
           />
           <p className="text-xs text-muted-foreground">{t("documentSize", { bytes: docBytes })}</p>
           {secretWarning ? <Alert variant="destructive">{secretWarning}</Alert> : null}

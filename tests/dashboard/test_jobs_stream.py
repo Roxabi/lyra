@@ -67,3 +67,26 @@ async def test_jobs_sse_ping_when_unchanged(
     assert first["type"] == "snapshot"
     assert second["type"] == "ping"
     hub.list_jobs.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_jobs_sse_emits_generic_error_frame() -> None:
+    hub = AsyncMock()
+    hub.list_jobs = AsyncMock(side_effect=RuntimeError("internal kv detail"))
+    calls = 0
+
+    async def connected() -> bool:
+        nonlocal calls
+        calls += 1
+        return calls == 1
+
+    frames: list[str] = []
+    async for frame in jobs_sse_events(hub, is_connected=connected):
+        frames.append(frame)
+
+    assert len(frames) == 1
+    payload = json.loads(frames[0].removeprefix("data: ").strip())
+    assert payload["type"] == "error"
+    # Generic message only — internal exception text must NOT leak (review #2125).
+    assert payload["message"] == "snapshot unavailable"
+    assert "internal kv detail" not in frames[0]

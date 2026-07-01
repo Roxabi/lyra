@@ -11,7 +11,7 @@ import contextlib
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..agent import AgentBase
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 from roxabi_contracts.jobs.subjects import jobs_steer
 
 from ..messaging.message import Response
-from ..ports.active_jobs import ActiveJobEntry
+from ..ports.active_jobs import ActiveJobEntry, RegistryConflictError
 from .pool_observer import _TURN_PERSIST_ERRORS
 from .pool_processor_exec import _safe_dispatch, guarded_process_one
 
@@ -30,38 +30,46 @@ log = logging.getLogger(__name__)
 
 
 def _active_jobs_recorder(pool: Pool) -> ActiveJobsRecorder | None:
-    """Fetch the hub's active-jobs recorder via ``PoolContext``, if available.
+    """The hub's active-jobs recorder (``None`` until wired), via ``PoolContext``.
 
-    Defensive: a context predating the accessor (e.g. a test double) yields
-    ``None`` and the pool runs with no registry side-effects.
+    Resolved in one place so open/close agree; callers wrap this in the
+    best-effort try/except that guards the whole registry side-channel, so a
+    context that raises here cannot break the turn either.
     """
-    getter = getattr(pool._ctx, "active_jobs_recorder", None)
-    if not callable(getter):
-        return None
-    return cast("ActiveJobsRecorder | None", getter())
+    return pool._ctx.active_jobs_recorder()
 
 
 async def _open_active_job(pool: Pool) -> str | None:
     """Register this run in the active-jobs registry; return its job_id.
 
     Best-effort side-channel: the registry is observability + routing support,
-    never on the turn's critical path.  ANY failure (registry error, missing
-    recorder, test double) is swallowed so message processing always proceeds.
+    never on the turn's critical path.  The ENTIRE body — recorder resolution,
+    entry construction and ``open()`` — is guarded so no registry or context
+    failure can ever propagate into message processing.
     """
-    recorder = _active_jobs_recorder(pool)
-    if recorder is None:
-        return None
-    job_id = uuid.uuid4().hex
-    entry = ActiveJobEntry(
-        job_id=job_id,
-        pool_id=pool.pool_id,
-        status="open",
-        started_at=datetime.now(UTC),
-        steer_subject=jobs_steer(job_id),
-        concurrency_mode="steer",
-    )
     try:
+        recorder = _active_jobs_recorder(pool)
+        if recorder is None:
+            return None
+        job_id = uuid.uuid4().hex
+        entry = ActiveJobEntry(
+            job_id=job_id,
+            pool_id=pool.pool_id,
+            status="open",
+            started_at=datetime.now(UTC),
+            steer_subject=jobs_steer(job_id),
+            concurrency_mode="steer",
+        )
         await recorder.open(entry)
+    except RegistryConflictError:
+        # Benign + self-healing: a prior run's entry for this pool lingers
+        # until its TTL expires; this run is simply not registered meanwhile.
+        log.info(
+            "[pool:%s] active-jobs: pool already has an open job — "
+            "run not registered (TTL will heal)",
+            pool.pool_id,
+        )
+        return None
     except Exception:  # noqa: BLE001 — side-channel: never break the turn
         log.warning(
             "[pool:%s] active-jobs: open failed — run not registered",
@@ -73,13 +81,17 @@ async def _open_active_job(pool: Pool) -> str | None:
 
 
 async def _close_active_job(pool: Pool, job_id: str | None) -> None:
-    """Remove this run from the registry; best-effort (TTL heals a miss)."""
+    """Remove this run from the registry; best-effort (TTL heals a miss).
+
+    Whole body guarded — a registry/context failure on the teardown path
+    (incl. during ``asyncio.CancelledError`` unwind) must never propagate.
+    """
     if job_id is None:
         return
-    recorder = _active_jobs_recorder(pool)
-    if recorder is None:
-        return
     try:
+        recorder = _active_jobs_recorder(pool)
+        if recorder is None:
+            return
         await recorder.close(job_id)
     except Exception:  # noqa: BLE001 — side-channel: never break the turn
         log.warning(

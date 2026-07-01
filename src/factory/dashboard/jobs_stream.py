@@ -59,10 +59,12 @@ async def jobs_sse_events(
                 yield "data: " + json.dumps(frame) + "\n\n"
             else:
                 yield "data: " + json.dumps({"type": "ping"}) + "\n\n"
-        except Exception as exc:  # noqa: BLE001 — surface hub errors on stream
+        except Exception:  # noqa: BLE001 — surface hub errors without leaking internals
             log.warning("jobs_sse: snapshot failed", exc_info=True)
             yield (
-                "data: " + json.dumps({"type": "error", "message": str(exc)}) + "\n\n"
+                "data: "
+                + json.dumps({"type": "error", "message": "snapshot unavailable"})
+                + "\n\n"
             )
         await _interruptible_sleep(JOBS_SSE_POLL_S, is_connected=is_connected)
 

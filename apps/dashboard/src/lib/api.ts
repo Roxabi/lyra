@@ -214,7 +214,11 @@ export function openJobsStream(
   const url = `/api/bff/jobs/stream?token=${encodeURIComponent(streamToken)}`;
   const source = new EventSource(url);
   source.onmessage = (msg) => {
-    onEvent(JSON.parse(msg.data) as JobsStreamEvent);
+    try {
+      onEvent(JSON.parse(msg.data) as JobsStreamEvent);
+    } catch {
+      onEvent({ type: "error", message: "malformed frame" });
+    }
   };
   return source;
 }

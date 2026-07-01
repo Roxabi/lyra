@@ -10,13 +10,8 @@ import pytest
 from typer.testing import CliRunner
 
 from factory.cli import factory_app
-from factory.cli.ops import (
-    _default_hub_seed,
-    _expand_subject,
-    _inbox_prefix_for_seed,
-    _is_permission_error,
-    _load_matrix,
-)
+from factory.cli.ops import _expand_subject, _is_permission_error, _load_matrix
+from factory.cli.ops_nats import default_hub_seed, inbox_prefix_for_seed
 
 runner = CliRunner()
 
@@ -47,14 +42,14 @@ def test_default_hub_seed_matches_nkeys_ssot(tmp_path: Path) -> None:
     hub_seed = seeds / "hub.seed"
     hub_seed.write_text("SUABC\n", encoding="utf-8")
 
-    assert _default_hub_seed(seeds) == hub_seed
-    assert _default_hub_seed(seeds).is_file()
+    assert default_hub_seed(seeds) == hub_seed
+    assert default_hub_seed(seeds).is_file()
 
 
 def test_inbox_prefix_for_seed_matches_acl() -> None:
-    assert _inbox_prefix_for_seed(Path("/nkeys/hub.seed")) == "_inbox.hub"
+    assert inbox_prefix_for_seed(Path("/nkeys/hub.seed")) == "_inbox.hub"
     assert (
-        _inbox_prefix_for_seed(Path("/nkeys/clipool-worker.seed"))
+        inbox_prefix_for_seed(Path("/nkeys/clipool-worker.seed"))
         == "_inbox.clipool-worker"
     )
 

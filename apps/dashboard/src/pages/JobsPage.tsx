@@ -4,6 +4,7 @@ import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { Briefcase } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -12,7 +13,6 @@ import { PageIntro } from "@/components/layout/PageIntro";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { Input } from "@/components/ui/input";
 import {
   ListToolbar,
   ListToolbarControls,
@@ -281,16 +281,19 @@ export function JobsPage() {
                     </td>
                     <td className="py-2.5 pr-4">
                       <div className="flex min-w-[12rem] items-center gap-2">
-                        <Input
+                        <TextInput
+                          label={t("table.steerPlaceholder")}
+                          isLabelHidden
+                          size="sm"
                           value={steerTexts[job.job_id] ?? ""}
-                          onChange={(e) =>
+                          onChange={(v) =>
                             setSteerTexts((prev) => ({
                               ...prev,
-                              [job.job_id]: e.target.value,
+                              [job.job_id]: v,
                             }))
                           }
                           placeholder={t("table.steerPlaceholder")}
-                          className="h-8 text-xs"
+                          width="100%"
                         />
                         <Button
                           type="button"

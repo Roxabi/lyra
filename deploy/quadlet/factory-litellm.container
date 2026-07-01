@@ -9,11 +9,13 @@ StartLimitBurst=5
 # llmCLI CI. Pinned by digest so factory controls gateway bumps — ¬autoupdate label.
 # Bump recipe → deploy/AGENTS.md § llmCLI cloud-gateway image.
 Image=ghcr.io/roxabi/llmcli@sha256:3d52ccf3397b7b6e487833869eeb3b6a9c01d68426b4a3aaf0452b2a706f8217
-ContainerName=llmcli
-# Bridge membership enables container-to-container DNS routing (closes #60):
-# other services on roxabi.network reach this proxy as `http://llmcli:18091`
-# instead of hardcoded LAN IPs. PublishPort below keeps host-side clients
-# (Claude Code aliases, ssh/tailnet) reaching :18091 via loopback.
+ContainerName=factory-litellm
+# Renamed llmcli → factory-litellm: factory-<component> convention + avoids a filename
+# collision with llmCLI's own M₂ llmcli.container (cluster_plan matches by filename, so
+# a shared name leaked llmCLI's M₂ proxy into M₁'s install-plan). Nothing reaches this
+# proxy by container DNS (consumers use PublishPort/tailnet :18091); container-to-container
+# DNS would be http://factory-litellm:18091. PublishPort below keeps host-side clients
+# (Claude Code aliases, ssh/tailnet, factory-omp) reaching :18091 via loopback.
 Network=roxabi.network
 PublishPort=18091:18091
 Volume=%h/.roxabi/llmcli:/home/llmcli/.roxabi/llmcli:ro,Z

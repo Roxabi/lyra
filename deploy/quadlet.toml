@@ -142,7 +142,7 @@ host_roles = ["factory-hub"]
 # from ~/.roxabi/llmcli/env/proxy.env (grandfathered llmcli data dir), not a
 # Podman secret — hardening to a type=mount _FILE secret is a tracked follow-up.
 [component.litellm-proxy]
-container = "llmcli.container"
+container = "factory-litellm.container"
 required_secrets = []
 env_file = "~/.roxabi/llmcli/env/proxy.env"
 host_roles = ["factory-hub"]

@@ -129,7 +129,7 @@ class DashboardJobsSteerResponse(BaseModel):
     message: str = ""
 
 
-OpsEngineId = Literal["loki", "langfuse", "otel-collector"]
+OpsEngineId = Literal["loki", "langfuse", "otel"]
 OpsLogPreset = Literal[
     "hub-errors",
     "operator-events",

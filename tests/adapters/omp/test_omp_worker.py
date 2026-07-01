@@ -132,6 +132,7 @@ class TestHandleHappyPath:
         fake_pw.bridge.run.assert_awaited_once_with(
             "summarise this text",
             _JOB_ID,
+            trace_id="trace-001",
             session_file=fake_pw.session_file,
             model=None,
         )
@@ -170,7 +171,9 @@ class TestHandleSpawnSemantics:
         fake_pw = pool.acquire.return_value
         release_job = asyncio.Event()
 
-        async def blocked_run(prompt, job_id, *, session_file=None):  # noqa: ARG001
+        async def blocked_run(  # noqa: ARG001
+            prompt, job_id, *, trace_id=None, session_file=None, model=None
+        ):
             await release_job.wait()  # event-based: job hangs until the test frees it
 
         fake_pw.bridge.run.side_effect = blocked_run
@@ -202,7 +205,7 @@ class TestHandleSpawnSemantics:
             pw = _make_fake_pool_worker()
 
             async def run_until_released(  # noqa: ARG001
-                prompt, job_id, *, session_file=None, model=None
+                prompt, job_id, *, trace_id=None, session_file=None, model=None
             ):
                 nonlocal call_count
                 call_count += 1
@@ -536,6 +539,7 @@ class TestHandleBackwardCompat:
         fake_pw.bridge.run.assert_awaited_once_with(
             "x",
             _JOB_ID,
+            trace_id="trace-bc-001",
             session_file=ANY,
             model=None,
         )
@@ -566,6 +570,7 @@ class TestHandleBackwardCompat:
         fake_pw.bridge.run.assert_awaited_once_with(
             "x",
             _JOB_ID,
+            trace_id="trace-bc-002",
             session_file=ANY,
             model="grok-4-fast",
         )

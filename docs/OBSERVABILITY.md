@@ -162,24 +162,26 @@ Runbook: [runbooks/loki-query.md](runbooks/loki-query.md).
 
 ---
 
-## OTel Collector + Langfuse (trace engine — ADR-092 Phase 1)
+## factory-otel + otel-raw store (trace engine v1 — ADR-097)
 
 | Unit | Image | Storage / notes |
 |------|-------|-----------------|
-| `factory-otel-collector` | `otel/opentelemetry-collector-contrib:0.120.0` | config bind-mount only |
-| `factory-langfuse-web` | `langfuse/langfuse:3` | UI `127.0.0.1:3000` |
-| `factory-langfuse-worker` | `langfuse/langfuse-worker:3` | ingestion |
-| `factory-langfuse-postgres` | `postgres:17` | `~/.local/state/factory/langfuse/postgres/` |
-| `factory-langfuse-clickhouse` | `clickhouse/clickhouse-server:24.12` | `.../clickhouse/` |
-| `factory-langfuse-redis` | `redis:7-alpine` | `.../redis-data/` |
-| `factory-langfuse-minio` | `minio/minio` | `.../minio/` |
+| `factory-otel` | `ghcr.io/roxabi/factory:staging-svc` | OTLP ingest + JSONL + SQLite index (blobstore-style) |
+| JSONL archive | — | `~/.local/state/factory/otel/spans.jsonl` |
+| SQLite index | — | `~/.roxabi/factory/otel-raw.db` |
 
 Flow:
 
-- **Primary:** Claude Code (clipool subprocess) → OTLP gRPC → collector → Langfuse
-- **Secondary:** LiteLLM proxy (`llmcli` OTel v2) → same collector — OMP + cloud relay
+- **Workers:** NATS adapters (`NatsAdapterBase` hooks) → OTLP gRPC `:4317` → factory-otel → JSONL + SQLite
+- **Primary agent:** Claude Code (clipool subprocess) → OTLP gRPC → same service
+- **Secondary:** LiteLLM proxy (`llmcli` OTel v2) → same endpoint — OMP + cloud relay (Block 7)
+- **Dashboard:** BFF `GET /api/bff/spans` proxies factory-otel HTTP API (bearer auth)
 
-Bootstrap: `deploy/scripts/bootstrap-langfuse.sh` → `~/.roxabi/factory/env/langfuse.env` + `otel-collector.env`.
+Bootstrap: `deploy/scripts/bootstrap-otel-raw.sh` → dirs + permissions. Token: `factory_otel_token` via `install.sh`.
+
+**Deprecated:** `factory-otel-collector` (upstream otelcol image) disabled in `quadlet.toml`.
+
+**Langfuse (optional / deferred):** six-container stack remains in quadlet manifest for future drill-down but is **not** on the v1 critical path.
 
 Runbook: [runbooks/otel-traces.md](runbooks/otel-traces.md).
 

@@ -165,9 +165,9 @@ New stage **`AuthorizeAgentMiddleware`** immediately **after** `ResolveBindingMi
 … → ResolveBinding → AuthorizeAgent → MessagePrep → Pool submit
 ```
 
-During migration, legacy `ResolveTrustMiddleware` + `TrustGuardMiddleware` may run in
-parallel (deny if **either** layer denies). Bot-level trust is removed once
-`migrate-bot-grants` has run and operators confirm parity.
+Legacy `ResolveTrustMiddleware` + `TrustGuardMiddleware` were consolidated into
+`ResolveIdentityMiddleware` (ban list + admin flag only) in #2114. Bot-level trust
+no longer gates inbound chat — `agent_grants` is the sole access SSoT.
 
 Denied messages use a **pull-model inline refusal** (not a push DM): the stage
 short-circuits with a reply *in the originating channel* directing the user to the public
@@ -222,6 +222,9 @@ validated agent, not platform-wide `TRUSTED` only).
 3. **Migration CLI** — `migrate-bot-grants`, operator docs.
 4. **Deprecation** — stop `seed_grants_from_bots`; BotRow auth fields read-only legacy.
 5. **Surfaces** — agent-scoped pairing, web roster filter, remove legacy trust stages.
+   **Status (2026-07-01):** slice 5 shipped (#2114) — `ResolveIdentityMiddleware`
+   replaces the legacy trust pair; `AuthorizeAgentMiddleware` + `agent_grants` is the
+   sole inbound access gate; admin bypass via `msg.is_admin`.
 
 **MVP scope (epic #1980):** slice 1 (Foundation) + the operator CLI
 (`grant` / `revoke` / `auth list`, `use` capability) + the pull-model refusal (§5) + the

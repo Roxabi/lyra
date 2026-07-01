@@ -55,7 +55,7 @@ aiogram long-poll                NatsBus                       discord.py gatewa
       ◄──────────────────────────────┴──────────────────────────────▶
 ```
 
-Twenty Quadlet containers run on Machine 1 (`factory-hub` role, manifest `deploy/quadlet.toml`): core factory (`factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-clipool`, `factory-omp`, `factory-socialmedia-adapter`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`) plus observability (`factory-loki`, `factory-promtail`, `factory-otel-collector`, `factory-langfuse-*`). NATS topics: `factory.inbound.<platform>.<bot_id>` (adapter→hub), `factory.outbound.<platform>.<bot_id>` (hub→adapter). `factory start` runs hub + adapters in one process with embedded NATS.
+Sixteen active Quadlet containers run on Machine 1 (`factory-hub` role, manifest `deploy/quadlet.toml`): core factory (`factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-clipool`, `factory-omp`, `factory-socialmedia-adapter`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`, `factory-ingress`, `factory-cloudflared`) plus observability (`factory-loki`, `factory-promtail`, `factory-otel`). Langfuse and legacy `factory-otel-collector` units are disabled. NATS topics: `factory.inbound.<platform>.<bot_id>` (adapter→hub), `factory.outbound.<platform>.<bot_id>` (hub→adapter). `factory start` runs hub + adapters in one process with embedded NATS.
 
 ### Jobs & workers
 

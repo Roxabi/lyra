@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
@@ -29,7 +29,16 @@ from roxabi_contracts.cli import SUBJECTS
 from roxabi_contracts.cli.models import CliControlCmd
 from roxabi_contracts.jobs.models import JobEnvelope
 from roxabi_contracts.jobs.subjects import jobs_runtime_claude
+from roxabi_contracts.telemetry import (
+    ATTR_MODEL,
+    ATTR_POOL_ID,
+    ATTR_RUNTIME,
+    ATTR_SKILL,
+)
 from roxabi_nats.adapter_base import NatsAdapterBase
+
+if TYPE_CHECKING:
+    from roxabi_contracts.telemetry import MessageLifecycleHooks
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +56,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
         *,
         timeout: float = 30.0,
         identity_name: str | None = None,
+        lifecycle_hooks: "MessageLifecycleHooks | None" = None,
     ) -> None:
         super().__init__(
             subject=jobs_runtime_claude(),
@@ -58,12 +68,16 @@ class CliPoolNatsWorker(NatsAdapterBase):
             heartbeat_interval=_HEARTBEAT_INTERVAL,
             identity_name=identity_name,
             wait_ready=False,
+            lifecycle_hooks=lifecycle_hooks,
         )
         self._pool = pool
         self._jobs: set[asyncio.Task] = set()
 
     def _extra_subjects(self) -> list[str]:
         return [SUBJECTS.control]
+
+    def _defer_hooks_to_background(self) -> bool:
+        return True
 
     async def handle(self, msg: Any, payload: dict) -> None:
         if msg.subject == SUBJECTS.control:
@@ -93,7 +107,9 @@ class CliPoolNatsWorker(NatsAdapterBase):
             )
             return
 
-        task = asyncio.create_task(self._run_job(envelope))
+        task = asyncio.create_task(
+            self._run_with_work_hooks(payload, lambda: self._run_job(envelope))
+        )
         self._jobs.add(task)
         task.add_done_callback(self._jobs.discard)
 
@@ -102,14 +118,43 @@ class CliPoolNatsWorker(NatsAdapterBase):
         base["pool_count"] = len(self._pool._entries)
         return base
 
+    def telemetry_attributes(
+        self, payload: dict, result: object | None
+    ) -> dict[str, str]:
+        try:
+            envelope = JobEnvelope.model_validate(payload)
+        except ValidationError:
+            return {ATTR_RUNTIME: "clipool", ATTR_SKILL: "unknown"}
+        body = envelope.payload or {}
+        pool_id = str(body.get("pool_id") or envelope.job_id)
+        model_cfg = body.get("model_cfg") or {}
+        model = ""
+        if isinstance(model_cfg, dict):
+            model = str(model_cfg.get("model") or "")
+        skill = str(body.get("skill") or "unknown")
+        attrs: dict[str, str] = {
+            ATTR_POOL_ID: pool_id,
+            ATTR_RUNTIME: "clipool",
+            ATTR_SKILL: skill,
+        }
+        if model:
+            attrs[ATTR_MODEL] = model
+        return attrs
+
     async def _run_job(self, envelope: JobEnvelope) -> None:
         job_id = envelope.job_id
+        wire_trace_id = envelope.trace_id
         body = envelope.payload
         pool_id = str(body.get("pool_id") or job_id)
         prompt = str(body.get("prompt") or body.get("text") or "")
         if not prompt:
             log.warning("clipool_worker: job_id=%s empty prompt — rejecting", job_id)
-            await publish_job_error(self._nc, job_id, ValueError("empty prompt"))
+            await publish_job_error(
+                self._nc,
+                job_id,
+                ValueError("empty prompt"),
+                trace_id=wire_trace_id,
+            )
             return
 
         stream = bool(body.get("stream", True))
@@ -146,6 +191,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 await publish_streaming_job(
                     self._nc,
                     job_id=job_id,
+                    trace_id=wire_trace_id,
                     iterator=iterator,
                     resumed=resumed,
                 )
@@ -164,13 +210,19 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 await publish_blocking_result(
                     self._nc,
                     job_id=job_id,
+                    trace_id=wire_trace_id,
                     result=result,
                     resumed=resumed,
                 )
         except Exception as exc:  # noqa: BLE001
             log.exception("clipool_worker: job_id=%s failed", job_id)
             emit_populated_total(domain="cli")
-            await publish_job_failure(self._nc, job_id=job_id, exc=exc)
+            await publish_job_failure(
+                self._nc,
+                job_id=job_id,
+                trace_id=wire_trace_id,
+                exc=exc,
+            )
 
     async def _run_pool_op(
         self,

@@ -1,0 +1,89 @@
+---
+title: "ADR-097: OTel raw telemetry store — JSONL + SQLite without Langfuse v1"
+description: "Trace plane v1 persists OTLP spans as local JSONL under ~/.local/state/factory/otel/ with a SQLite index for dashboard queries. Langfuse deferred; three-store contract with blobstore and turns.db."
+status: accepted
+date: 2026-06-30
+deciders: [Mickael]
+related: [068, 073, 084, 092, 094]
+issue: 2069
+---
+
+## Status
+
+Accepted — 2026-06-30. Design validated by multi-role panel (Product · Architect · Axial · DevOps). Implementation tracked in [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069).
+
+## Context
+
+Operators need structured, queryable telemetry — which skill, which model, when — across CliPool, OMP, voice, image, and LLM workers. Text logs (Loki/journald) lack cross-service structure. Langfuse self-hosted (six containers) is heavy and not exercised on dev; the immediate need is **collect cleanly now, post-process later**.
+
+ADR-092 ratified a headless trace engine behind the control-plane dashboard. The codebase still wired the collector exclusively to Langfuse. This ADR fixes the v1 sink and the three-store boundary.
+
+## Decision
+
+### 1. Three complementary stores (normative)
+
+| Store | Holds | OTel relationship |
+|-------|-------|-------------------|
+| **blobstore** | Bytes (audio, images, attachments) | Spans carry `roxabi.blob_ref.in` / `roxabi.blob_ref.out` only — never inline bytes |
+| **turns.db** | Conversation text (L1 audit) | Join via `job_id` / `pool_id` — no duplication in OTel |
+| **otel-raw** | Timeline metadata (spans, attrs, durations) | SSoT v1 for post-processing and dashboard raw viewer |
+
+### 2. Trace plane v1 = otel-raw (not Langfuse)
+
+| Layer | v1 choice |
+|-------|-----------|
+| Protocol | OTLP → `factory-otel` on M₁ (`factory otel serve`, gRPC `:4317`) |
+| Archive | JSONL `~/.local/state/factory/otel/spans.jsonl` (rotated via logrotate, 7d or 5 GiB) |
+| Query index | SQLite `~/.roxabi/factory/otel-raw.db` — keyed by `trace_id`, `job_id`, `pool_id`, `ts` |
+| Langfuse | **Deferred** — quadlets optional; factory-otel v1 has **no** Langfuse exporter |
+
+### 3. Instrumentation boundary (ADR-073 axial)
+
+| Package | OTel responsibility |
+|---------|---------------------|
+| `roxabi-contracts` | `MessageLifecycleHooks` Protocol · span attribute registry · optional `pool_id` on `WorkEnvelope` |
+| `roxabi-nats` | Injectable hooks in `NatsAdapterBase._dispatch()` — **zero** `import opentelemetry` |
+| `roxabi-otel` (**new**) | `OtelLifecycleHooks`, `NoopHooks`, OTLP export, `InMemorySpanRecorder` |
+| `roxabi-satellite` | Unchanged — validation/blobs only |
+| Hub ingress | `TraceMiddleware` + `mint_work_envelope_fields()` — not `NatsAdapterBase` |
+
+Workers instrument **once** in the adapter base; satellites pass `OtelLifecycleHooks` at construction after factory packages merge.
+
+### 4. factory-otel service + quadlet (M₁)
+
+- **`factory-otel`** — single factory image container: OTLP gRPC ingest, JSONL append, SQLite index, HTTP query API (`:8450`)
+- Bind-mount RW volume for `~/.local/state/factory/otel/` and `otel-raw.db`
+- Health `GET /healthz` on `:8450`; bearer token for query API (dashboard BFF)
+- OTLP gRPC on pod network for workers + M₂ (`llmcli` proxy)
+- **`factory-otel-collector`** (upstream otelcol) **disabled** — kept on disk for rollback reference
+- Rollback: `ROXABI_OTEL_ENABLED=0` on workers disables export without image redeploy
+
+### 5. Dashboard v1
+
+Control-plane BFF exposes `GET /api/bff/spans` — paginated raw JSON, filters `pool_id`, `job_id`, `component`. No Langfuse UI proxy required.
+
+## Consequences
+
+### Positive
+
+- Trace collection works without six Langfuse containers
+- JSONL + SQLite are consumable by future ETL without vendor lock-in
+- Axial instrumentation: one hook site in `NatsAdapterBase`, not N×M per CLI
+- Aligns ADR-092 engine topology with operable v1 code
+
+### Negative
+
+- No Langfuse drill-down, cost panels, or skill ranking in v1 (#1774 deferred)
+- Cross-NATS W3C nesting (#1623) still deferred — v1 accepts sibling spans
+- Disk growth on JSONL — retention and partition alerts required (runbook)
+- `pool_id` on `WorkEnvelope` is a contracts bump — satellites must pick up on publish
+
+## See also
+
+- [ADR-092](092-observability-architecture.mdx) — amended: trace plane v1 = otel-raw
+- [ADR-094](094-control-plane-dashboard-consolidation.mdx) — amended: BFF raw spans engine
+- [ADR-068](068-ecosystem-service-plane.mdx) — service-plane access patterns
+- [ADR-084](084-workenvelope-job-id-invariant.mdx) — `job_id` / `trace_id` semantics
+- Specs: `artifacts/specs/otel-raw-store-spec.mdx`, `otel-correlation-ids-spec.mdx`, `otel-span-attributes-spec.mdx`
+- [`docs/OBSERVABILITY.md`](../../OBSERVABILITY.md) — operational truth
+- [`docs/runbooks/otel-traces.md`](../../runbooks/otel-traces.md) — startup without Langfuse

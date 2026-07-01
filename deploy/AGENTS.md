@@ -218,7 +218,8 @@ carries its own auth — bind tier and auth mechanism are chosen **together**:
 | `factory-hub` 8443 | `127.0.0.1` | host only | — |
 | `factory-loki` 3100 | `127.0.0.1` | host only (logcli / #1760) | — |
 | `factory-langfuse-web` 3000 | `127.0.0.1` | host only (trace UI / #1760) | Langfuse login |
-| `factory-otel-collector` 4317/4318 | `127.0.0.1` | host only (debug OTLP) | — |
+| `factory-otel` 4317 (gRPC) / 8450 (HTTP) | `roxabi.network` | pod network (workers); health/query on 8450 | bearer token (query API) |
+| `factory-otel-collector` 4317/4318 | — | **disabled** (legacy rollback) | — |
 | `factory-langfuse-*` deps | — | `roxabi.network` only | — |
 
 Rules:

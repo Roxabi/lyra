@@ -5,13 +5,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import TypeVar
-from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
 
+from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.transport._result import Err, Result, SanitizedError
-from roxabi_contracts import new_job_id
-from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.socialmedia.models import (
     SocialMediaListGroupsResponse,
     SocialMediaListIntegrationsResponse,
@@ -31,15 +29,20 @@ class SocialMediaResult:
 
 
 class SocialMediaCodec:
-    def envelope_fields(self, *, trace_id: str | None = None) -> dict:
-        from datetime import UTC, datetime
-
-        return {
-            "contract_version": CONTRACT_VERSION,
-            "trace_id": trace_id or str(uuid4()),
-            "issued_at": datetime.now(tz=UTC),
-            "job_id": new_job_id(),
-        }
+    def envelope_fields(
+        self,
+        *,
+        trace_id: str | None = None,
+        job_id: str | None = None,
+        parent_job_id: str | None = None,
+        pool_id: str | None = None,
+    ) -> dict:
+        return mint_work_envelope_fields(
+            trace_id=trace_id,
+            job_id=job_id,
+            parent_job_id=parent_job_id,
+            pool_id=pool_id,
+        ).as_dict()
 
     def encode(self, request: BaseModel) -> bytes:
         return request.model_dump_json(exclude_none=True).encode("utf-8")

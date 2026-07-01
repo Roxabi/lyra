@@ -1,3 +1,4 @@
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -6,7 +7,6 @@ import { useTranslation } from "react-i18next";
 import { HarnessPicker } from "@/components/HarnessPicker";
 import { ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { createAgentConfig } from "@/lib/agents-api";
 import { bffErrorMessage } from "@/lib/bff-errors";
@@ -62,16 +62,27 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
     },
   });
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) reset();
+    onOpenChange(next);
+  };
+
   return (
+    // Kept mounted (isOpen toggles) so Astryx's close effect runs its
+    // focus-restore-to-opener — unmounting on close would skip it (no cleanup).
+    // `aria-label` names the modal (Astryx doesn't wire aria-labelledby→title).
     <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-      title={t("createTitle")}
-      description={t("createDescription")}
+      isOpen={open}
+      onOpenChange={handleOpenChange}
+      purpose="form"
+      width="28rem"
+      aria-label={t("createTitle")}
     >
+      <DialogHeader
+        title={t("createTitle")}
+        subtitle={t("createDescription")}
+        onOpenChange={handleOpenChange}
+      />
       <form
         className="space-y-4"
         onSubmit={(e) => {

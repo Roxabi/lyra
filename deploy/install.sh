@@ -364,6 +364,17 @@ if [[ ! -e "${HOME}/.roxabi/factory/turn-writer/turns.db" ]]; then
 else
   echo "  [skip] ${HOME}/.roxabi/factory/turn-writer/turns.db already exists"
 fi
+# Provision ingress.toml (connector registry) from the example so factory-ingress's
+# read-only bind mount (%h/.roxabi/factory/ingress.toml) resolves to a regular file on
+# first boot — else Podman materialises a directory at the mount target. Copy-if-absent
+# (never clobber operator edits); webhook secrets live in Podman secrets, not here.
+if [[ ! -e "${HOME}/.roxabi/factory/ingress.toml" ]]; then
+  run mkdir -p "${HOME}/.roxabi/factory"
+  run cp "${SCRIPT_DIR}/ingress.toml.example" "${HOME}/.roxabi/factory/ingress.toml"
+  echo "  [ok]   ${HOME}/.roxabi/factory/ingress.toml (provisioned from ingress.toml.example)"
+else
+  echo "  [skip] ${HOME}/.roxabi/factory/ingress.toml already exists"
+fi
 # Pre-render auth.conf as a regular file so Podman never materialises it as a
 # directory on first boot (factory-nats bind-mounts it inline; if the host file
 # is absent, Podman creates a directory at the mount target, breaking nats-server).

@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from factory.core.envelope_fields import WorkEnvelopeFields
+from factory.core.trace import TraceContext
 from factory.llm.drivers.omp_rpc import OmpRpcDriver
 from factory.llm.omp_job_codec import OmpJobCodec
 from roxabi_contracts.jobs import JobResult
@@ -115,17 +117,19 @@ class TestOmpRpcDriverGoldenEnvelope:
         sub.next_msg.return_value = SimpleNamespace(data=_encode_result(success))
         driver = OmpRpcDriver(nc, timeout_s=5.0)
 
-        fixed_uuid = MagicMock()
-        fixed_uuid.hex = _FIXED_JOB_ID
+        fixed_fields = WorkEnvelopeFields(
+            contract_version="1",
+            trace_id=_FIXED_JOB_ID,
+            issued_at=_FIXED_ISSUED_AT,
+            job_id=_FIXED_JOB_ID,
+            parent_job_id=None,
+            pool_id="pool-golden",
+        )
 
-        with (
-            patch("factory.llm.drivers.omp_rpc.uuid4", return_value=fixed_uuid),
-            patch(
-                "factory.llm.drivers.omp_rpc.datetime",
-                wraps=datetime,
-            ) as dt_mock,
+        with patch(
+            "factory.llm.drivers.omp_rpc.mint_work_envelope_fields",
+            return_value=fixed_fields,
         ):
-            dt_mock.now.return_value = _FIXED_ISSUED_AT
             await driver.complete(
                 pool_id="pool-golden",
                 text="ping",
@@ -211,6 +215,7 @@ class TestLlmResultShapeInvariant:
 
     @pytest.mark.asyncio
     async def test_driver_paths_satisfy_invariant(self) -> None:
+        TraceContext.set_trace_id(_FIXED_JOB_ID)
         nc = AsyncMock()
         sub = AsyncMock()
         nc.subscribe.return_value = sub

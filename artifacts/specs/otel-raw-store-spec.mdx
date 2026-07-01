@@ -1,0 +1,110 @@
+---
+title: "OTel raw store — JSONL archive + SQLite index"
+issue: 2069
+status: approved
+tier: F-lite
+date: 2026-06-30
+source:
+  adr: docs/architecture/adr/097-otel-raw-telemetry-store.mdx
+  parent: artifacts/goal/otel-raw-telemetry-goal.md
+---
+
+## Context
+
+ADR-097 replaces Langfuse as the v1 trace sink. Spans arrive via OTLP at **`factory-otel`** (`factory otel serve`), are archived as JSONL, and indexed in SQLite for the dashboard BFF.
+
+## Goal
+
+Define durable paths, schemas, retention, and read patterns so operators and the control-plane can query span metadata without Langfuse.
+
+## Paths (ADR-068 service plane)
+
+| Path | Mode | Owner |
+|------|------|-------|
+| `~/.local/state/factory/otel/spans.jsonl` | append-only archive | factory-otel `OtelRawStore` |
+| `~/.roxabi/factory/otel-raw.db` | SQLite WAL | factory-otel indexer + BFF proxy |
+| `~/.local/state/factory/otel/` | directory `0750` | `bootstrap-otel-raw.sh` |
+
+Syncthing: **exclude** `otel/` and `otel-raw.db` (high churn).
+
+## JSONL schema (collector export)
+
+Each line is one OTLP-exported resource span batch flattened to JSON objects. Minimum fields consumed by the indexer:
+
+```json
+{
+  "trace_id": "a1b2c3d4e5f6789012345678abcdef01",
+  "span_id": "abcdef0123456789",
+  "parent_span_id": null,
+  "name": "nats.work",
+  "start_time_unix_nano": 1719752400000000000,
+  "end_time_unix_nano": 1719752400123000000,
+  "attributes": {
+    "roxabi.trace_id": "550e8400-e29b-41d4-a716-446655440000",
+    "roxabi.job_id": "f00ba1234567890abcdef1234567890",
+    "roxabi.pool_id": "pool:tg:chat:42",
+    "roxabi.component": "clipool-workers",
+    "roxabi.envelope_name": "JobEnvelope",
+    "roxabi.subject": "factory.jobs.claude",
+    "roxabi.skill": "unknown"
+  }
+}
+```
+
+Indexer tolerates unknown fields (`extra` ignored). Lines that fail validation are counted and skipped — never crash the reader.
+
+## SQLite schema
+
+```sql
+CREATE TABLE IF NOT EXISTS spans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trace_id TEXT NOT NULL,
+  span_id TEXT NOT NULL,
+  job_id TEXT,
+  pool_id TEXT,
+  component TEXT,
+  envelope_name TEXT,
+  subject TEXT,
+  name TEXT NOT NULL,
+  start_ts REAL NOT NULL,
+  duration_ms REAL NOT NULL,
+  attributes_json TEXT NOT NULL,
+  ingested_at REAL NOT NULL,
+  UNIQUE(trace_id, span_id)
+);
+CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(trace_id);
+CREATE INDEX IF NOT EXISTS idx_spans_job ON spans(job_id);
+CREATE INDEX IF NOT EXISTS idx_spans_pool ON spans(pool_id);
+CREATE INDEX IF NOT EXISTS idx_spans_ts ON spans(start_ts);
+CREATE INDEX IF NOT EXISTS idx_spans_component ON spans(component);
+```
+
+## Retention
+
+| Policy | Value |
+|--------|-------|
+| JSONL rotation | `logrotate` weekly or 5 GiB cap — keep 7 days |
+| SQLite | prune rows older than 7 days on indexer run (same window) |
+| Alert | runbook: disk usage on `otel/` > 80% → operator action |
+
+## Read API (dashboard BFF)
+
+`GET /api/bff/spans?pool_id=&job_id=&component=&page=1&page_size=50`
+
+- Filters are AND-combined; omitted filters match all
+- Response: `{ items: [...], total, page, page_size }` — each item includes full `attributes` dict for raw JSON drill-down
+- Indexer runs on BFF startup and before each query (mtime check on JSONL)
+
+## Access pattern (ADR-068)
+
+| Consumer | Access |
+|----------|--------|
+| Dashboard BFF | read-only SQLite + tail JSONL |
+| Future ETL | read JSONL archive directly |
+| Operator CLI | `sqlite3 ~/.roxabi/factory/otel-raw.db` ad-hoc |
+
+## Non-goals
+
+- Langfuse ingestion
+- Storing prompts, bytes, or base64 in JSONL/SQLite
+- Real-time push to dashboard (pull/query only in v1)

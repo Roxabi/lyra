@@ -1,5 +1,17 @@
-@layer theme, base, brand, components, utilities;
-@import "tailwindcss";
+/*
+ * Cascade layer order — Astryx design system + Tailwind v4 coexistence.
+ * Priority low→high: reset → theme → base → astryx-base → astryx-theme → brand → components → utilities
+ * Astryx CSS is additive and sits below `utilities`, so existing Tailwind utility
+ * classes still win — not-yet-migrated shadcn primitives render unchanged (S0).
+ * Ref: astryx apps/example-vite-tailwind/src/index.css + `astryx docs migration`.
+ */
+@layer reset, theme, base, astryx-base, astryx-theme, brand, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
+@import "@astryxdesign/theme-neutral/theme.css";
 @import "@fontsource/inter/latin-400.css";
 @import "@fontsource/inter/latin-500.css";
 @import "@fontsource/inter/latin-600.css";
@@ -8,6 +20,7 @@
 @import "@fontsource/jetbrains-mono/latin-400.css";
 @import "@fontsource/jetbrains-mono/latin-500.css";
 @import "../../../brand/styles.css" layer(brand);
+@import "tailwindcss/utilities.css" layer(utilities);
 
 /* shadcn semantic bridge — maps Forge tokens → Tailwind utilities */
 :root {

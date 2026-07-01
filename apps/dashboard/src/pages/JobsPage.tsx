@@ -23,7 +23,14 @@ import { PopoverSelect } from "@/components/ui/popover-select";
 import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { displayAgentName } from "@/lib/agents";
-import { fetchAgentStatus, fetchAgents, fetchJobs, launchJob, steerJob } from "@/lib/api";
+import {
+  cancelJob,
+  fetchAgentStatus,
+  fetchAgents,
+  fetchJobs,
+  launchJob,
+  steerJob,
+} from "@/lib/api";
 import { jobStatusToBadgeVariant } from "@/lib/job-status";
 import { filterJobs, type JobsSortKey, sortJobs, uniqueJobStatuses } from "@/lib/jobs-filters";
 import { type SortDirection, toggleSort } from "@/lib/sort";
@@ -93,6 +100,15 @@ export function JobsPage() {
       toast.success(t("steer.sent", { jobId: vars.jobId }));
     },
     onError: () => toast.error(t("steer.failed")),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (jobId: string) => cancelJob(jobId),
+    onSuccess: (_res, jobId) => {
+      toast.success(t("cancel.sent", { jobId }));
+      void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
+    },
+    onError: () => toast.error(t("cancel.failed")),
   });
 
   function onSort(nextKey: JobsSortKey) {
@@ -253,8 +269,11 @@ export function JobsPage() {
                     direction={sortDirection}
                     onClick={() => onSort("started_at")}
                   />
-                  <th className="py-2 pr-4 font-medium text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium text-muted-foreground">
                     {t("table.steer")}
+                  </th>
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">
+                    {t("table.actions")}
                   </th>
                 </tr>
               </thead>
@@ -279,7 +298,7 @@ export function JobsPage() {
                     <td className="py-2.5 pr-3 text-xs text-muted-foreground tabular-nums">
                       {new Date(job.started_at).toLocaleString()}
                     </td>
-                    <td className="py-2.5 pr-4">
+                    <td className="py-2.5 pr-3">
                       <div className="flex min-w-[12rem] items-center gap-2">
                         <TextInput
                           label={t("table.steerPlaceholder")}
@@ -313,6 +332,18 @@ export function JobsPage() {
                           →
                         </Button>
                       </div>
+                    </td>
+                    <td className="py-2.5 pr-4">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 text-xs active:scale-[0.98]"
+                        disabled={cancelMutation.isPending}
+                        onClick={() => cancelMutation.mutate(job.job_id)}
+                      >
+                        {t("table.cancel")}
+                      </Button>
                     </td>
                   </tr>
                 ))}

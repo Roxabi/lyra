@@ -1,9 +1,9 @@
+import { Badge } from "@astryxdesign/core/Badge";
 import { ArrowCounterClockwise, Plus, X } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/agents/AgentAvatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type PopoverOption, PopoverSelect } from "@/components/ui/popover-select";
 import { getAgentPersona } from "@/lib/agent-catalog";
@@ -173,9 +173,11 @@ export function ChatSidebar({
                 onClick={() => onResume(s.cli_session_id, s.session_id)}
               >
                 <div className="min-w-0">
-                  <Badge variant="secondary" className="mb-1 text-[10px]">
-                    {PLATFORM_LABEL[s.platform] ?? s.platform}
-                  </Badge>
+                  <Badge
+                    variant="neutral"
+                    className="mb-1 text-[10px]"
+                    label={PLATFORM_LABEL[s.platform] ?? s.platform}
+                  />
                   <p className="truncate text-xs text-foreground">
                     {s.first_user_msg ?? t("sidebar.emptyMessage")}
                   </p>

@@ -1,3 +1,4 @@
+import { Badge } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Briefcase, ChatCircleDots, Robot, Warning } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -6,7 +7,6 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -132,9 +132,7 @@ export function DashboardHome() {
         <Card className="dashboard-surface border-border/60 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="text-sm font-semibold">{t("agents.title")}</CardTitle>
-            <Badge variant="secondary" className="tabular-nums">
-              {rosterAgents.length}
-            </Badge>
+            <Badge variant="neutral" className="tabular-nums" label={rosterAgents.length} />
           </CardHeader>
           <CardContent className="p-0">
             {statusLoading ? <TableRowsSkeleton /> : null}
@@ -169,9 +167,10 @@ export function DashboardHome() {
                         </td>
                         <td className="px-3 py-2.5 text-xs text-muted-foreground">{s.harness}</td>
                         <td className="px-6 py-2.5">
-                          <Badge variant={s.online ? "success" : "destructive"}>
-                            {s.online ? tc("status.online") : tc("status.offline")}
-                          </Badge>
+                          <Badge
+                            variant={s.online ? "success" : "error"}
+                            label={s.online ? tc("status.online") : tc("status.offline")}
+                          />
                         </td>
                       </tr>
                     ))}
@@ -186,9 +185,7 @@ export function DashboardHome() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="text-sm font-semibold">{t("jobs.title")}</CardTitle>
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="tabular-nums">
-                {jobs.length}
-              </Badge>
+              <Badge variant="neutral" className="tabular-nums" label={jobs.length} />
               <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
                 <Link to="/jobs">{tc("actions.viewAll")}</Link>
               </Button>
@@ -216,7 +213,7 @@ export function DashboardHome() {
                         {job.agent ? displayAgentName(job.agent) : "—"}
                       </p>
                     </div>
-                    <Badge variant={jobStatusToBadgeVariant(job.status)}>{job.status}</Badge>
+                    <Badge variant={jobStatusToBadgeVariant(job.status)} label={job.status} />
                   </div>
                 ))
               : null}

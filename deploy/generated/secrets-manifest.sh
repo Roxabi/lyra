@@ -24,6 +24,7 @@ declare -A SECRET_SOURCES=(
     [factory-nats-web]="nkeys/web-adapter.seed"
     [factory-socialmedia-api-key]="socialmedia-api-key.tok"
     [factory_blobstore_token]="n/a"
+    [factory_otel_token]="n/a"
 )
 
 # SECRET_POLICY maps secret name → policy
@@ -47,4 +48,5 @@ declare -A SECRET_POLICY=(
     [factory-nats-web]="nats-seed"
     [factory-socialmedia-api-key]="optional"
     [factory_blobstore_token]="generated"
+    [factory_otel_token]="generated"
 )

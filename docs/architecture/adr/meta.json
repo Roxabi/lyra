@@ -67,6 +67,7 @@
     "091-sentinelle-four-observability-planes",
     "092-observability-architecture",
     "093-operator-audit-three-channel",
+    "097-otel-raw-telemetry-store",
     "096-ingress-connector-tenant-registry",
     "---Workers & Tooling---",
     "004-cli-pool-cwd-resolution-and-agent-type-annotation",

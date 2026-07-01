@@ -14,6 +14,7 @@
     "integrations": "Integrations",
     "fleet": "Fleet",
     "ops": "Supervision",
+    "spans": "Spans",
     "users": "Users",
     "expandSidebar": "Expand sidebar",
     "collapseSidebar": "Collapse sidebar",

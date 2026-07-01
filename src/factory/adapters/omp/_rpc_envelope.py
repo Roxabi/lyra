@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from factory.nats.envelope_fields import control_trace_id
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.jobs.models import JobProgress, JobResult
@@ -30,11 +30,15 @@ def classify_exception(exc: BaseException) -> WorkerError:
     return WorkerError(code="worker.internal", message=name, retryable=False)
 
 
-def make_progress(job_id: str, **kwargs: Any) -> bytes:
+def _resolved_trace_id(trace_id: str | None, job_id: str) -> str:
+    return trace_id or control_trace_id() or job_id
+
+
+def make_progress(job_id: str, *, trace_id: str | None = None, **kwargs: Any) -> bytes:
     """Serialise a JobProgress to JSON bytes."""
     event = JobProgress(
         contract_version=CONTRACT_VERSION,
-        trace_id=str(uuid.uuid4()),
+        trace_id=_resolved_trace_id(trace_id, job_id),
         issued_at=datetime.now(timezone.utc),
         job_id=job_id,
         **kwargs,
@@ -42,11 +46,11 @@ def make_progress(job_id: str, **kwargs: Any) -> bytes:
     return event.model_dump_json().encode()
 
 
-def make_result(job_id: str, **kwargs: Any) -> bytes:
+def make_result(job_id: str, *, trace_id: str | None = None, **kwargs: Any) -> bytes:
     """Serialise a JobResult to JSON bytes."""
     event = JobResult(
         contract_version=CONTRACT_VERSION,
-        trace_id=str(uuid.uuid4()),
+        trace_id=_resolved_trace_id(trace_id, job_id),
         issued_at=datetime.now(timezone.utc),
         job_id=job_id,
         **kwargs,
@@ -54,10 +58,16 @@ def make_result(job_id: str, **kwargs: Any) -> bytes:
     return event.model_dump_json().encode()
 
 
-async def publish_job_error(nc: Any, job_id: str, exc: BaseException) -> None:
+async def publish_job_error(
+    nc: Any,
+    job_id: str,
+    exc: BaseException,
+    *,
+    trace_id: str | None = None,
+) -> None:
     """Publish a JobResult(status=error) for a failed job without requiring a bridge."""
     if nc is None:
         return
     worker_error = classify_exception(exc)
-    payload = make_result(job_id, status="error", error=worker_error)
+    payload = make_result(job_id, trace_id=trace_id, status="error", error=worker_error)
     await nc.publish(jobs_result(job_id), payload)

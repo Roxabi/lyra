@@ -12,15 +12,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import ValidationError
 
+from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.transport._result import Err, Result, SanitizedError
-from roxabi_contracts import new_job_id
-from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.image import ImageRequest, ImageResponse
 
 log = logging.getLogger(__name__)
@@ -59,7 +57,17 @@ class ImageCodec:
     decode: maps Result[bytes, SanitizedError] → ImageResult; never raises.
     """
 
-    def encode(self, prompt: str, engine: str, params: ImageGenParams | None) -> bytes:
+    def encode(  # noqa: PLR0913 — correlation kwargs (#2069)
+        self,
+        prompt: str,
+        engine: str,
+        params: ImageGenParams | None,
+        *,
+        trace_id: str | None = None,
+        job_id: str | None = None,
+        parent_job_id: str | None = None,
+        pool_id: str | None = None,
+    ) -> bytes:
         """Build canonical ImageRequest payload bytes.
 
         Mirrors NatsImageClient.generate() payload-builder exactly so the wire
@@ -84,11 +92,14 @@ class ImageCodec:
             }.items()
             if v is not None
         }
+        fields = mint_work_envelope_fields(
+            trace_id=trace_id,
+            job_id=job_id,
+            parent_job_id=parent_job_id,
+            pool_id=pool_id,
+        )
         request = ImageRequest(
-            contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
-            issued_at=datetime.now(timezone.utc),
-            job_id=new_job_id(),
+            **fields.as_dict(),
             request_id=str(uuid4()),
             prompt=prompt,
             engine=engine,

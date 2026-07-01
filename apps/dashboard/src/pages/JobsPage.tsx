@@ -1,3 +1,4 @@
+import { Badge } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { Briefcase } from "@phosphor-icons/react";
@@ -5,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -124,7 +124,7 @@ export function JobsPage() {
               }))}
               onChange={setLaunchAgent}
             />
-            <Badge variant="secondary">factory.jobs.omp</Badge>
+            <Badge variant="neutral" label="factory.jobs.omp" />
           </div>
           <TextArea
             label={t("launch.promptLabel")}
@@ -266,7 +266,7 @@ export function JobsPage() {
                     <td className="py-2.5 pr-3">{job.agent ? displayAgentName(job.agent) : "—"}</td>
                     <td className="py-2.5 pr-3 capitalize">{job.platform ?? "—"}</td>
                     <td className="py-2.5 pr-3">
-                      <Badge variant={jobStatusToBadgeVariant(job.status)}>{job.status}</Badge>
+                      <Badge variant={jobStatusToBadgeVariant(job.status)} label={job.status} />
                     </td>
                     <td className="py-2.5 pr-3 text-xs text-muted-foreground">
                       {job.concurrency_mode}
@@ -332,9 +332,10 @@ export function JobsPage() {
                     Harness {health?.harness ?? "claude-cli"}
                   </p>
                 </div>
-                <Badge variant={health?.online ? "success" : "secondary"}>
-                  {health?.online ? tc("status.active") : tc("status.inactive")}
-                </Badge>
+                <Badge
+                  variant={health?.online ? "success" : "neutral"}
+                  label={health?.online ? tc("status.active") : tc("status.inactive")}
+                />
               </div>
             );
           })}

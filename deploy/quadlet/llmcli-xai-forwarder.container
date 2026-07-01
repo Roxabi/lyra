@@ -1,0 +1,53 @@
+[Unit]
+Description=llmCLI xAI OAuth forwarder (:18645)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+# Vendored from Roxabi/llmCLI — deployment owned by roxabi-factory (M₁ cloud gateway).
+# Image built + published by llmCLI CI; pinned by digest here (¬autoupdate) so factory
+# controls bumps. Bump recipe → deploy/AGENTS.md § llmCLI cloud-gateway image.
+Image=ghcr.io/roxabi/llmcli@sha256:3d52ccf3397b7b6e487833869eeb3b6a9c01d68426b4a3aaf0452b2a706f8217
+ContainerName=llmcli-xai-forwarder
+# Reachable two ways:
+#  - container-to-container via roxabi.network DNS (http://llmcli-xai-forwarder:18645)
+#    — used by the LiteLLM proxy container.
+#  - host loopback via PublishPort below — used by host processes such as the
+#    xai-research skill (xai_research.py -> http://127.0.0.1:18645). Bound to
+#    127.0.0.1 only: no LAN exposure of the OAuth-injecting relay.
+PublishPort=127.0.0.1:18645:18645
+Network=roxabi.network
+Volume=%h/.roxabi/llmcli/credentials:/home/llmcli/.roxabi/llmcli/credentials:rw,Z
+Environment=LLMCLI_FORWARDER_PROVIDER=xai
+Environment=LLMCLI_FORWARDER_PORT=18645
+UserNS=keep-id:uid=1502,gid=1502
+Exec=forwarder
+# HealthCmd carries NO double-quotes: factory's quadlet-lint forbids them (the
+# Quadlet generator strips a closing double-quote → unterminated shell string).
+# The URL is passed as an unquoted argv so the -c body needs single-quotes only.
+HealthCmd=python -c 'import urllib.request,sys; urllib.request.urlopen(sys.argv[1], timeout=5)' http://localhost:18645/health || exit 1
+HealthInterval=30s
+HealthStartPeriod=15s
+NoNewPrivileges=true
+DropCapability=all
+# ReadOnly rootfs — host-validated 2026-06-16 (D-6 ops-audit). The credentials
+# Volume above is explicit :rw,Z → stays writable under ReadOnly, so xAI OAuth
+# token refresh is unaffected. Other runtime writes land on the tmpfs set below.
+# mode=1777: a root-owned 0755 tmpfs EACCESes for the non-root uid 1502.
+ReadOnly=true
+Tmpfs=/tmp:mode=1777
+Tmpfs=/home/llmcli/.local:mode=1777
+Tmpfs=/home/llmcli/.cache:mode=1777
+Tmpfs=/home/llmcli/.config:mode=1777
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20s
+# Memory caps — contain a runaway to its cgroup instead of a global OOM freeze
+# (2026-06-01 M₂ freeze). Tiny OAuth relay; 1G/1.5G is generous.
+MemoryHigh=1G
+MemoryMax=1536M
+
+[Install]
+WantedBy=default.target

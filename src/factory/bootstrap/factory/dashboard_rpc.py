@@ -27,6 +27,7 @@ from factory.bootstrap.factory.dashboard_agents_rpc import (
     handle_agents_soul_put,
 )
 from factory.bootstrap.factory.dashboard_jobs_rpc import (
+    handle_jobs_cancel,
     handle_jobs_launch,
     handle_jobs_list,
     handle_jobs_steer,
@@ -94,6 +95,7 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.jobs_list, _wrap_agents(handle_jobs_list)),
         (SUBJECTS.jobs_launch, _wrap_agents(handle_jobs_launch)),
         (SUBJECTS.jobs_steer, _wrap_agents(handle_jobs_steer)),
+        (SUBJECTS.jobs_cancel, _wrap_agents(handle_jobs_cancel)),
         (SUBJECTS.agents_status, _handle_agents_status),
         (SUBJECTS.agents_list, _wrap_agents(handle_agents_list)),
         (SUBJECTS.agents_create, _wrap_agents(handle_agents_create)),

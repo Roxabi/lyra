@@ -160,6 +160,11 @@ registry failure is logged and never breaks the turn. A `RegistryCoordinator` on
 keeps an in-memory snapshot (what the dashboard reads) and refreshes KV TTLs while the hub
 is alive; dashboard cancel also closes the entry.
 
+**Close-on-result trust boundary (PR #2153):** the hub's `ResultCloseListener` closes an
+entry for any `factory.job.<id>.result` arrival — the result-publish ACL (clipool/omp
+workers) is the only authorization; any grant holder can name any `job_id`. Per-job
+ownership correlation is deferred to the concurrency-router chain (#1797/#1799).
+
 **Secondary index:** `pool_id` → `job_id` SINGLETON — enforced for `steer` and `queue`
 modes (one active job per pool at a time). Absent for `parallel` mode.
 

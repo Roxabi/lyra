@@ -16,7 +16,7 @@ from factory.infrastructure.stores.jobs.active_jobs_result_listener import (
     ResultCloseListener,
     _extract_job_id,
 )
-from roxabi_contracts.jobs.subjects import JOB_RESULT_WILDCARD
+from roxabi_contracts.jobs.subjects import JOB_RESULT_WILDCARD, jobs_result
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -118,20 +118,44 @@ async def test_unexpected_subject_skipped(
     coordinator.close.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    "exc",
+    [
+        nats.errors.Error("transient"),
+        OSError("socket gone"),
+        RuntimeError("store bug"),
+        ValueError("corrupt KV entry"),
+        KeyError("job_id"),
+    ],
+)
 @pytest.mark.asyncio()
-async def test_close_nats_error_swallowed(
-    coordinator: AsyncMock, listener: ResultCloseListener
+async def test_close_errors_swallowed(
+    coordinator: AsyncMock, listener: ResultCloseListener, exc: Exception
 ) -> None:
-    coordinator.close.side_effect = nats.errors.Error("transient")
+    """Best-effort contract: any close failure is logged and dropped.
+
+    ValueError/KeyError model a corrupted KV entry raised from
+    ``_bytes_to_entry`` inside ``KvActiveJobsStore.close``.
+    """
+    coordinator.close.side_effect = exc
+
     await listener._handle(_msg("factory.job.job-err.result"))  # must not raise
+
+    coordinator.close.assert_awaited_once_with("job-err")
 
 
 @pytest.mark.asyncio()
-async def test_close_runtime_error_swallowed(
-    coordinator: AsyncMock, listener: ResultCloseListener
+async def test_stop_unsubscribe_error_swallowed(
+    nc: AsyncMock, listener: ResultCloseListener
 ) -> None:
-    coordinator.close.side_effect = RuntimeError("store bug")
-    await listener._handle(_msg("factory.job.job-err.result"))  # must not raise
+    """A closing connection must not make stop() raise past the caller."""
+    await listener.start()
+    sub = nc.subscribe.return_value
+    sub.unsubscribe.side_effect = nats.errors.ConnectionClosedError
+
+    await listener.stop()  # must not raise
+
+    assert listener._sub is None
 
 
 # ---------------------------------------------------------------------------
@@ -153,3 +177,17 @@ async def test_close_runtime_error_swallowed(
 )
 def test_extract_job_id(subject: str, expected: str | None) -> None:
     assert _extract_job_id(subject) == expected
+
+
+@pytest.mark.parametrize(
+    "job_id",
+    ["abc123", "job-1", "0f9e8d7c6b5a4e3d2c1b0a9f8e7d6c5b", "A_b-C1"],
+)
+def test_extract_job_id_roundtrips_jobs_result(job_id: str) -> None:
+    """Drift guard: the parser must recover any id jobs_result() encodes.
+
+    Dot-free ids only — a dotted job_id (permitted by validate_job_token)
+    produces a 5-token subject the single-token wildcard never delivers;
+    see the NB on JOB_RESULT_WILDCARD.
+    """
+    assert _extract_job_id(jobs_result(job_id)) == job_id

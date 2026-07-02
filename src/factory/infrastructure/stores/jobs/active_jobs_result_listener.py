@@ -6,9 +6,17 @@ a job's terminal result arrives.  The subject itself is the close signal —
 the payload is never deserialized, so a malformed ``JobResult`` still closes
 the entry.
 
-Authoritative close per ``docs/architecture/job-model.md``: the pool-loop
-``finally`` close stays as fallback for entries whose id never reaches the
-wire (chat-path identity split — #2147).
+This is the authoritative close of ``docs/architecture/job-model.md``, but
+it is mostly dormant today: every pool run's registry entry is keyed by a
+locally-minted uuid4 (``pool_processor._open_active_job``) that never equals
+the wire job_id, so ``close(wire_id)`` no-ops until #2142/#2147 key entries
+by the envelope job_id.  The pool-loop ``finally`` close stays load-bearing
+until then.
+
+Trust boundary: the publish ACL on ``factory.job.*.result`` (clipool/omp
+workers) is the only authorization — any grant holder can name any job_id
+and close its entry.  Per-job ownership correlation is deferred to the
+concurrency-router chain (#1797/#1799).
 """
 
 from __future__ import annotations
@@ -33,8 +41,9 @@ log = logging.getLogger(__name__)
 class ResultCloseListener:
     """Subscribe to every job's terminal result and close its registry entry.
 
-    Best-effort by design: a close failure is logged and dropped — the KV
-    TTL heals a missed close, and closing an untracked job is a no-op.
+    Best-effort by design: a close failure is logged and dropped — the
+    coordinator untracks the entry even on failure, so the leftover KV key
+    expires via TTL; closing an untracked job is a no-op.
     """
 
     def __init__(self, nc: Any, coordinator: "RegistryCoordinator") -> None:
@@ -48,11 +57,24 @@ class ResultCloseListener:
         log.info("ResultCloseListener: subscribed to %s", JOB_RESULT_WILDCARD)
 
     async def stop(self) -> None:
-        """Unsubscribe from the result wildcard."""
-        if self._sub is not None:
+        """Unsubscribe from the result wildcard.
+
+        Never raises — a closing/drained connection tears the subscription
+        down server-side anyway, and a raise here would skip the remaining
+        shutdown steps in the caller.
+        """
+        if self._sub is None:
+            return
+        try:
             await self._sub.unsubscribe()
-            self._sub = None
+        except (nats.errors.Error, OSError, RuntimeError):
+            log.warning(
+                "ResultCloseListener: unsubscribe failed during stop", exc_info=True
+            )
+        else:
             log.info("ResultCloseListener: unsubscribed.")
+        finally:
+            self._sub = None
 
     async def _handle(self, msg: "Msg") -> None:
         """Close the registry entry for the job named in the subject."""
@@ -64,10 +86,10 @@ class ResultCloseListener:
             return
         try:
             await self._coordinator.close(job_id)
-        except (nats.errors.Error, OSError, RuntimeError):
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: nats-callback — a corrupt KV entry raises json/KeyError; must not escape the sub callback
             log.exception(
                 "ResultCloseListener: close failed for job %r"
-                " — entry lingers until pool close or TTL",
+                " — leftover KV entry expires via TTL",
                 job_id,
             )
 

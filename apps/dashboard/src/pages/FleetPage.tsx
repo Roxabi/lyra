@@ -211,7 +211,7 @@ export function FleetPage() {
                   </TableCell>
                   <TableCell className="capitalize text-muted-foreground">{row.health}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    <div className="max-w-[220px] truncate">{row.image_ref}</div>
+                    <div className="min-w-0 max-w-[220px] truncate">{row.image_ref}</div>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {row.image_revision ?? "—"}

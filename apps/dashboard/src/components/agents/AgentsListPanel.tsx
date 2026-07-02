@@ -360,7 +360,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                       </Link>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      <div className="max-w-[140px]">
+                      <div className="min-w-0 max-w-[140px]">
                         <span className="line-clamp-2">{persona.tagline}</span>
                       </div>
                     </TableCell>

@@ -2,7 +2,7 @@
 id: ADR-072
 title: "Codec registry pattern for NATS RenderEvent dispatch"
 description: Replace the if-elif decode chain in NatsRenderEventCodec with a dict[type, CodecBranch] registry and inverse index, eliminating the silent default-routing bug and making codec completeness machine-checkable.
-status: accepted
+status: amended
 date: 2026-05-14
 issue: "#1192"
 supersedes: "ADR-032 (Slice 3 of #1192 will add the matching superseded banner to ADR-032)"
@@ -16,6 +16,28 @@ related: "ADR-070 (parent epic — RenderEvent v2 AG-UI modeling)"
 ## Status
 
 Accepted
+
+Amended 2026-07-01 (consolidation v2): Slice 3/4 landed — v1 entries deleted, codec split into two files (repo renamed lyra→factory); transitional slice-progress claims below are historical.
+
+### Amendment (2026-07-01)
+
+Consolidation v2 review: the structural decision is fully live; only the transitional
+slice-progress prose in this record is stale.
+
+- Slice 3 landed: the `TextRenderEvent` and `ToolSummaryRenderEvent` v1 entries were
+  deleted from the registry (zero references left in the codec files).
+- The codec was split across two files, both under 300 LOC:
+  `src/factory/nats/render_event_codec.py` (`NatsRenderEventCodec`, `_registry`,
+  `_by_type_str`, `_SYNTHETIC_TERMINALS` pre-check) and
+  `src/factory/nats/render_event_codec_registry.py` (`CodecBranch`,
+  `build_codec_registry()`).
+- The silent-default-routing fix is live: `src/factory/adapters/nats/nats_stream_decoder.py`
+  reads `chunk.get("event_type")` with no `"text"` default and logs + aborts on `None`.
+- Paths: `src/lyra/...` → `src/factory/...` (repo rename).
+
+Current wire-codec truth: `docs/architecture/messaging.md`. The decision rationale
+(silent-routing bug, 3-0 panel consensus, rejected alternatives) remains load-bearing
+and unchanged below.
 
 ## Context
 
@@ -37,7 +59,8 @@ in `artifacts/analyses/1190-codec-review-findings-consensus.mdx`).
 
 This ADR documents the structural decision. The `ToolSummaryRenderEvent` v1 entry and the
 `TextRenderEvent` v1 entry remain in Slice 2 (this decision) and are deleted in Slice 3
-(continued in #1205). The `nats_stream_decoder.py` default-routing fix (`None`-first
+(continued in #1205). *(Historical — Slice 3 has since landed; both v1 entries are
+deleted. See Amendment 2026-07-01.)* The `nats_stream_decoder.py` default-routing fix (`None`-first
 ordering with explicit `log.warning + break` on missing `event_type`) was applied in
 Slice 2 (this PR), not deferred.
 
@@ -131,7 +154,8 @@ This fails loud at CI if any union member is missing from the registry.
   (14 v2 + 2 v1) and the codec is instantiated once per process.
 - File remains > 300 LOC in Slice 2 (v1 entries present). Slice 3 deletion of v1 branches
   is expected to bring the file below 300 lines, triggering file-exemption removal in
-  Slice 4.
+  Slice 4. *(Historical — superseded: the codec was instead split into
+  `render_event_codec.py` + `render_event_codec_registry.py`, both < 300 LOC.)*
 
 ## Rejected Alternatives
 
@@ -150,7 +174,9 @@ dependency in the `nats` layer and none is warranted for a 16-branch dispatch ta
 
 ## Implementation Notes
 
-- Codec file (post-Slice 2): `src/lyra/nats/render_event_codec.py`
+- Codec file (post-Slice 2): `src/lyra/nats/render_event_codec.py` — now (post-rename +
+  split) `src/factory/nats/render_event_codec.py` +
+  `src/factory/nats/render_event_codec_registry.py`
 - Tests: `tests/nats/test_render_event_codec.py` —
   `TestRegistryCompleteness`, `TestDecodeErrorAbort`,
   `test_is_terminal_synthetic_sentinels`, `test_decode_synthetic_sentinel_no_warning`,

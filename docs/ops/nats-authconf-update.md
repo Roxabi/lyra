@@ -180,4 +180,4 @@ for its `announce_hub_ready` log line, then restart adapters.
 - [nkey-rotation.md](nkey-rotation.md) — compromise rotation (seed replacement)
 - [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — provisioning invariants
 - [ADR-079](../architecture/adr/079-audio-nats-contract-axial-consolidation.mdx) — audio NATS axial migration, sole-provisioner pattern
-- [ADR-085](../architecture/adr/085-public-aclbundle-bindmount-sighup.mdx) — auth.conf carve-out from type=mount, SIGHUP reload for identity-add
+- [ADR-085](../architecture/adr/archive/085-public-aclbundle-bindmount-sighup.mdx) — auth.conf carve-out from type=mount, SIGHUP reload for identity-add

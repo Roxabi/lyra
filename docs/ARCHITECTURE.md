@@ -10,25 +10,20 @@
 
 | Domain page | What it owns |
 |---|---|
-| [messaging.md](architecture/messaging.md) | NATS subjects, routing key, hub dispatch, KV readiness, chunk protocol |
-| [llm-streaming.md](architecture/llm-streaming.md) | LlmEvent → StreamProcessor → RenderEvent pipeline, AG-UI v2 |
+| [messaging.md](architecture/messaging.md) | NATS planes & subject naming, routing key, hub dispatch, KV readiness, bot roster |
+| [llm-streaming.md](architecture/llm-streaming.md) | LlmEvent → StreamProcessor → RenderEvent pipeline, driver stack, chunk protocol + codec, schema versioning |
 | [adapters.md](architecture/adapters.md) | Telegram, Discord, CLI inbound, audio routing, TTS overlay |
 | [storage.md](architecture/storage.md) | Agent / thread / blob stores, memory scope, event bus DI |
 | [security-routing.md](architecture/security-routing.md) | Auth, trust, command parser, memory isolation, NATS infra security |
 | [deployment.md](architecture/deployment.md) | C3 container split, Quadlet ecosystem, autodeploy, hardware specs |
-| [contracts.md](architecture/contracts.md) | roxabi-nats SDK, roxabi-contracts schemas, voice routing |
-| [workers-tooling.md](architecture/workers-tooling.md) | CliPool, processor registry, tool integration, importlinter |
-| [tool-architecture.md](architecture/tool-architecture.md) | Tool taxonomy (5-layer + domain-nature), runtime vocab (workerEngine/harness/worker/provider/satellite), the two discriminators |
-| [architecture-patterns.md](architecture/architecture-patterns.md) | Clean / Hexagonal / Kernel patterns + engineering invariants |
-| [testing-conventions.md](architecture/testing-conventions.md) | Test taxonomy, fixture policy, mock boundaries, CI gate conventions |
-| [voice-to-voice-analysis.md](architecture/voice-to-voice-analysis.md) | Voice pipeline design, audio latency budgets, STT/TTS adapter contracts |
-| [target-architecture.md](architecture/target-architecture.md) | Hexagonal/Ports & Adapters layout as implemented (file paths, module structure) |
+| [contracts.md](architecture/contracts.md) | roxabi-nats SDK, roxabi-contracts schemas, transport layer, voice routing + lifecycle |
+| [workers-tooling.md](architecture/workers-tooling.md) | Tool taxonomy & runtime vocabulary, CliPool, processor registry, tool integration, importlinter |
 | [job-model.md](architecture/job-model.md) | Job model — `job_id`=run, lifecycle, active-jobs registry, `factory.job.<id>.*` taxonomy, transport tiers, sub-jobs, runtime control |
-| [CURRENT.generated.md](architecture/CURRENT.generated.md) | Machine-generated inventory SSoT — layers, subjects, topology, entry points |
+| [observability.md](architecture/observability.md) | Observability planes, control-plane dashboard, trace + log engines, operator audit, fleet/pipeline read models, ingress |
+| [engineering-standards.md](architecture/engineering-standards.md) | **Cross-repo doctrine** (all Roxabi repos) — Clean/Hexagonal/Kernel layering, error contract, testing conventions, CI quality gates |
+| [CURRENT.generated.md](architecture/CURRENT.generated.md) | **Generated** — machine-generated inventory SSoT: layers, subjects, topology, entry points |
 
 **Decision archive** — the ADRs in [`architecture/adr/`](architecture/adr/) preserve historical reasoning; superseded records move to `adr/archive/`. Each ADR has a redirect banner to its domain page. **Read ADRs only when you need the *why* behind a decision**, not the *what*. Index grouped by domain in [`adr/meta.json`](architecture/adr/meta.json).
-
-**Implementation reference** — [target-architecture.md](architecture/target-architecture.md) shows the Hexagonal/Ports & Adapters layout as implemented (file paths, module structure).
 
 ---
 

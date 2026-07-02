@@ -15,7 +15,7 @@ Covers the five persistence surfaces in Lyra: memory scope (what is actually sto
 the agent config store (SQLite, write-through cache), the thread store (Discord thread
 persistence), the blobstore (content-addressed binary archive), and the event bus wiring
 pattern. The hexagonal placement of all stores within `factory.infrastructure` is canonical in
-`architecture-patterns.md` — not repeated here.
+`engineering-standards.md` — not repeated here.
 
 ## Current state
 
@@ -294,7 +294,7 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 
 ## See also
 
-- Hex layer canonical (`factory.infrastructure`) → `architecture-patterns.md` (absorbs ADR-048)
+- Hex layer canonical (`factory.infrastructure`) → `engineering-standards.md` (absorbs ADR-048)
 - Vault as memory backend → `~/projects/roxabi-vault/`
 - JetStream volume isolation → ADR-067 Neutral + issue #1055
 

@@ -69,11 +69,20 @@ class RegistryCoordinator:
             self._by_loc[entry.worker_loc] = entry.job_id
 
     async def close(self, job_id: str) -> None:
-        """Delegate to port; remove from in-memory maps."""
-        await self._port.close(job_id)
-        entry = self._jobs.pop(job_id, None)
-        if entry is not None and entry.worker_loc:
-            self._by_loc.pop(entry.worker_loc, None)
+        """Delegate to port; remove from in-memory maps.
+
+        The in-memory pop is unconditional (``finally``): a tracked entry
+        surviving a failed port close would be re-put by the refresh loop
+        every cycle — a zombie the KV TTL can never reap, pinning its pool's
+        singleton index slot until hub restart.  Untracked-on-failure means
+        the leftover KV key simply expires via TTL.
+        """
+        try:
+            await self._port.close(job_id)
+        finally:
+            entry = self._jobs.pop(job_id, None)
+            if entry is not None and entry.worker_loc:
+                self._by_loc.pop(entry.worker_loc, None)
 
     # ------------------------------------------------------------------
     # Liveness

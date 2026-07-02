@@ -122,13 +122,25 @@ from roxabi_contracts.jobs import JobEnvelope, JobResult, JobProgress, jobs_subm
 | Subject | Model | Transport | Purpose |
 |---|---|---|---|
 | `factory.jobs.<job_name>` | `JobEnvelope` | JetStream durable | Submit a job |
-| `factory.job.<job_id>.result` | `JobResult` | Core NATS reply | Job completion reply |
+| `factory.job.<job_id>.result` | `JobResult` | Core NATS pub/sub | Terminal result notification (best-effort) |
 | `factory.job.<job_id>.progress` | `JobProgress` | Core NATS pub/sub | Streaming progress (best-effort) |
 | `factory.job.<job_id>.steer` | — | Core NATS pub/sub | Runtime steering commands |
 | `factory.job.<job_id>.opened` | — | Core NATS pub/sub | Lifecycle open event |
 | `factory.job.<job_id>.closed` | — | Core NATS pub/sub | Lifecycle close event |
 
-Subject strings are produced by the helpers `jobs_submit(job_name)`, `jobs_result(job_id)`, `jobs_progress(job_id)`, `jobs_steer(job_id)`, `jobs_opened(job_id)`, and `jobs_closed(job_id)`. Each helper validates its argument via `validate_job_token` (rejects empty strings and NATS wildcard characters).
+Subject strings are produced by the helpers `jobs_submit(job_name)`, `jobs_result(job_id)`, `jobs_progress(job_id)`, `jobs_steer(job_id)`, `jobs_opened(job_id)`, and `jobs_closed(job_id)`. Each helper validates its argument via `validate_job_token` (rejects empty strings and NATS wildcard characters). `JOB_RESULT_WILDCARD` (`factory.job.*.result`) is the hub-side subscription over every job's terminal result — arrival of a `JobResult` closes the job's active-registry entry.
+
+### Transport tiers
+
+Delivery guarantees are codified in three tiers:
+
+| Tier | Transport | Jobs-domain subjects |
+|---|---|---|
+| at-most-once | Core NATS pub/sub | `.result`, `.progress`, `.steer`, lifecycle events |
+| at-least-once | JetStream | `factory.jobs.<job_name>` (submit / dispatch queue) |
+| KV | JetStream KV | active-jobs registry, pool index |
+
+The terminal `JobResult` is deliberately at-most-once: it is a notification carrying status + refs, not the data itself. Result *data* is persisted at the data layer (turns store via JetStream, blobstore) — do not promote `.result` to JetStream.
 
 ### Models
 

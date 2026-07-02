@@ -8,6 +8,7 @@ fixtures submodule is test-only — import explicitly as
 from roxabi_contracts.jobs.models import JobEnvelope, JobProgress, JobResult
 from roxabi_contracts.jobs.subjects import (
     JOB_CANCEL_STEER_TOKEN,
+    JOB_RESULT_WILDCARD,
     RUNTIME_JOB_CLAUDE,
     RUNTIME_JOB_OMP,
     SUBJECTS,
@@ -26,6 +27,7 @@ __all__ = [
     "JobProgress",
     "JobResult",
     "JOB_CANCEL_STEER_TOKEN",
+    "JOB_RESULT_WILDCARD",
     "RUNTIME_JOB_CLAUDE",
     "RUNTIME_JOB_OMP",
     "SUBJECTS",

@@ -1,7 +1,7 @@
 ---
 title: "ADR-019: Multi-Bot Startup Resource-Sharing Policy"
 description: Documents the trade-offs between per-agent and per-process resource sharing for provider_registry, msg_manager, cli_pool, and smart_routing at multi-bot startup.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/workers-tooling.md`](../workers-tooling.md){#current-truth}
@@ -11,6 +11,8 @@ status: accepted
 ## Status
 
 Accepted
+
+Amended 2026-07-01 (consolidation v2): the `SmartRoutingDecorator` rationale is dead (class removed, smart routing disabled); the shared-pool / per-agent-registry invariant stands, and `_build_per_agent_registry()` now lives in `providers.py`.
 
 ## Context
 
@@ -101,6 +103,27 @@ The `CliPool` sharing in Option A is correct and must be preserved in Option B: 
 ## Update 2026-05-08
 
 Option B is implemented. `src/lyra/bootstrap/factory/agent_factory.py:93` contains
-`_build_per_agent_registry()` which constructs a per-agent `ProviderRegistry`. The
+`_build_per_agent_registry()` which constructs a per-agent `ProviderRegistry`. (Path as of
+2026-05-08; the function has since moved — see Amendment 2026-07-01.) The
 `build_agent_factory()` function uses per-agent registry construction as the live code path.
 Status updated from Proposed to Accepted.
+
+## Amendment (2026-07-01)
+
+Consolidation-v2 review. The structural decision (Option B: shared `CliPool`, per-agent
+`ProviderRegistry` and `MessageManager`) is still live and load-bearing. The motivating
+rationale is historical:
+
+- `SmartRoutingDecorator` (and `ComplexityEstimator`) no longer exist in the codebase;
+  smart routing is disabled. Every Context/Options argument about per-agent routing tables
+  and the `deque[RoutingDecision]` decision history is superseded — read it as the
+  historical justification only.
+- `smart_routing` survives only as a persisted config field
+  (`src/factory/core/agent/agent_config.py:145` `SmartRoutingConfig`;
+  `agent_schema.py` `smart_routing_json`); no routing decorator is constructed at runtime.
+- `_build_per_agent_registry()` moved from `agent_factory.py` to
+  `src/factory/bootstrap/factory/providers.py:83`. It registers the shared base providers
+  as-is (no decorator wrapping) and is called per-agent from `agent_factory.py:269`.
+
+Surviving invariant: `CliPool` is process-scoped (backend process resource); registry and
+message manager remain agent-scoped.

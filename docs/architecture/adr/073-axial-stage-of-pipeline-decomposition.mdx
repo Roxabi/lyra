@@ -1,17 +1,38 @@
 ---
 title: "ADR-073: Axis of Decomposition — Stage of Pipeline"
 description: Primary axis chosen for system variation — prevents N×M drift across platform/adapter dimension
-status: accepted
+status: amended
 axial: true
 related: [076]
 ---
 
-> **Current truth** → [`docs/architecture/ARCHITECTURE.md`](../../ARCHITECTURE.md){#current-truth}
+> **Current truth** → [`docs/architecture/adapters.md`](../adapters.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
 
 ## Status
 
 Accepted
+
+Amended 2026-07-01 (consolidation v2): `src/lyra/...` paths rewritten to `src/factory/...`,
+`check_str_exc_bus_bound.sh` gate stage corrected to scripts/qg, and the frozen 30-row
+boundary-sites table replaced by the invariant + `make quality-debt-report` pointer.
+
+### Amendment (2026-07-01)
+
+- **Paths:** the `lyra` package was renamed to `factory` — every `src/lyra/...` reference
+  in this record now reads `src/factory/...` (updated in place; the subsystem `CLAUDE.md`
+  files live under `src/factory/{streaming,transport,inbound,outbound}/`).
+- **Gate mechanics:** `tools/check_str_exc_bus_bound.sh` is a scripts/qg gate
+  (`str_exc_bus_bound` in `.claude/stack.yml`, CI stage), not a pre-commit hook.
+  Corrected inline in the Decision section.
+- **Boundary-sites table removed:** the frozen 30-row file:line table of acknowledged
+  `# boundary:` sites was deleted — fast-rotting inventory forbidden by ADR-086 (line
+  numbers had drifted and the live tag count had moved past the frozen snapshot). The
+  invariant stands unchanged (ceiling from #1832, burn-down only, re-baseline forbidden);
+  the live count and site list come from `make quality-debt-report`.
+
+The axis decision itself is unchanged and remains mechanically enforced by the
+`.importlinter` stage-axis contract.
 
 ## Context
 
@@ -57,7 +78,7 @@ One module per pipeline stage (inbound, streaming, outbound, transport, …). Ta
   enforced by import-linter (`.importlinter`).
 - **Cons:** Upfront composition cost. Existing targets require refactor to thin configuration
   wrappers (7-phase epic, ~10 weeks). Transitional exemptions in `.importlinter` until Phase 7.
-- **Drift signature:** `class.*Client.*Client` in `src/lyra/nats/` or `src/lyra/adapters/`.
+- **Drift signature:** `class.*Client.*Client` in `src/factory/nats/` or `src/factory/adapters/`.
 
 ## Decision
 
@@ -99,7 +120,8 @@ Architectural commitments already encoded in code structure:
   | `src/factory/core/processors/stream_processor.py` (×2) | core/processors | Infrastructure exception + WorkerError bridge; async-generator context prevents delegation; `_we.message` pre-scrubbed by `_scrub_cli_error_text()` |
   | `src/factory/core/cli/cli_streaming_parser.py` | core/cli | CLI→bus boundary; f-string uses `type(exc).__name__` only |
 
-  **Enforcement:** `tools/check_str_exc_bus_bound.sh` (quality gate, pre-commit) blocks
+  **Enforcement:** `tools/check_str_exc_bus_bound.sh` (scripts/qg gate `str_exc_bus_bound`
+  declared in `.claude/stack.yml`, CI stage) blocks
   `str(exc)` / `f"{exc}"` / `repr(exc)` from flowing into `SanitizedError` construction or
   NATS-bus-bound message fields in the five bus-bound path scopes. Escape hatch:
   `# str-exc-ok: <reason>`.
@@ -138,12 +160,12 @@ Architectural commitments already encoded in code structure:
 
 ### Anti-pattern signal
 
-Grep pattern: `class.*Client.*Client` in `src/lyra/nats/`.
+Grep pattern: `class.*Client.*Client` in `src/factory/nats/`.
 If this pattern appears, a new domain client is subclassing or wrapping another client instead
 of composing `WorkerPoolClient` directly — drift along the wrong (platform) axis is starting.
 
-Secondary signal: parallel parse/emit logic blocks in `src/lyra/adapters/telegram/` and
-`src/lyra/adapters/discord/` (grep: `def.*parse` or `def.*emit` duplicated across adapter dirs).
+Secondary signal: parallel parse/emit logic blocks in `src/factory/adapters/telegram/` and
+`src/factory/adapters/discord/` (grep: `def.*parse` or `def.*emit` duplicated across adapter dirs).
 
 ### Revisit triggers
 
@@ -166,40 +188,13 @@ python3 -c "import json; r=json.load(open('artifacts/quality-debt-report.json'))
 bash tools/check_str_exc_bus_bound.sh
 ```
 
-#### Acknowledged boundary sites (30)
+#### Acknowledged boundary sites
 
-| Layer | File | Reason |
-|-------|------|--------|
-| cli | `cli/agent.py:62` | cli-entry |
-| cli | `cli/setup.py:113` | cli-entry |
-| cli | `cli/voice_smoke.py:78` | cli-entry smoke catch-all |
-| inbound | `inbound/attachment_ingest.py:70` | adapter-fetch degrade ingest |
-| adapters | `adapters/telegram/telegram_formatter.py:235` | telegram-send terminal chunk |
-| adapters | `adapters/shared/_shared.py:139` | adapter-retry cosmetic |
-| adapters | `adapters/shared/inbound/pipeline.py:110` | adapter I/O SDK event loop |
-| adapters | `adapters/clipool/_pool_bridge.py:57` | pool bridge classify_exception |
-| adapters | `adapters/discord/discord_formatter.py:135` | discord-send terminal chunk |
-| adapters | `adapters/discord/discord_outbound.py:84` | discord-resolve channel lookup |
-| adapters | `adapters/omp/omp_worker.py:240` | omp-job pool bridge |
-| adapters | `adapters/nats/jetstream_audio_consumer.py:268` | jetstream-send platform delivery |
-| adapters | `adapters/nats/nats_outbound_listener.py:174` | adapter-send streaming |
-| core/hub | `core/hub/hub.py:224` | hub-loop pipeline/dispatch |
-| core/pool | `core/pool/pool_processor_exec.py:136` | pool-turn ProviderError duck-type |
-| core/cli | `core/cli/cli_pool_entry.py:51` | cli-subprocess deferred #1812 |
-| core/cli | `core/cli/cli_pool_send.py:158` | cli-subprocess deferred #1812 |
-| core/cli | `core/cli/cli_pool_spawn.py:172` | cli-subprocess deferred #1812 |
-| core/cli | `core/cli/cli_pool_worker.py:136` | cli-subprocess deferred #1812 |
-| core/cli | `core/cli/protocol/cli_non_streaming.py:206` | cli-subprocess deferred #1812 |
-| core/cli | `core/cli/protocol/cli_streaming.py:164` | cli-subprocess deferred #1812 |
-| infrastructure | `infrastructure/turn_writer/writer.py:169` | jetstream-consumer unexpected bug |
-| blobstore | `blobstore/_handlers.py:112` | blobstore-http map to 500 |
-| outbound | `outbound/_emitter_run.py:111` | outbound-stream terminal capture |
-| outbound | `outbound/error_handler.py:72` | outbound-guard sanitization |
-| bootstrap | `bootstrap/lifecycle/lifecycle_helpers.py:43` | bootstrap-wiring teardown |
-| transport | `transport/nats_request_response.py:86` | transport-inbox sanitization |
-| transport | `transport/worker_pool_client.py:129` | transport-heartbeat callback |
-| typing | `typing/listener.py:119` | typing-nats-cb dispatch |
-| nats | `nats/nats_channel_proxy.py:195` | nats-publish streaming |
+The per-site file:line table formerly frozen here was removed (Amendment 2026-07-01 —
+fast-rotting inventory, ADR-086). The invariant is what this ADR records: every acknowledged
+`except Exception` site in `src/factory/` carries inline `# boundary: <reason>` on the
+suppression line, the count stays at or below the #1832 ceiling, burn-down only —
+re-baseline is not permitted. Live count and site list: `make quality-debt-report`.
 
 ## Trail
 
@@ -208,5 +203,5 @@ bash tools/check_str_exc_bus_bound.sh
 - Phase 7: #1284 — docs/ADR cleanup (this ADR is a deliverable)
 - Strategy SSoT: `artifacts/analyses/1277-stage-axis-refactor-strategy.mdx`
 - Enforcing contract: `.importlinter` → `clean-architecture-layers`
-- Subsystem invariants: `src/lyra/streaming/CLAUDE.md`, `src/lyra/transport/CLAUDE.md`,
-  `src/lyra/inbound/CLAUDE.md`, `src/lyra/outbound/CLAUDE.md`
+- Subsystem invariants: `src/factory/streaming/CLAUDE.md`, `src/factory/transport/CLAUDE.md`,
+  `src/factory/inbound/CLAUDE.md`, `src/factory/outbound/CLAUDE.md`

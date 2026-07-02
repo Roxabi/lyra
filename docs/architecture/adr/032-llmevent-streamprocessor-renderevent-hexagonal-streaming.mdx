@@ -24,7 +24,18 @@ status: amended
 
 Accepted — partially superseded by ADR-070 (selective AG-UI) and ADR-072 (codec registry v2)
 
+Amended 2026-07-01 (consolidation v2): struck the Neutral consequence claiming the Retry/CircuitBreaker decorators do not forward `stream()` — both now wrap the streaming leg, so the streaming path is circuit-breaker-protected.
+
 > **Partial supersession:** The `AnthropicSdkDriver` streaming path described in this ADR was removed in #666. The hexagonal pipeline contract (`LlmEvent → StreamProcessor → RenderEvent`) remains normative and is verified in live code (`src/lyra/core/messaging/render_events.py`, `src/lyra/adapters/shared/_shared_streaming_emitter.py`). This ADR is extended by ADR-070 (RenderEvent v2 AG-UI Modeling), which adds new event families to the `RenderEvent` hierarchy — ADR-070 cites this ADR as normative.
+
+### Amendment (2026-07-01)
+
+Consolidation-v2 review. The hexagonal pipeline contract remains in force and enforced; one Neutral consequence is now false and is struck:
+
+- **Struck — CB bypass on streaming:** the Neutral note below states the `RetryDecorator` / `CircuitBreakerDecorator` wrappers "compose over `complete()` only and do not forward `stream()`" and that "the streaming path bypasses circuit-breaker protection". Current code reverses this: `RetryDecorator.stream()` (`src/factory/llm/decorators.py:83`, connect-time / pre-first-event retry — live streams are never replayed mid-flight) and `CircuitBreakerDecorator.stream()` (`src/factory/llm/decorators.py:191`) both wrap the streaming leg. The streaming path IS circuit-breaker-protected.
+- Verified current locations (post `src/lyra` → `src/factory` rename): `StreamProcessor` at `src/factory/core/processors/stream_processor.py`, `LlmEvent` at `src/factory/core/messaging/events.py`, `RenderEvent` at `src/factory/core/messaging/render_events.py`. The `_shared_streaming_emitter.py` cited in the partial-supersession note above was removed (#1279) and its re-introduction is forbidden by contract.
+- Layering is enforced by import-linter: clean-architecture layers contract (`.importlinter:12`) plus the anti-shim contract (`.importlinter:114`).
+- The `hasattr()` duck-typing of `stream()` described below is historical: the streaming port is now the typed `StreamingLlmProvider` protocol (`src/factory/core/ports/llm.py:66`), with SimpleAgent gating on `getattr(provider, "stream", None)`.
 
 ## Context
 
@@ -148,6 +159,8 @@ cross the hexagonal boundary.
   and carries forward unchanged to `AsyncIterator[LlmEvent]`. The spec must document
   explicitly that the streaming path bypasses circuit-breaker protection, so implementors
   do not assume CB wrapping on the streaming leg.
+  **[Superseded — see Amendment (2026-07-01): both decorators now wrap `stream()`
+  (`src/factory/llm/decorators.py:83` / `:191`); the streaming path is CB-protected.]**
 - The `--include-partial-messages` spawn-time flag contracts from ADR-028 (cancel-in-flight
   cleanup, session ID propagation, tool-use delta filtering) are unaffected — they operate
   below the `LlmEvent` abstraction layer at the CLI protocol level.

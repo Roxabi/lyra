@@ -1,14 +1,15 @@
 ---
 title: "ADR-085: Public ACL bundle delivered via bind mount + SIGHUP reload (auth.conf carve-out from ADR-055 type=mount rule)"
 description: Exempts auth.conf (public nkeys U… + ACLs only, no S… seeds) from the ADR-055/ADR-054 D5 type=mount secret-isolation rule. Delivers auth.conf as an inline Podman bind mount so nats-server can reload live via SIGHUP, eliminating the full-fleet restart on identity-add.
-status: accepted
+status: superseded
 amends: "ADR-055"
 date: 2026-06-08
 id: "085"
 ---
 
-> **Current truth** → [`docs/architecture/deployment.md`](../deployment.md){#current-truth}
+> **Current truth** → [`docs/architecture/deployment.md`](../../deployment.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+> **Archived (consolidation v2, 2026-07-01)** — decision fully absorbed by the domain page above (or superseded as noted); no live invariant is recorded only here.
 
 ## Status
 

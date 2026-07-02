@@ -1,7 +1,7 @@
 ---
 title: "ADR-008: Phase 1 memory scope — levels 0 + 3 only"
 description: Reduce Phase 1 memory implementation to working memory and semantic search. Defer session, episodic, and procedural layers until empirically needed.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/storage.md`](../storage.md){#current-truth}
@@ -11,6 +11,24 @@ status: accepted
 ## Status
 
 Accepted
+
+Amended 2026-07-01 (consolidation v2): the L0+L3 core stands, but "defer L1/L2/L4 in factory" is superseded by ADR-087 — long-term memory ownership moved to roxabi-cortex.
+
+### Amendment (2026-07-01)
+
+The core decision — levels 0 + 3 only, justified by the Polymarket cost data and
+prompt-caching composability — remains load-bearing and matches coded reality:
+L0 is the live pool history; L3 per-user SQLite recall is implemented in
+`src/factory/infrastructure/stores/registry/prefs_store.py`.
+
+What changed: the framing "defer levels 1, 2, 4 in factory until a trigger fires"
+is superseded by [ADR-087](./087-memory-ssot-cortex.mdx) (2026-06-10), which
+relocates **all long-term memory** to `roxabi-cortex` rather than deferring it
+here. Factory keeps short-term/working memory only and consumes cortex through a
+single NATS request-reply subject at context-build time. The trigger-conditions
+table in the Decision section and the "planned not rejected" consequence are
+therefore historical: if a deferred level graduates, it is built in
+roxabi-cortex, not in this repo.
 
 ## Context
 
@@ -69,7 +87,7 @@ Phase 1 implements levels 0 and 3 only.
 
 **Level 3 (semantic memory):** SQLite + `aiosqlite` for async access, `rank-bm25` for keyword search, `sqlite-vec` for vector similarity. Hybrid BM25 + cosine search at query time. Mandatory `normalized_url` and `resolved_url` indexed columns for O(1) URL deduplication (lesson from 2ndBrain #129).
 
-**Trigger conditions for deferred levels:**
+**Trigger conditions for deferred levels** (historical — superseded by ADR-087; deferred levels now belong to roxabi-cortex, see Amendment):
 
 | Level | Trigger |
 |-------|---------|
@@ -96,5 +114,5 @@ Prompt caching is treated as a cross-cutting optimization at levels 0 and 3: sta
 
 ### Neutral
 
-- ARCHITECTURE.md documents all 5 levels as the long-term target. This ADR does not change that target — it gates the implementation schedule.
-- The 5-level taxonomy remains the canonical reference; levels 1, 2, 4 are "planned" not "rejected".
+- ARCHITECTURE.md documents all 5 levels as the long-term target. This ADR does not change that target — it gates the implementation schedule. *(Historical: ADR-087 removed the 5-level long-term target from factory — long-term memory is owned by roxabi-cortex.)*
+- The 5-level taxonomy remains the canonical reference; levels 1, 2, 4 are "planned" not "rejected". *(Historical: under ADR-087 they are no longer planned in factory.)*

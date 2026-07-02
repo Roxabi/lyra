@@ -1,7 +1,7 @@
 ---
 title: "ADR-035: NATS Subject Naming Convention for Hub IPC"
 description: Defines the canonical subject hierarchy for all NATS communication in Lyra — Hub IPC (Slice C), LLM compute offload (Slice B), and future control-plane subjects.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
@@ -11,6 +11,15 @@ status: accepted
 ## Status
 
 Accepted
+
+Amended 2026-07-01 (consolidation v2): subject prefix renamed `lyra.*` → `factory.*`, and the numeric `{bot_id}` constraint (`^[1-9][0-9]*$`) superseded by the slug constraint `[A-Za-z0-9_-]+`.
+
+### Amendment (2026-07-01)
+
+Two token facts in this record are stale; the core decision (domain-first naming, Option A) is unchanged and live.
+
+1. **Prefix rename.** The `lyra.` subject prefix was renamed to `factory.` — all live subjects are `factory.*` (`deploy/nats/acl-matrix.json` contains only `factory.*` grants). Remaining `lyra.*` tokens in this record (Option B/C examples, `lyra.hub.command.{cmd}`, `lyra.monitor.health`, `nats sub "lyra.>"`, `LYRA_*` stream names) are **historical** — read them as `factory.*` / `FACTORY_*` equivalents.
+2. **`{bot_id}` is a slug, not numeric.** The original constraint `^[1-9][0-9]*$` never held in the shipped system. The enforced constraint is `[A-Za-z0-9_-]+` (`src/factory/cli/bot.py` `_BOT_ID_RE`, `src/factory/agent_cmd/platforms/_shared.py`, `roxabi_nats/_validate.py` single-token rule). Live bot ids are slugs: `main`, `lyra` (chat platforms); the web platform (`Platform.WEB`) uses the reserved bot id `smoke`. The load-bearing part of the original rule survives: dots remain prohibited in token values (phantom subject levels / ACL bypass).
 
 ## Context
 
@@ -111,6 +120,7 @@ across the entire subject namespace.
 
 `{platform}` is the lowercase platform name (`telegram`, `discord`).
 `{bot_id}` is the numeric bot ID string (consistent with ADR-001 routing key scheme).
+*(Historical — superseded: `{bot_id}` is a slug matching `[A-Za-z0-9_-]+`, e.g. `main`; see Amendment 2026-07-01.)*
 
 > **`scope_id` note:** ADR-001 routing key is `(platform, bot_id, scope_id)`. Subjects
 > encode only `{platform}.{bot_id}` — `scope_id` is intentionally absent. Subjects are
@@ -151,7 +161,7 @@ to `lyra.hub.*` or `lyra.monitor.*` before a dedicated ADR approves their payloa
 | Token | Constraints | Examples |
 |-------|-------------|---------|
 | `{platform}` | Lowercase ASCII, no dots | `telegram`, `discord` |
-| `{bot_id}` | Numeric string (no leading zeros), regex `^[1-9][0-9]*$` | `12345678`, `987654321` |
+| `{bot_id}` | Slug, regex `[A-Za-z0-9_-]+` (amended 2026-07-01 — original numeric `^[1-9][0-9]*$` is historical) | `main`, `lyra`, `smoke` |
 | `{worker_id}` | Lowercase ASCII + hyphens | `m2-gpu-0`, `m1-cpu-0` |
 | `{cmd}` | Lowercase ASCII, verb form | `drain`, `reload`, `shutdown` |
 
@@ -161,6 +171,10 @@ levels and break wildcard subscriptions.
 The Adapter MUST validate `bot_id` against `^[1-9][0-9]*$` before constructing
 subject strings. A failed validation is a startup error — a leading-zero or
 non-numeric `bot_id` would produce a shadow subject that bypasses per-bot ACL rules.
+*(Amended 2026-07-01: the numeric regex is superseded — validation is against
+`[A-Za-z0-9_-]+` (`cli/bot.py`, `agent_cmd/platforms/_shared.py`, roxabi-nats
+`_validate.py`). The invariant that survives is the shadow-subject guard: no dots,
+wildcards, or spaces in `bot_id`.)*
 
 ## ACL Policy Reference
 
@@ -197,7 +211,8 @@ subscribe ["factory.llm.health.>", "lyra.monitor.health"]
 ### Positive
 
 - All NATS subjects share a common `lyra.` prefix — `nats sub "lyra.>"` captures the
-  entire system for debugging.
+  entire system for debugging. *(Historical — the live prefix is `factory.`; use
+  `nats sub "factory.>"`.)*
 - Domain-scoped ACL wildcards (`factory.inbound.>`, `factory.outbound.>`) map one-to-one to
   process identities. Adding a new adapter platform requires no ACL schema change.
 - Subject names are human-readable in `nats sub` output without decoding.
@@ -206,6 +221,8 @@ subscribe ["factory.llm.health.>", "lyra.monitor.health"]
 
 - `{bot_id}` is numeric — operators must know which bot ID belongs to which bot when
   reading subject names. The factory agent list/show commands provide this mapping.
+  *(Historical — bot ids are now readable slugs (`main`, `lyra`, `smoke`), which
+  removes this drawback; see Amendment 2026-07-01.)*
 
 ### Neutral
 

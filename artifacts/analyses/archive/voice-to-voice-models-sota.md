@@ -1,3 +1,5 @@
+> **Archived research artifact (consolidation v2, 2026-07-02).** Formerly `docs/architecture/voice-to-voice-analysis.md`. Model survey and plan from 2026-03 (supervisord era, pre-Quadlet) — historical only. Voice current truth lives in `docs/architecture/adapters.md` (audio routing, TTS overlay), `docs/architecture/messaging.md` (audio plane, ADR-095 subjects), and `docs/architecture/contracts.md` (voice registry).
+
 # Voice-to-Voice Models — State of the Art Analysis
 
 > **Date**: 2026-03-17

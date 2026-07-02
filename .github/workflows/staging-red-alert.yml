@@ -32,7 +32,12 @@ jobs:
       ASSIGNEE: MickaelV0
     steps:
       - name: Open or refresh alert issue (staging red)
-        if: env.CONCLUSION == 'failure' || env.CONCLUSION == 'timed_out'
+        # Structural mirror of publish.yml's gate (`conclusion == 'success'`):
+        # ANY non-success conclusion (failure, timed_out, cancelled,
+        # action_required, startup_failure, stale, neutral) skips publish, so
+        # any non-success must alert — hand-enumerating conclusions drifted
+        # (review #2144 panel: parallel-path-drift, cancelled was silent).
+        if: env.CONCLUSION != 'success'
         run: |
           body="Staging CI **${CONCLUSION}** on \`${HEAD_SHA:0:8}\`: ${RUN_URL}
 

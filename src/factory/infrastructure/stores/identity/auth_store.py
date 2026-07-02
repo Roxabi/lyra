@@ -60,8 +60,12 @@ class AuthStore(SqliteStore):
             "DELETE FROM grants WHERE identity_key NOT LIKE '%:%'"
         ) as cur:
             deleted = cur.rowcount
+        # Commit unconditionally: the DELETE opens an implicit transaction even
+        # when it matches 0 rows; left open, it pins the WAL read-mark and every
+        # other auth.db connection's wal_checkpoint(TRUNCATE) stalls for the
+        # full 30s busy_timeout (close-time and periodic checkpoints alike).
+        await db.commit()
         if deleted:
-            await db.commit()
             self._cache = {k: v for k, v in self._cache.items() if ":" in k}
             log.info("Cleaned up %d bare-ID grants", deleted)
 

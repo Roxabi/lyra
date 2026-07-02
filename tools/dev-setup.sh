@@ -44,7 +44,8 @@ fi
 bun install --frozen-lockfile
 
 echo "==> Git hooks (pre-commit + pre-push)"
-uv run pre-commit install
-uv run pre-commit install --hook-type pre-push
+# NOT `pre-commit install`: it refuses whenever core.hooksPath is set at any
+# scope, which silently left this repo with zero installed hooks.
+bash tools/install-hooks.sh
 
 echo "✓ dev setup complete — run 'uv run pytest' to verify"

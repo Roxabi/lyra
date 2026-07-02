@@ -1,7 +1,7 @@
 ---
 title: "ADR-068: Ecosystem Service Plane — NATS-mediated stateful primitives"
 description: Establish the foundational axiom for shared-state access across the Roxabi compute pool. Every shared primitive must be ecosystem-transparent (host-invisible). Defines Pattern α (subscriber-writes-DB) and Pattern β (stream-native) as the two canonical implementation choices.
-status: accepted
+status: amended
 date: 2026-05-24
 supersedes_partial: ["067"]
 ---
@@ -13,6 +13,20 @@ supersedes_partial: ["067"]
 ## Status
 
 Accepted — 2026-05-24
+
+Amended 2026-07-01 (consolidation v2): the TurnStore direct-write deviation is resolved — #1331 shipped the α-refactor (TurnPublisher → `factory-turn-writer`); the Application Map is updated accordingly. The axiom itself is unchanged.
+
+### Amendment (2026-07-01)
+
+The Application Map's TurnStore row ("direct-write deviation tolerated until #1331 lands")
+is stale: **#1331 shipped**. TurnStore + L3 memory (including L1 sessions in
+`pool_sessions`) are now NATS-mediated under Pattern α — the hub publishes turn writes via
+`TurnPublisher` (`src/factory/transport/turn_publisher.py`); the dedicated
+`factory-turn-writer` container subscribes `factory.turns.write` and owns all writes
+(`src/factory/infrastructure/turn_writer/writer.py`). The hub is now a reader: its
+`turns.db` mount is read-only (`deploy/quadlet/factory-hub.container`). The direct-write
+deviation and its 3rd-adapter trigger clause are historical; the table row below reflects
+the shipped state, and the corresponding Negative consequence is annotated as resolved.
 
 ## Context
 
@@ -75,7 +89,7 @@ the backend (co-located writer exception). All other consumers use the Protocol 
 | Primitive | Current state | Target pattern | Notes |
 |---|---|---|---|
 | BlobStore | FsBlobStore direct-FS (co-located writers) | HTTP-fronted FsBlobStore (Protocol-based) | HTTP service = dedicated Quadlet `lyra-blobstore.container` on `lyra-hub` (M₁), FastAPI on `:8449`, V8 issue #1330. Cross-host clients use `HttpBlobStore`. Auth: shared bearer via Podman secret (Phase 1) → per-identity tokens + scoped grants (Phase 2). See ADR-067 (amended) §HTTP service deployment & §Auth plane. |
-| TurnStore + L3 memory (incl. L1 sessions `pool_sessions` table in `turns.db`) | Direct-write to SQLite (co-located, deviation) | α — subscriber-writes-DB | Tolerated until either (a) the TurnStore α-refactor issue lands (#TODO), OR (b) a 3rd adapter is added on top of TurnStore — whichever comes first. The 3rd-adapter trigger reflects the axial ADR-073 three-strikes rule (N×M cross-cutting trap). |
+| TurnStore + L3 memory (incl. L1 sessions `pool_sessions` table in `turns.db`) | α — NATS-mediated (`TurnPublisher` → `factory-turn-writer`), hub `turns.db` read-only | α — subscriber-writes-DB | Compliant since #1331 (see Amendment 2026-07-01). Historical: direct-write deviation was tolerated until the α-refactor landed or a 3rd adapter appeared (axial ADR-073 three-strikes rule). |
 | Hub readiness signal (JS-KV `factory-state`) | JetStream KV `factory-state`, key `hub.ready` | β (current state) | Already compliant. Narrow scope: readiness signaling only (see `roxabi_nats/readiness.py`). |
 | Audit | JetStream stream `FACTORY_AUDIT` | β (current state) | Already compliant. |
 
@@ -93,7 +107,8 @@ the backend (co-located writer exception). All other consumers use the Protocol 
 
 ### Negative
 
-- TurnStore + L3 memory (including L1 sessions in `pool_sessions`) require an α-refactor
+- *(Historical — resolved by #1331; see Amendment 2026-07-01.)* TurnStore + L3 memory
+  (including L1 sessions in `pool_sessions`) require an α-refactor
   (publish/subscribe writes instead of direct writes). Co-located direct writes are a
   documented deviation, tolerated until either (a) the TurnStore α-refactor issue (#1331)
   lands, OR (b) a 3rd adapter is added on top of TurnStore — whichever comes first. The

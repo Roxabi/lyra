@@ -55,7 +55,15 @@ class JobEnvelope(WorkEnvelope):
 
 
 class JobResult(WorkEnvelope):
-    """Job reply envelope. Sent to reply_to subject on completion.
+    """Terminal job result envelope.
+
+    Published core NATS pub/sub (at-most-once) on
+    ``factory.job.<job_id>.result``: a best-effort notification carrying
+    status + refs that awaiting drivers consume and the hub's
+    ``JOB_RESULT_WILDCARD`` subscription uses to close the job's
+    active-registry entry. Result *data* durability lives at the data layer
+    (turns store via JetStream, blobstore) — never promote this envelope to
+    JetStream.
 
     ``job_id`` inherited from ``WorkEnvelope`` (ADR-084).
 

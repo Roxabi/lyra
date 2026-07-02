@@ -11,6 +11,13 @@ RUNTIME_JOB_OMP = "omp"
 # Reserved steer payload — dashboard cancel (#1773) on factory.job.<id>.steer.
 JOB_CANCEL_STEER_TOKEN = "__factory_cancel__"
 
+# Wildcard over every job's terminal result subject — hub-side
+# close-on-result registry subscription (#1795). Must stay in sync with the
+# per-job subject produced by jobs_result(). NB: NATS `*` matches exactly one
+# token — a job_id containing dots (permitted by validate_job_token) would
+# never match; hub-minted job ids are uuid4.hex (dot-free) today.
+JOB_RESULT_WILDCARD = "factory.job.*.result"
+
 __all__ = [
     "SUBJECTS",
     "RUNTIME_JOB_CLAUDE",
@@ -24,6 +31,7 @@ __all__ = [
     "jobs_runtime_claude",
     "jobs_runtime_omp",
     "JOB_CANCEL_STEER_TOKEN",
+    "JOB_RESULT_WILDCARD",
 ]
 
 

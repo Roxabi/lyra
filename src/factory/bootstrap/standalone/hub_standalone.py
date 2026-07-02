@@ -262,6 +262,16 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         hub._active_jobs_store = _active_jobs_store  # noqa: SLF001 — dashboard RPC (#1772)
         hub._active_jobs_coord = _active_jobs_coord  # noqa: SLF001
 
+        # Terminal JobResult on factory.job.*.result closes the registry
+        # entry (#1795) — authoritative close per job-model.md; the pool-loop
+        # finally close stays as fallback until ids match the wire (#2147).
+        from factory.infrastructure.stores.jobs.active_jobs_result_listener import (
+            ResultCloseListener,
+        )
+
+        _result_close_listener = ResultCloseListener(nc, _active_jobs_coord)
+        await _result_close_listener.start()
+
         # Publish each bot's watch_channels into factory-state KV before
         # announcing readiness so adapters see the value on first seed (SC6).
         _bots: list[tuple[str, str]] = [
@@ -330,7 +340,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             nats_llm_client=nats_llm_client,
         )
         # Pool run lifecycle drives open()/close() via PoolContext (#1772);
+        # terminal JobResult drives close via ResultCloseListener (#1795);
         # #1799 adds steer, #1798 the sub-job facets.  TTL heals a missed close.
+        await _result_close_listener.stop()
         await _active_jobs_coord.stop()
         await _dlq_router.stop()
 

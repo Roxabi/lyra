@@ -1,8 +1,9 @@
 /*
  * Cascade layer order — Astryx design system + Tailwind v4 coexistence.
  * Priority low→high: reset → theme → base → astryx-base → astryx-theme → brand → components → utilities
- * Astryx CSS is additive and sits below `utilities`, so existing Tailwind utility
- * classes still win — not-yet-migrated shadcn primitives render unchanged (S0).
+ * Astryx CSS is additive and sits below `utilities`, so hand-written Tailwind utility
+ * classes in the shell still win over Astryx component styles (locked decision: the
+ * dashboard keeps Tailwind for layout/spacing and app-level semantic color utilities).
  * Ref: astryx apps/example-vite-tailwind/src/index.css + `astryx docs migration`.
  */
 @layer reset, theme, base, astryx-base, astryx-theme, brand, components, utilities;
@@ -22,71 +23,43 @@
 @import "../../../brand/styles.css" layer(brand);
 @import "tailwindcss/utilities.css" layer(utilities);
 
-/* shadcn semantic bridge — maps Forge tokens → Tailwind utilities */
 :root {
   color-scheme: dark;
-
-  --background: var(--bg);
-  --foreground: var(--text);
-
-  --card: var(--bg-card);
-  --card-foreground: var(--text);
-  --popover: var(--bg-elevated);
-  --popover-foreground: var(--text);
-
-  --primary: var(--accent);
-  --primary-foreground: var(--accent-on);
-
-  --secondary: var(--bg-elevated);
-  --secondary-foreground: var(--text);
-
-  --muted: var(--bg-elevated);
-  --muted-foreground: var(--text-muted);
-
-  --accent-ui: var(--bg-card-hover);
-  --accent-foreground: var(--text);
-
-  --brand: var(--accent);
-  --brand-foreground: var(--accent-on);
-  --brand-strong: var(--accent-hover);
-
-  --destructive: var(--util-red);
-  --destructive-foreground: var(--text);
-
-  --border: color-mix(in srgb, var(--border-hi) 35%, transparent);
-  --input: var(--border-hi);
-  --ring: var(--accent);
-
-  --radius: var(--r-md);
 }
 
-[data-theme="light"] {
-  /* brand/tokens/colors.css overrides --bg, --text, --accent, … */
-}
-
+/*
+ * Tailwind color/typography theme — the shell's semantic utility vocabulary
+ * (bg-card, text-muted-foreground, border-border, …) sourced DIRECTLY from the
+ * Astryx/roxabi design tokens (brand/tokens/*.css → roxabi.theme.css). Light mode
+ * flips via `[data-theme="light"]` overrides of the underlying Forge tokens
+ * (brand/tokens/colors.css), so every utility below is theme-switchable with no
+ * duplicate light block here. `inline` keeps the utilities referencing the live
+ * token vars (not a frozen copy). Formerly routed through a shadcn `--background`
+ * var-alias contract; that bridge is removed — these bind straight to Forge tokens.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent-ui);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-brand: var(--brand);
-  --color-brand-foreground: var(--brand-foreground);
-  --color-brand-strong: var(--brand-strong);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--bg-card);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--bg-elevated);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-on);
+  --color-secondary: var(--bg-elevated);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--bg-elevated);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: var(--bg-card-hover);
+  --color-accent-foreground: var(--text);
+  --color-brand: var(--accent);
+  --color-brand-foreground: var(--accent-on);
+  --color-brand-strong: var(--accent-hover);
+  --color-destructive: var(--util-red);
+  --color-destructive-foreground: var(--text);
+  --color-border: color-mix(in srgb, var(--border-hi) 35%, transparent);
+  --color-input: var(--border-hi);
+  --color-ring: var(--accent);
   --color-status-open: var(--status-open);
   --color-status-closing: var(--status-closing);
   --color-status-error: var(--status-error);

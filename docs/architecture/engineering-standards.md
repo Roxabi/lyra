@@ -7,7 +7,7 @@ description: Cross-repo engineering doctrine — Clean/Hexagonal/Kernel layering
 
 > Status: LIVING — current truth for cross-repo engineering doctrine.
 > Last updated: 2026-07-02.
-> Source ADRs: 009 (archived), 058, 059, 089. Absorbed via 059: 048, 060.
+> Source ADRs: 009 (archived), 058 (archived), 059, 089. Absorbed via 059: 048, 060.
 
 ## Scope
 
@@ -270,7 +270,7 @@ one runner — adding a check means declaring a gate in `stack.yml` and adding i
 |-----|-------|--------|
 | 009 | `GENERIC_ERROR_REPLY` placement and agent→hub decoupling | Superseded — archived (consolidation v2, 2026-07-01); decision absorbed here |
 | 048 | Infrastructure layer for persistence | Absorbed by ADR-059 |
-| 058 | Typed error boundary and user-visible error contract | Accepted — amended 2026-07-01: unified Option B mechanisms never built; live contract is per-site typed catch + template reply |
+| 058 | Typed error boundary and user-visible error contract | Superseded — archived 2026-07-02 (Option B never built; the surviving principle lives in § User-visible error contract) |
 | 059 | Hexagonal / Clean architecture canonical model | Accepted — absorbs ADR-048, ADR-060 |
 | 060 | CLI protocol circular import resolution | Absorbed by ADR-059 |
 | 089 | Centralized LLM user-error resolution | Accepted |

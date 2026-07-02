@@ -1,5 +1,5 @@
 ---
-title: "ADR-079: Audio NATS contract — axial consolidation and sole-provisioner"
+title: "ADR-079: Hub is sole provisioner of the audio stream; adapter grants via shared ACL group"
 description: Closes N×M drift in FACTORY_OUTBOUND_AUDIO contracts by moving stream+KV provisioning to the hub (sole-provisioner), introducing ACL grant-groups, mandating a NullAudioConsumer sentinel, and adding a stream-keyed CI falsification gate.
 status: accepted
 date: 2026-05-30

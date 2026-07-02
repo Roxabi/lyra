@@ -13,6 +13,12 @@ Accepted — 2026-06-01
 
 Absorbs ADR-080 and ADR-081 into a single meta-documentation plane.
 
+Amended 2026-07-02 (consolidation wave 3): the hand-maintained `adr/meta.json` index files
+were dropped — they had no renderer, no gate, and drifted within weeks. ADR discovery is now
+(1) decision-stating titles (the filename slug and frontmatter title must state what was
+decided — a reader with no index must not need to open the file), and (2) each domain page's
+"ADR archive" table (status + one-line summary), maintained where the context lives.
+
 ## Context
 
 Architecture knowledge in Lyra (and Roxabi repos generally) evolves faster than hand-maintained docs and issues can track, producing systemic silent documentation rot. A 2026-05-30 audit found a 67% live-reference hit-rate in `docs/architecture/`. The root cause is mixing three strata with different rot rates in one artifact:

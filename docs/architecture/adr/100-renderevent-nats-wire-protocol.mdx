@@ -1,0 +1,130 @@
+---
+title: "ADR-100: RenderEvent NATS wire protocol — seq-framed chunk envelope + codec-registry dispatch"
+description: "Consolidates ADR-036 + ADR-072 — one NatsChunkEnvelope per RenderEvent on the persistent outbound subject, decoded through a dict[type, CodecBranch] registry with machine-checkable completeness"
+status: accepted
+date: 2026-07-02
+deciders: [Mickael]
+supersedes: [036, 072]
+related: [099, 035, 076]
+---
+
+> **Current truth** → [`docs/architecture/llm-streaming.md`](../llm-streaming.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+## Status
+
+Accepted — 2026-07-02. Consolidation record merging ADR-036 (RenderEvent streaming chunk
+protocol over NATS) and ADR-072 (codec registry pattern), including their 2026-07-01
+amendments. Both source records are archived; this record is the single decision-history
+entry for the RenderEvent wire protocol. Current state lives in the domain page
+(§ Streaming chunk protocol, § NATS render-event codec) — not duplicated here.
+
+## Context
+
+The hub delivers turn output as `AsyncIterator[RenderEvent]`. Once hub and adapters run
+as separate processes connected by NATS (#445 Slice C), that iterator cannot cross the
+boundary — NATS delivers discrete messages, not Python iterators. Each event must be
+framed as a message, ordered, correlated to its originating turn, and terminated
+explicitly (ADR-036, #454).
+
+The first decode implementation accumulated event branches in a sequential if-elif chain
+and read the discriminator as `chunk.get("event_type", "text")` — a chunk missing
+`event_type` silently routed to the text decoder instead of being logged and dropped.
+PR #1190's 3-panel review (architect, backend-dev, security-auditor) reached 3-0
+consensus that per-branch `try/except` bolted onto the if-elif would add ~50 lines of
+boilerplate, and deferred the fix to a registry rewrite at the v2 cutover (#1192), the
+natural single-rewrite moment for a hot file (ADR-072).
+
+## Decision
+
+### 1. Envelope framing (from ADR-036 — still live)
+
+Each `RenderEvent` crosses NATS as **one chunk** on the **persistent outbound subject**
+`factory.outbound.<platform>.<bot_id>` (ADR-035 Tier 1), not on ephemeral reply inboxes:
+
+```json
+{ "stream_id": "...", "seq": 0, "event_type": "...", "payload": { }, "done": false }
+```
+
+- **Persistent subject over reply inboxes** — the load-bearing reason is ACL hardening:
+  a stable, enumerable subject is grantable in the NATS ACL matrix, whereas per-request
+  inboxes require wildcard inbox permissions. It also gives one subscription per
+  `{platform}.{bot_id}` (concurrent turns multiplexed by `stream_id`), survives adapter
+  reconnects, and leaves room for proactive hub→adapter sends. A single-message batch
+  response was rejected as a streaming-UX regression.
+- **Adapter-owned `stream_id` correlation** — the adapter mints `stream_id` on the
+  inbound envelope; the hub copies it onto every outbound chunk of that turn (1:1
+  inbound↔stream correlation). Hub-minted `stream_id`s exist only for proactive sends.
+- **`seq` + `done` framing** — `seq` is 0-indexed, monotonically increasing per stream;
+  `done=true` marks terminal chunks. The hub always closes with a synthetic `stream_end`
+  sentinel (clean drain even on an empty iterator) and publishes `stream_keepalive`
+  during idle periods so the adapter timeout does not trip on long tool calls.
+- **Gap/timeout semantics (amended)** — ADR-036's original rule was fatal
+  `STREAM_ABORTED` on any `seq` deviation. The live realization relaxes this: an
+  out-of-order `seq` is **logged as a warning** (no reorder buffer, no immediate abort),
+  and stream failure is bounded by a per-chunk idle timeout (`StreamChunkTimeout`) plus
+  a hub-liveness poll between chunks (`HubUnavailableError`). A chunk missing
+  `event_type` still aborts the stream. Terminated streams are tombstoned so late chunks
+  drop silently.
+- The outer envelope is intentionally **unversioned**; only inner payloads carry
+  `schema_version`.
+
+`NatsChunkEnvelope` is the protocol name for this shape — the wire dict is built inline
+in `src/factory/nats/nats_channel_proxy.py` (no Python class carries the name); the
+adapter side decodes in `src/factory/adapters/nats/nats_stream_decoder.py`
+(`decode_stream_events`, consumed by `NatsOutboundListener`).
+
+### 2. Codec-registry dispatch (from ADR-072)
+
+Decode/encode dispatch is a `dict[type, CodecBranch]` registry plus a
+`dict[str, CodecBranch]` inverse index (`_by_type_str`) for O(1) decode lookup — built
+once, immutable thereafter. Split across `src/factory/nats/render_event_codec.py`
+(`NatsRenderEventCodec`, `_registry`, `_by_type_str`, sentinel pre-check) and
+`src/factory/nats/render_event_codec_registry.py` (`CodecBranch`,
+`build_codec_registry()`), both under the 300-LOC gate.
+
+- Each `CodecBranch` bundles `event_type`, `cls_name`, `encode_fn`/`decode_fn`,
+  `schema_version`, and `is_done_default` — one row per `RenderEvent` subtype.
+- **Completeness is machine-checked**: a CI test asserts
+  `set(typing.get_args(RenderEvent)) == set(_registry.keys())` — adding a subtype
+  without its registry insertion fails loud.
+- **Silent-default fix**: the decoder reads `chunk.get("event_type")` with no `"text"`
+  default; `None` logs a warning and aborts. Unknown `event_type` values warn and return
+  `None` — never fall through to a wrong decoder.
+- Synthetic sentinels (`_SYNTHETIC_TERMINALS` = `stream_end`/`stream_error`;
+  non-terminal `stream_keepalive`) are checked **before** registry lookup, so a clean
+  close never fires the unknown-type warning and sentinels are never yielded as events.
+- Per-branch decode errors (`TypeError | ValueError | KeyError | AttributeError`) are
+  caught at one centralized guard: log + drop the chunk.
+
+**Rejected alternatives (ADR-072 essence):** deferring the registry to a follow-up PR
+(second rewrite of a hot file, double blame churn, merge-conflict exposure); a single
+outer try/except decorator on `decode()` (branches have different failure surfaces — it
+would over- or under-catch); Pydantic-based dispatch (no Pydantic dependency in the
+`nats` layer, unwarranted for a ~16-branch table).
+
+## Superseded history
+
+What the amendments killed, preserved here for traceability:
+
+- **v1 `event_type` enum `text | tool_summary | error`** — replaced by the v2 codec
+  taxonomy (text triplet, run/tool-call/reasoning lifecycles, sentinels); see ADR-099
+  (RenderEvent v2 modeling) and the domain page for the live set. The v1
+  `TextRenderEvent`/`ToolSummaryRenderEvent` registry entries were deleted (#1192
+  Slice 3).
+- **Single-text-chunk-per-turn invariant** — v1 accumulated the full response and
+  emitted one final text chunk. Incremental streaming is live (`stream_text.py` yields a
+  delta event per LLM delta); adapters MUST handle multiple text chunks per turn.
+- **Fatal-abort-on-gap** — relaxed to warn-on-gap + bounded-timeout abort (above).
+
+## Consequences
+
+- Envelope and dispatch evolve independently: new `RenderEvent` subtypes are one
+  registry insertion (CI-gated), no envelope change; the JetStream upgrade path needs no
+  protocol change (`(stream_id, seq)` already supports dedup).
+- `pyright` unreachable-branch and `C901` complexity suppressions are gone — the
+  registry is the exhaustion proof.
+- Adapters keep per-`stream_id` receive state (expected `seq`, idle timer, tombstones) —
+  N small state objects at personal scale.
+- NATS Core still gives no delivery guarantee under partition: an in-flight turn ends as
+  an error surfaced to the user via the timeout/liveness backstop.

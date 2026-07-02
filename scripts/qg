@@ -9,10 +9,23 @@
 #   scripts/qg run [--stage STAGE] GATE_NAME
 #
 # Requires: yq (https://github.com/mikefarah/yq) — checked in tools/dev-setup.sh
+#
+# CI files: filtering — QG_DIFF_RANGE (optional, ci stage only):
+#   Set by ci.yml on pull_request events to "origin/<base>...HEAD" (triple-dot
+#   merge-base diff). When set AND the diff resolves, gates with a `files:`
+#   regex are skipped unless a changed file matches. When unset (push to
+#   staging/main, workflow_dispatch, future merge_group) or when the diff
+#   fails (bad ref, shallow clone), the runner FAILS OPEN: all gates run.
 set -euo pipefail
 
 REPO_ROOT="${QG_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 STACK="${QG_STACK:-${REPO_ROOT}/.claude/stack.yml}"
+
+# 1 only when a CI changed-files list was successfully computed (QG_DIFF_RANGE
+# set AND git diff succeeded). Distinguishes "diff empty" (filter normally:
+# nothing matches → filtered gates skip) from "diff unavailable" (fail open:
+# run everything). Never fail-closed — a broken diff must not skip checks.
+CI_FILTER_ACTIVE=0
 
 # Gates invoke `uv run <tool>`; without no-sync, uv re-resolves and rewrites
 # uv.lock / bakes worktree paths into the shared symlinked .venv when a gate
@@ -80,10 +93,15 @@ gate_has_stage() {
 changed_files() {
   local stage="$1"
   local -a files=()
+  # -z + NUL-delimited mapfile: default core.quotePath C-quotes non-ASCII
+  # paths, which would never match a files: regex (same fix as the CI diff
+  # in cmd_run). --diff-filter=ACMR is kept on the staged branch on purpose:
+  # staged-file semantics deliberately diverge from the CI diff, where
+  # deletions must trigger gates.
   if [[ "$stage" == "pre-push" && -n "${PRE_COMMIT_FROM_REF:-}" && -n "${PRE_COMMIT_TO_REF:-}" ]]; then
-    mapfile -t files < <(git -C "$REPO_ROOT" diff --name-only "${PRE_COMMIT_FROM_REF}...${PRE_COMMIT_TO_REF}" 2>/dev/null || true)
+    mapfile -d '' -t files < <(git -C "$REPO_ROOT" diff --name-only -z "${PRE_COMMIT_FROM_REF}...${PRE_COMMIT_TO_REF}" 2>/dev/null || true)
   else
-    mapfile -t files < <(git -C "$REPO_ROOT" diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+    mapfile -d '' -t files < <(git -C "$REPO_ROOT" diff --cached --name-only -z --diff-filter=ACMR 2>/dev/null || true)
   fi
   if [[ ${#files[@]} -eq 0 ]]; then
     return 0
@@ -115,7 +133,13 @@ should_run_gate() {
   shift 2
   local pattern
   pattern=$(gate_field "$gate" 'files // ""')
-  if [[ -z "$pattern" || "$stage" == "ci" ]]; then
+  if [[ -z "$pattern" ]]; then
+    return 0
+  fi
+  # CI honors files: filters only when a changed-files list was successfully
+  # computed (CI_FILTER_ACTIVE=1). Otherwise fail open — run the gate.
+  # pre-commit/pre-push semantics are unchanged.
+  if [[ "$stage" == "ci" && "$CI_FILTER_ACTIVE" -ne 1 ]]; then
     return 0
   fi
   if [[ $# -eq 0 ]]; then
@@ -222,6 +246,9 @@ run_gate() {
   local -a changed=("$@")
 
   if [[ "$gate" == "doc_drift_bundle" ]]; then
+    # Deliberate short-circuit BEFORE the enabled/stage/files checks below —
+    # the bundle composes doc_drift + doc_semantic_drift itself. A `files:`
+    # entry on doc_drift_bundle would be dead config: it always runs.
     run_doc_drift_bundle
     return $?
   fi
@@ -330,6 +357,28 @@ cmd_run() {
   else
     echo "::error::specify --stage, --profile, or a gate name" >&2
     return 2
+  fi
+
+  # CI stage: compute the PR merge-base diff when ci.yml provided a range.
+  # Triple-dot includes deletions and --no-renames splits a move into D+A —
+  # deliberate: deleting or moving a file OUT of a filtered tree must still
+  # trigger its gates. -z (NUL-delimited) keeps non-ASCII/control-char paths
+  # intact — default core.quotePath C-quotes them ("caf\303\251.ts"), which
+  # would never match a files: regex and silently skip gates. Any git failure
+  # (bad ref, shallow clone) → fail OPEN with a warning: CI_FILTER_ACTIVE
+  # stays 0 and every gate runs.
+  if [[ "$stage" == "ci" && -n "${QG_DIFF_RANGE:-}" ]]; then
+    local difftmp errtmp git_err
+    difftmp=$(mktemp)
+    errtmp=$(mktemp)
+    if git -C "$REPO_ROOT" diff --name-only -z --no-renames "$QG_DIFF_RANGE" >"$difftmp" 2>"$errtmp"; then
+      CI_FILTER_ACTIVE=1
+      mapfile -d '' -t changed <"$difftmp"
+    else
+      git_err=$(tr '\n' ' ' <"$errtmp")
+      echo "::warning::qg: git diff '${QG_DIFF_RANGE}' failed (${git_err:-no stderr}) — files: filters disabled, running ALL ci gates (fail-open)" >&2
+    fi
+    rm -f "$difftmp" "$errtmp"
   fi
 
   local failed=0 rc=0 n

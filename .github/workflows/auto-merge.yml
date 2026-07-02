@@ -50,6 +50,18 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
 
+      # strict=true requires up-to-date branches, but native auto-merge never
+      # updates them itself. update-behind-prs only covers reviewed PRs on the
+      # NEXT staging push — update immediately so a quiet repo can't strand a
+      # freshly labeled PR. 422 (already up to date) is fine.
+      - name: Update branch if behind
+        run: |
+          gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/update-branch" \
+            --method PUT || true
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
   update-behind-prs:
     name: Update behind PRs
     runs-on: ubuntu-latest
@@ -68,12 +80,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Update all open non-draft PRs targeting this branch
+      # Only merge-ready (reviewed) PRs: updating ALL open PRs edit-poisons
+      # dependabot PRs (dependabot refuses to update/supersede/close a PR edited
+      # by someone else → zombie PRs re-CI'd on every staging push; 67% of all
+      # workflow runs in the 2026-06/07 window) and churns human WIP branches.
+      - name: Update reviewed PRs targeting this branch
         run: |
           BRANCH="${GITHUB_REF_NAME}"
-          PRS=$(gh pr list --base "$BRANCH" --state open --json number,headRefOid,isDraft --jq '.[] | select(.isDraft | not)')
+          PRS=$(gh pr list --base "$BRANCH" --state open --label reviewed --json number,headRefOid,isDraft --jq '.[] | select(.isDraft | not)')
           if [ -z "$PRS" ]; then
-            echo "No open non-draft PRs targeting $BRANCH"
+            echo "No open reviewed PRs targeting $BRANCH"
             exit 0
           fi
           echo "$PRS" | while IFS= read -r pr; do

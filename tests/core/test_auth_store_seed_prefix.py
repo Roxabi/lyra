@@ -78,6 +78,39 @@ class TestCleanupBareIds:
             await store2.close()
 
     @pytest.mark.asyncio
+    async def test_cleanup_commits_on_zero_deleted(self, tmp_path: Path) -> None:
+        """A 0-row cleanup DELETE must not leave an implicit transaction open.
+
+        Regression (#2136): the DELETE opens an implicit write transaction even
+        when it matches 0 rows; committing only under ``if deleted:`` left it
+        dangling, pinning the WAL read-mark and stalling every other
+        connection's wal_checkpoint(TRUNCATE) for the full 30s busy_timeout.
+        """
+        db_path = tmp_path / "grants.db"
+
+        store1 = AuthStore(db_path=db_path)
+        await store1.connect()
+        await store1.upsert(
+            identity_key="tg:user:123",
+            trust_level=TrustLevel.OWNER,
+            expires_at=None,
+            granted_by="test",
+            source="test",
+        )
+        await store1.close()
+
+        # Reconnect with only prefixed IDs present → cleanup deletes 0 rows.
+        store2 = AuthStore(db_path=db_path)
+        await store2.connect()
+        try:
+            assert not store2._require_db().in_transaction, (
+                "connect() left an implicit transaction open after a 0-row "
+                "cleanup DELETE — WAL read-mark stays pinned"
+            )
+        finally:
+            await store2.close()
+
+    @pytest.mark.asyncio
     async def test_prefixed_grant_survives_reconnect(self, tmp_path: Path) -> None:
         """After upsert + reconnect, check('tg:user:X') returns stored level."""
         db_path = tmp_path / "grants.db"

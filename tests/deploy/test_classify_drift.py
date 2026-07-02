@@ -4,7 +4,7 @@ Fingerprint format:
   <git_head>:<unit_sha>:<auth_sha>:<voicecli_head>:<staging-svc-digest>:<staging-digest>
   - field 0 (git_head) ALONE   → code-only (git advanced but no artifact changed; converge.sh
                                   resolves inert docs/CI commits via _code_change_is_inert and
-                                  src/packages/apps/brand-only commits via
+                                  src/packages/apps-dashboard/brand-only commits via
                                   _code_change_is_image_carried — restart deferred to the
                                   post-autoupdate digest converge).
                                   git_head + any other field → structural.
@@ -241,9 +241,10 @@ def _image_carried(repo: Path, last_git: str, cur_git: str, env: dict) -> bool:
 
 
 def test_code_change_is_image_carried(tmp_path: Path) -> None:
-    """Image-carried allowlist: src/packages/apps/brand (± inert paths) → defer the restart to
-    the post-autoupdate digest converge; any host-carried path (deploy/, tools/, lockfiles, …)
-    or an undecidable diff → full converge now (same fail-safe direction as _code_change_is_inert)."""
+    """Image-carried allowlist: src/packages/apps-dashboard/brand (± inert paths) → defer the
+    restart to the post-autoupdate digest converge; any host-carried path (deploy/, tools/,
+    lockfiles, apps/ outside dashboard/, …) or an undecidable diff → full converge now (same
+    fail-safe direction as _code_change_is_inert)."""
     repo = tmp_path / "factory"
     repo.mkdir()
 
@@ -275,17 +276,24 @@ def test_code_change_is_image_carried(tmp_path: Path) -> None:
     git("commit", "-qm", "base")
     base = head()
 
-    # image-carried commit: src/ + packages/ + apps/ + brand/, mixed with inert docs/
-    for d in ("src", "packages", "apps", "brand", "docs"):
-        (repo / d).mkdir()
+    # image-carried commit: src/ + packages/ + apps/dashboard/ + brand/, mixed with inert docs/
+    for d in ("src", "packages", "apps/dashboard", "brand", "docs"):
+        (repo / d).mkdir(parents=True)
     (repo / "src" / "app.py").write_text("code\n")
     (repo / "packages" / "lib.py").write_text("lib\n")
-    (repo / "apps" / "ui.tsx").write_text("ui\n")
+    (repo / "apps" / "dashboard" / "ui.tsx").write_text("ui\n")
     (repo / "brand" / "theme.css").write_text("css\n")
     (repo / "docs" / "x.md").write_text("d\n")
     git("add", "-A")
     git("commit", "-qm", "image-carried + docs")
     image_head = head()
+
+    # apps/ OUTSIDE dashboard/ ships in NO tracked image → must NOT be image-carried
+    (repo / "apps" / "artifacts").mkdir()
+    (repo / "apps" / "artifacts" / "shot.png").write_text("png\n")
+    git("add", "-A")
+    git("commit", "-qm", "apps artifact")
+    apps_other_head = head()
 
     # host-carried commit: deploy/ config (bind-mounted, needs a real converge)
     (repo / "deploy").mkdir()
@@ -301,7 +309,10 @@ def test_code_change_is_image_carried(tmp_path: Path) -> None:
     lock_head = head()
 
     assert _image_carried(repo, base, image_head, env) is True, (
-        "src/packages/apps/brand (+docs) must be image-carried → skip"
+        "src/packages/apps-dashboard/brand (+docs) must be image-carried → skip"
+    )
+    assert _image_carried(repo, image_head, apps_other_head, env) is False, (
+        "apps/ outside dashboard/ ships in no image → must force a converge now"
     )
     assert _image_carried(repo, image_head, deploy_head, env) is False, (
         "deploy/ change must force a converge now"

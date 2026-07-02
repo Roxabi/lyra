@@ -330,20 +330,26 @@ _code_change_is_inert() {
 
 # Decide whether a 'code-only' drift is IMAGE-CARRIED — i.e. every changed file is either
 # inert (same allowlist as _code_change_is_inert, kept in lockstep) or ships to the fleet
-# exclusively inside the tracked images (src/, packages/, apps/, brand/ — baked in by
-# publish.yml, never bind-mounted from the checkout: every bind-mounted runtime config
-# lives under deploy/, which is deliberately NOT in this allowlist; the %h/projects mounts
-# in clipool/omp are live agent workspaces a restart cannot refresh further).
+# exclusively inside the tracked images (src/, packages/, apps/dashboard/, brand/ — baked
+# in by publish.yml, never bind-mounted from the checkout: every bind-mounted runtime
+# config lives under deploy/, which is deliberately NOT in this allowlist; the %h/projects
+# mounts in clipool/omp are live agent workspaces a restart cannot refresh further).
+# Grep `Volume=` in deploy/quadlet/ before ever bind-mounting one of these dirs — a mounted
+# src/packages/apps/brand path would break this classifier's core invariant.
 #
 #   _code_change_is_image_carried <last_fingerprint> <current_fingerprint>
 #
 # Returns 0 (image-carried → skip the pre-image restart) ONLY if EVERY changed path matches
 # the inert ∪ image-carried allowlist. The restart is deferred, not lost: publish.yml builds
-# the new image, then factory-post-autoupdate (*:2/5) — with podman-auto-update (*:4/5) as
-# catch-up net — detects the digest drift on fields 4/5, pulls, and runs the structural
-# converge that actually carries the new code. Restarting before the image exists deploys
-# nothing: the fleet bounces on the OLD image, then bounces again when the image lands
-# ("every code merge = 2 full-fleet restarts", audit 2026-07-01 §5.7).
+# the new image, then factory-post-autoupdate (*:2/5) detects the digest drift on fields 4/5,
+# pulls, and runs the structural converge that actually carries the new code — INCLUDING the
+# host steps (unit render, auth regen) that execute src/ code from the checkout at converge
+# time; their effects now land at image-arrival instead of merge time (bounded by the digest
+# loop). This skip REQUIRES post-autoupdate's unconditional change-gated converge: when
+# podman-auto-update (*:4/5) wins the digest race it pulls (remote==local afterwards) without
+# running any host step, and only the stale stamp fields 4/5 re-arm the converge. Restarting
+# before the image exists deploys nothing: the fleet bounces on the OLD image, then bounces
+# again when the image lands ("every code merge = 2 full-fleet restarts", audit 2026-07-01 §5.7).
 #
 # Returns 1 (NOT image-carried → full converge now) for any host-carried path (deploy/,
 # tools/, scripts/, Dockerfile, docker/, pyproject.toml, uv.lock, Makefile, …) AND for any
@@ -368,8 +374,11 @@ _code_change_is_image_carried() {
     while IFS= read -r p; do
         [ -z "${p}" ] && continue
         case "${p}" in
-            # image-carried: reaches the fleet only via factory:staging-svc / factory:staging
-            src/*|packages/*|apps/*|brand/*) ;;
+            # image-carried: reaches the fleet only via factory:staging-svc / factory:staging.
+            # apps/dashboard/ (not apps/*): only the dashboard is baked into an image —
+            # apps/artifacts/ etc. ship in NO tracked image, so their digest re-arm never
+            # fires; anything else under apps/ falls through to structural (fail-safe).
+            src/*|packages/*|apps/dashboard/*|brand/*) ;;
             # inert set — keep in lockstep with _code_change_is_inert above
             docs/*|tests/*|artifacts/*|.github/*) ;;
             *.md|*.txt|LICENSE|CHANGELOG|CHANGELOG.md|.gitignore|.editorconfig|.pre-commit-config.yaml) ;;

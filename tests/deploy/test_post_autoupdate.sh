@@ -6,11 +6,15 @@
 #   staging-svc per-arch digest (podman .Digest): sha256:6a7d28bc…
 #   RepoDigests contains BOTH digests.
 #
-# Case A — remote index digest ∈ local RepoDigests → UNCHANGED / no converge.
-# Case B — remote index digest ∉ local RepoDigests (new push) → DRIFT / converge triggered.
+# Case A — remote index digest ∈ local RepoDigests → UNCHANGED / no pull, but the
+#          change-gated `make converge` still runs (podman-wins race self-heal — a
+#          podman-auto-update pull leaves remote==local with a stale stamp, so a
+#          drift-gated converge would be suppressed forever; converge no-ops when
+#          the stamp matches).
+# Case B — remote index digest ∉ local RepoDigests (new push) → DRIFT / pull + converge.
 # Case C — per-arch .Digest matches remote but index digest ∈ RepoDigests → UNCHANGED
 #          (core regression guard: old code compared .Digest↔index → always mismatch;
-#          new code uses membership in RepoDigests → correctly unchanged).
+#          new code uses membership in RepoDigests → correctly no false drift/pull).
 #
 # Usage: bash tests/deploy/test_post_autoupdate.sh
 set -euo pipefail
@@ -122,9 +126,11 @@ WRAPPER
 }
 
 # ---------------------------------------------------------------------------
-# Case A — remote index digest ∈ RepoDigests → UNCHANGED, no make converge
+# Case A — remote index digest ∈ RepoDigests → UNCHANGED: no pull, but the
+#          change-gated make converge still runs (podman-wins self-heal)
 # ---------------------------------------------------------------------------
 
+MAKE_CALLED_FILE_A="$TMPDIR_WORK/make_called_a"
 SHIMS_A="$TMPDIR_WORK/shims_a.sh"
 cat > "$SHIMS_A" <<EOF
 skopeo() {
@@ -162,7 +168,10 @@ jq() {
         command jq "\$@"
     fi
 }
-make() { echo "[ERROR] make called unexpectedly in case A" >&2; exit 1; }
+make() {
+    touch "${MAKE_CALLED_FILE_A}"
+    echo "make converge called"
+}
 export -f skopeo podman jq make
 EOF
 
@@ -170,9 +179,13 @@ OUTPUT_A=$(run_hook_main "$SHIMS_A" 2>&1 || true)
 
 assert_contains     "A: staging-svc unchanged"    "$OUTPUT_A" "Image digest unchanged (ghcr.io/roxabi/factory:staging-svc)"
 assert_contains     "A: staging unchanged"         "$OUTPUT_A" "Image digest unchanged (ghcr.io/roxabi/factory:staging)"
-assert_contains     "A: nothing to do"             "$OUTPUT_A" "All tracked image digests unchanged — nothing to do."
+assert_contains     "A: no pull needed"            "$OUTPUT_A" "All tracked image digests unchanged — no pull needed."
 assert_not_contains "A: no drift"                  "$OUTPUT_A" "drift detected"
-assert_not_contains "A: no make converge"          "$OUTPUT_A" "Running make converge"
+assert_not_contains "A: no pull"                   "$OUTPUT_A" "==> Pulling"
+assert_contains     "A: change-gated converge"     "$OUTPUT_A" "make converge called"
+[ -f "$MAKE_CALLED_FILE_A" ] \
+    && pass "A: make sentinel file created" \
+    || fail "A: make sentinel file" "not created — the podman-wins self-heal converge was not called"
 
 # ---------------------------------------------------------------------------
 # Case B — remote index digest ∉ RepoDigests (new push) → DRIFT, converge triggered
@@ -285,7 +298,7 @@ jq() {
         command jq "\$@"
     fi
 }
-make() { echo "[ERROR] make called unexpectedly in case C" >&2; exit 1; }
+make() { echo "make converge called"; }
 export -f skopeo podman jq make
 EOF
 
@@ -293,7 +306,8 @@ OUTPUT_C=$(run_hook_main "$SHIMS_C" 2>&1 || true)
 
 assert_contains     "C: unchanged (index ∈ RepoDigests)"   "$OUTPUT_C" "Image digest unchanged (ghcr.io/roxabi/factory:staging-svc)"
 assert_not_contains "C: no false drift"                    "$OUTPUT_C" "drift detected"
-assert_not_contains "C: no make converge"                  "$OUTPUT_C" "Running make converge"
+assert_not_contains "C: no false pull"                     "$OUTPUT_C" "==> Pulling"
+assert_contains     "C: change-gated converge"             "$OUTPUT_C" "make converge called"
 
 # ---------------------------------------------------------------------------
 # Summary

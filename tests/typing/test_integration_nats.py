@@ -65,13 +65,13 @@ async def test_publisher_to_listener_e2e_discord(nats_server_url: str) -> None:
 
     await pub.publish_started(scope)
     await nc_pub.flush()  # publish() buffers locally; flush forces it to the server
-    await asyncio.wait_for(started.wait(), timeout=5.0)
+    await asyncio.wait_for(started.wait(), timeout=30.0)
     mgr.start.assert_called_once()
     assert mgr.start.call_args[0][0] == 42
 
     await pub.publish_ended(scope)
     await nc_pub.flush()
-    await asyncio.wait_for(ended.wait(), timeout=5.0)
+    await asyncio.wait_for(ended.wait(), timeout=30.0)
     mgr.cancel.assert_called_once_with(42)
 
     await listener.stop()

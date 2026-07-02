@@ -88,15 +88,15 @@ Git hooks run quality gates locally:
 Install both hook types once:
 
 ```bash
-make hooks-install
+make hooks-install   # → bash tools/install-hooks.sh
 ```
 
-Equivalent:
-
-```bash
-uv run pre-commit install
-uv run pre-commit install --hook-type pre-push
-```
+> Do **not** use raw `uv run pre-commit install` — it refuses to install
+> whenever `core.hooksPath` is set at any scope ("Cowardly refusing"), which is
+> the norm on machines with global git hooks. `tools/install-hooks.sh` writes
+> `pre-commit hook-impl` dispatchers into the effective hooks dir instead (and
+> re-chains any global hooks); the hooks then fire in the main checkout and
+> every linked worktree.
 
 Pre-push hooks require [trufflehog](https://github.com/trufflesecurity/trufflehog/releases) on your `PATH`. Frontend hooks require [bun](https://bun.sh) (see root `package.json` → `packageManager`). Quality gate orchestration requires [yq](https://github.com/mikefarah/yq) — installed by `make dev-setup`.
 

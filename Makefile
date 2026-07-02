@@ -404,8 +404,10 @@ dev-setup:  ## bootstrap local dev after clone (uv + bun + hooks — see stack.y
 	bash tools/dev-setup.sh
 
 hooks-install:  ## install pre-commit + pre-push git hooks (included in make dev-setup)
-	uv run pre-commit install
-	uv run pre-commit install --hook-type pre-push
+	# NOT `pre-commit install`: it refuses whenever core.hooksPath is set at ANY
+	# scope (global ccc hooks dir) — install-hooks.sh writes hook-impl dispatchers
+	# into the effective hooks dir instead, and re-chains the global hooks.
+	bash tools/install-hooks.sh
 
 # dep-graph and corpus migrated to roxabi-dashboard (2026-04-22).
 # Run via dashboard: `uv run --project ../roxabi-dashboard roxabi-corpus sync`

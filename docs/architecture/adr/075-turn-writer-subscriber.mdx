@@ -1,7 +1,7 @@
 ---
 title: "ADR-075: TurnWriter subscriber-writer sublayer under infrastructure/"
 description: Authorise src/lyra/infrastructure/turn_writer/ as a new subdirectory per infrastructure/ Governance rule. Single cross-platform NATS subscriber writes L1 raw turns to SQLite; deployed as Quadlet sibling lyra-turn-writer.container.
-status: superseded by ADR-078
+status: accepted
 date: 2026-05-25
 deciders: [Mickael, architect, devops, axial-adr-review]
 supersedes: []
@@ -12,11 +12,9 @@ related: [068, 073, 076]
 > **Current truth** → [`docs/architecture/storage.md`](../storage.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
 
-> **Superseded by ADR-078.** See [`ADR-078`](078-turn-store-protocol.mdx) for the TurnStoreProtocol successor that subsumes this ADR.
-
 ## Status
 
-Accepted — 2026-05-25
+Accepted — 2026-05-25. Status corrected 2026-07-01: a previous edit marked this ADR "superseded by ADR-078", which is wrong — ADR-078 covers the distinct read-path concern (`TurnStoreProtocol` in core); the turn-writer write-path sublayer decided here shipped and is the running architecture (`factory-turn-writer.container`). See [`ADR-078`](078-turn-store-protocol.mdx) for the read-path companion.
 
 ## Context
 

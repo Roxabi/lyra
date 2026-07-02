@@ -34,7 +34,7 @@ changes, and applies them via `factory agent patch`.
 factory agent list
 ```
 
-Ask user via DP(A): "Which agent would you like to refine?" with agent names as
+Present choice: "Which agent would you like to refine?" with agent names as
 **bold** options.
 
 Verify α exists:
@@ -78,7 +78,7 @@ Agent: {α}
   Plugins:     {enabled plugins or "none"}
 ```
 
-Ask user via DP(A): "What would you like to change?"
+Present choice: "What would you like to change?"
 Options: **persona**, **voice (TTS/STT)**, **passthroughs**, **model**, **other field**,
 **done**.
 

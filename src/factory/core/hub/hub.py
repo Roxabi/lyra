@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ..auth.authenticator import Authenticator
 from ..auth.identity import Identity
@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from ..lifecycle.circuit_breaker import CircuitRegistry
     from ..memory import MemoryManager
     from ..messaging.messages import MessageManager
+    from ..ports.active_jobs import ActiveJobsRecorder
     from ..ports.resume_publisher import ResumePublisherPort
     from ..ports.stt import STTProtocol
     from ..ports.tts import TtsProtocol
@@ -199,6 +200,16 @@ class Hub(
 
     def get_agent(self, name: str) -> AgentBase | None:
         return self.agent_registry.get(name)
+
+    def active_jobs_recorder(self) -> ActiveJobsRecorder | None:
+        """Active-jobs registry recorder (None until ``hub_standalone`` wires it).
+
+        Backs ``PoolContext``: the Pool records a run open/close here so the
+        dashboard live view (#1772) reflects in-flight jobs.  Typed via the
+        narrow ``ActiveJobsRecorder`` port; the concrete instance is a
+        ``RegistryCoordinator`` set on ``_active_jobs_coord`` at hub startup.
+        """
+        return cast("ActiveJobsRecorder | None", self._active_jobs_coord)
 
     def get_message(self, key: str, **kwargs: str) -> str | None:
         return self._msg_manager.get(key, **kwargs) if self._msg_manager else None

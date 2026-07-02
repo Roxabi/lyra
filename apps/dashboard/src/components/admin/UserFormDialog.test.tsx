@@ -7,14 +7,10 @@ import * as adminApi from "@/lib/admin-api";
 import * as agentsApi from "@/lib/agents-api";
 import { BffApiError } from "@/lib/bff-api";
 
-const toastSuccess = vi.fn();
-const toastError = vi.fn();
+const showToast = vi.fn();
 
-vi.mock("@/components/ui/sonner", () => ({
-  toast: {
-    success: (...args: unknown[]) => toastSuccess(...args),
-    error: (...args: unknown[]) => toastError(...args),
-  },
+vi.mock("@astryxdesign/core/Toast", () => ({
+  useToast: () => showToast,
 }));
 
 function renderDialog(props?: Partial<Parameters<typeof UserFormDialog>[0]>) {
@@ -32,8 +28,7 @@ function renderDialog(props?: Partial<Parameters<typeof UserFormDialog>[0]>) {
 
 describe("UserFormDialog", () => {
   beforeEach(() => {
-    toastSuccess.mockReset();
-    toastError.mockReset();
+    showToast.mockReset();
     vi.spyOn(agentsApi, "fetchAgentsConfigList").mockResolvedValue({
       agents: [
         {
@@ -81,11 +76,11 @@ describe("UserFormDialog", () => {
         agents: ["lyra"],
       });
     });
-    expect(toastSuccess).toHaveBeenCalledWith("Utilisateur créé.");
+    expect(showToast).toHaveBeenCalledWith({ body: "Utilisateur créé.", type: "info" });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("shows a specific toast on email conflict", async () => {
+  it("shows a specific error banner on email conflict", async () => {
     const user = userEvent.setup();
     vi.spyOn(adminApi, "createAdminUser").mockRejectedValue(
       new BffApiError(409, "email already registered: ops@example.com"),
@@ -96,9 +91,9 @@ describe("UserFormDialog", () => {
     await user.type(screen.getByLabelText(/email/i), "ops@example.com");
     await user.click(screen.getByRole("button", { name: /créer/i }));
 
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith("Cet email est déjà enregistré.");
-    });
+    // Errors surface inline (dialog stays open), not via a toast behind the modal.
+    expect(await screen.findByText("Cet email est déjà enregistré.")).toBeTruthy();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it("shows platform conflict toast on create", async () => {
@@ -113,11 +108,9 @@ describe("UserFormDialog", () => {
     await user.type(screen.getByLabelText(/telegram/i), "99999");
     await user.click(screen.getByRole("button", { name: /créer/i }));
 
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith(
-        "Cette identité plateforme est déjà liée à un autre utilisateur.",
-      );
-    });
+    expect(
+      await screen.findByText("Cette identité plateforme est déjà liée à un autre utilisateur."),
+    ).toBeTruthy();
   });
 
   it("shows edit-specific toast on patch conflict", async () => {
@@ -138,9 +131,7 @@ describe("UserFormDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /enregistrer/i }));
 
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith("Cet email est déjà enregistré.");
-    });
+    expect(await screen.findByText("Cet email est déjà enregistré.")).toBeTruthy();
   });
 
   it("closes via the Astryx DialogHeader close button", async () => {

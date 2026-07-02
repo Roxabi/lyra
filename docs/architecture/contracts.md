@@ -7,7 +7,7 @@ description: Living reference for the shared workspace packages (roxabi-nats, ro
 
 > Status: LIVING — current truth for cross-project NATS contracts and shared packages.
 > Last updated: 2026-07-02.
-> Source ADRs: 045, 049, 052, 095. Absorbed: 037, 040, 044, 047, 050, 062, 066.
+> Source ADRs: 045, 049, 052, 084, 095. Absorbed: 037, 040, 044, 047, 050, 062, 066.
 
 ## Scope
 
@@ -180,6 +180,39 @@ request-reply; the dashboard BFF aggregates catalogues over
 
 → ADR-095
 
+### Required field additions (wire-breaking without a shim)
+
+Optional/non-security fields follow ADR-049's minor path (`extra="ignore"` on consumers) — no
+shim sequence. This section covers **semantically required** fields only.
+
+A **required** field added to a `roxabi-contracts` model is wire-breaking even when the change
+looks purely additive, for two independent reasons:
+
+1. **Satellite lag.** llmCLI/voiceCLI/imageCLI are lock-pinned on older `roxabi-contracts` SHAs
+   and keep producing payloads without the new field until they bump their lock — hub-side
+   deserialization of those payloads would raise.
+2. **JetStream replay.** Persisted messages (e.g. `TurnWriteEvent` on stream `FACTORY_TURNS`)
+   replay old payloads to new consumers across a deploy; M₁ hub uptake follows the next converge
+   after `staging` merge (typically ≤5–10 min via podman-auto-update), not the next satellite
+   release.
+
+**Ineligible:** security-bearing fields (identity attestation, auth scopes, signed tokens, audit
+provenance) — major `roxabi-contracts` bump + coordinated satellite upgrade only (ADR-049
+§Versioning). No `default_factory` shim.
+
+**Pattern:** land the field as a `default_factory` mint shim (deserialize-compat within the current
+`CONTRACT_VERSION`, transitional per ADR-084 Amendment / #1619), have every in-repo producer set
+it explicitly at each construction site (+ fakes/fixtures/docker stubs), and let satellites echo
+it after their next lock bump (contracts-bump workflow,
+`docs/ops/contracts-bump-callers.md` — `wire-breaking` label when `CONTRACT_VERSION` changes).
+Flip the field to hard-required only on the next `CONTRACT_VERSION` bump (#1841 for `job_id`).
+Worked example: `WorkEnvelope.job_id` (#1619, ADR-084 Amendment).
+
+**How to apply:** before choosing required vs. default for any field addition/requirement
+change, enumerate every producer per direction (in-repo vs. satellite), every stream-persisted
+model that carries that field, and extend subject→envelope enforcement tests when adding
+work-plane fields. This enumeration is the actual gate — spec review alone has missed it before.
+
 ## Key invariants
 
 - All cross-project NATS schemas and subject strings live in `packages/roxabi-contracts/`; none are re-implemented in satellite repos, and subjects are frozen `Literal`-typed constants (no inline f-string subject construction outside the contracts per-worker helpers).
@@ -194,6 +227,17 @@ request-reply; the dashboard BFF aggregates catalogues over
 - Security-bearing fields (identity attestation, auth scopes) require a major `roxabi-contracts` bump + new `CONTRACT_VERSION`; they are not eligible for additive introduction.
 - All binary fixtures in `roxabi-contracts` are synthetically generated — never from real user data or model outputs.
 - Every new `factory.<domain>.*` cross-project subject namespace requires a contract ADR before any satellite ships a worker.
+- A required field added to any model MUST go through the default-mint shim → producer enumeration → `CONTRACT_VERSION` bump sequence (see "Wire-compatible field additions" above); shipping a bare required field is a wire-breaking change, not an additive one.
+
+## Open questions / known gaps
+
+- ADR-040 Finding 3 (open): `NatsBus` staging queue hardcoded to 500; `platform_queue_maxsize` config ignored — pre-dates ADR-065 JetStream adoption, not yet resolved.
+- ADR-040 Finding 6 (open): `_get_hints` lacks a per-type cache; reflection runs on every deserialization.
+- ADR-040 Finding 7 (open): outbound queue is unbounded; no max-age drain before circuit opens.
+- VoiceCLI queue-group subscriptions are still present for fallback compatibility (ADR-052 follow-up); removal tracked but not yet landed.
+- `lyra.memory.*` contract ADR not yet written; roxabi_contracts.memory submodule does not exist — `import roxabi_contracts.memory` would fail at import time.
+- PyPI publication for both subpackages is deferred; triggers: ≥3 external consumers in `staging`, `contract_version: "2"`, or monorepo clone size becomes a friction point.
+- `make test-acl` CI integration test (ADR-062 Fix 3) — required per ADR but track status separately.
 
 ## See also
 
@@ -209,6 +253,7 @@ request-reply; the dashboard BFF aggregates catalogues over
 | 045 | Extract roxabi-nats SDK as uv workspace subpackage | Accepted |
 | 049 | Extract roxabi-contracts as shared schema package | Amended |
 | 052 | Registry-authoritative voice routing | Amended |
+| 084 | WorkEnvelope — the job_id invariant | Amended — current truth in `job-model.md` |
 | 095 | Voice lifecycle plane — heartbeat vs capabilities listing | Accepted |
 | 037 | NatsOutboundListener placement and adapter standalone bootstrap | Absorbed by ADR-045 |
 | 040 | NATS messaging architecture review | Absorbed by ADR-045 |

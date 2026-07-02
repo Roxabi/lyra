@@ -129,7 +129,7 @@ export function DesignSystemPage() {
   return (
     <div className="space-y-8 pb-8">
       <PageIntro>
-        Catalogue des composants UI du dashboard — tokens, primitives shadcn et composants métier.
+        Catalogue des composants UI du dashboard — tokens, primitives Astryx et composants métier.
       </PageIntro>
 
       <Section

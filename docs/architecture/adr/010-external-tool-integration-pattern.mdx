@@ -12,13 +12,13 @@ status: amended
 
 Accepted
 
-Amended 2026-07-01 (consolidation v2): Layer 3's "Phase 1 Bash allowlist / Phase 2 MCP" framing is superseded by the uniform tool dispatcher + provider/satellite model in [`tool-architecture.md`](../tool-architecture.md); the install-wrap-declare (don't fork) principle for stdio CLIs still holds.
+Amended 2026-07-01 (consolidation v2): Layer 3's "Phase 1 Bash allowlist / Phase 2 MCP" framing is superseded by the uniform tool dispatcher + provider/satellite model in [`workers-tooling.md`](../workers-tooling.md); the install-wrap-declare (don't fork) principle for stdio CLIs still holds.
 
 ### Amendment (2026-07-01)
 
 The fork-vs-install rationale (Context, "Why forking doesn't work here", "When to fork instead") remains valid and load-bearing for stdio CLIs. What changed:
 
-- **Layer 3 is superseded.** Agent tool access is no longer framed as a Bash-allowlist-then-MCP roadmap. The canonical tool model is [`tool-architecture.md`](../tool-architecture.md) (2026-06-03): 5-layer taxonomy, uniform tool dispatcher (#1670 cutover shipped), `provider ⊋ satellite` runtime vocabulary.
+- **Layer 3 is superseded.** Agent tool access is no longer framed as a Bash-allowlist-then-MCP roadmap. The canonical tool model is [`workers-tooling.md`](../workers-tooling.md) (2026-06-03): 5-layer taxonomy, uniform tool dispatcher (#1670 cutover shipped), `provider ⊋ satellite` runtime vocabulary.
 - **Tool surfaces moved to NATS.** New tool capabilities ship as NATS provider/satellite surfaces, not bash CLIs — e.g. `roxabi-contracts` ships `factory.tool.socialmedia.*` (`socialmedia/subjects.py`); voice/image are becoming NATS satellite providers (#1713).
 - **Wrappers live in code, not only skills.** Concrete integration wrappers exist at `src/factory/integrations/` (`web_intel.py`, `vault_cli.py`) — the "no code, just prompt engineering" claim in Layer 2 describes the roxabi-plugins skill layer only.
 - `Lyra` naming throughout is historical (project renamed to factory).
@@ -94,7 +94,7 @@ This is the same pattern as `voice-cli/SKILL.md` wrapping the `voicecli` binary.
 
 ### Layer 3 — Agent config (Declare)
 
-> **Historical** — the Phase 1/Phase 2 framing below is superseded by the uniform tool dispatcher + provider/satellite model; see [`tool-architecture.md`](../tool-architecture.md) and the Amendment above.
+> **Historical** — the Phase 1/Phase 2 framing below is superseded by the uniform tool dispatcher + provider/satellite model; see [`workers-tooling.md`](../workers-tooling.md) and the Amendment above.
 
 Lyra agents declare which tools they can access in their TOML config:
 

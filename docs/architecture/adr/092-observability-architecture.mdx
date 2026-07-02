@@ -7,7 +7,7 @@ deciders: [Mickael]
 related: [038, 076, 084, 088, 091]
 ---
 
-> **Current truth** → [`docs/OBSERVABILITY.md`](../../OBSERVABILITY.md){#current-truth}
+> **Current truth** → [`docs/architecture/observability.md`](../observability.md){#current-truth}
 > This ADR records the *target* observability/control-plane arbitration. The domain page describes the current (pre-engine) state; this ADR is the decision record for what the engines layer becomes.
 
 ## Status
@@ -105,7 +105,7 @@ Engine topology diagram below still lists Langfuse as a *possible* headless engi
 
 - [`docs/architecture/adr/091-sentinelle-four-observability-planes.mdx`](091-sentinelle-four-observability-planes.mdx) — plane taxonomy (what kinds of signal exist)
 - [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx) — Sentinelle consumer spec, probes, v1 triggers
-- [`docs/OBSERVABILITY.md`](../../OBSERVABILITY.md) — current observability state (logs, trace IDs, turn store)
+- [`docs/architecture/observability.md`](../observability.md) — current observability state (logs, trace IDs, turn store)
 - [`docs/architecture/adr/archive/038-health-monitoring-layer-boundaries.mdx`](archive/038-health-monitoring-layer-boundaries.mdx) — plane ③ health-observation layers
 - [`docs/architecture/job-model.md`](../job-model.md) — job plane SSoT
 - [`docs/architecture/adr/093-operator-audit-three-channel.mdx`](093-operator-audit-three-channel.mdx) — deploy/operator audit channels ingested by Loki (operator.log + journald)

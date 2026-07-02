@@ -1,15 +1,8 @@
 /* ──────────────────────────────────────────────────────────────────────────
    BASE — Roxabi Factory cockpit
-   Reset + ember canvas. UI components live in React (Astryx).
+   Ember canvas + document defaults. Universal reset lives in reset.css.
+   UI components live in React (Astryx).
 ────────────────────────────────────────────────────────────────────────── */
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
 
 html {
   font-size: 16px;

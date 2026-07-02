@@ -7,9 +7,9 @@ description: Mandatory testing rules for the factory codebase — negative-test 
 
 > Status: LIVING
 > Scope: `tests/` — all test files in the factory project
-> Source: `docs/architecture/testing-conventions.md`, `tests/conftest.py`
+> Source: `docs/architecture/engineering-standards.md`, `tests/conftest.py`
 
-This document is the developer-facing companion to `docs/architecture/testing-conventions.md`. Read both — the architecture doc defines the rules; this doc defines the mechanics.
+This document is the developer-facing companion to `docs/architecture/engineering-standards.md` (§ Testing conventions). Read both — the architecture doc defines the rules; this doc defines the mechanics.
 
 ---
 

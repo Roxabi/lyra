@@ -5,9 +5,11 @@ import { ClickableCard } from "@astryxdesign/core/ClickableCard";
 import { Selector } from "@astryxdesign/core/Selector";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Stack } from "@astryxdesign/core/Stack";
+import { Table, TableHeader, TableHeaderCell, TableRow } from "@astryxdesign/core/Table";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { useToast } from "@astryxdesign/core/Toast";
 import { List, Moon, Robot, SquaresFour, Sun } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -33,7 +35,6 @@ import {
 import { PopoverSelect } from "@/components/ui/popover-select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Separator } from "@/components/ui/separator";
-import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { type AgentHealth, MODEL_CATALOG } from "@/lib/api";
 import type { HarnessKind } from "@/lib/chats-storage";
@@ -113,6 +114,7 @@ const OFFLINE_HEALTH: AgentHealth = {
 
 export function DesignSystemPage() {
   const { t } = useTranslation();
+  const showToast = useToast();
   const [harness, setHarness] = useState<HarnessKind>("claude-cli");
   const [model, setModel] = useState(MODEL_CATALOG["claude-cli"][0]);
   const [popoverValue, setPopoverValue] = useState("a");
@@ -285,21 +287,19 @@ export function DesignSystemPage() {
           title="Aucun agent"
           hint="Les agents apparaissent ici une fois configurés."
         />
-        <table className="w-full max-w-md text-left text-sm">
-          <thead>
-            <tr className="border-b border-border/50 text-xs">
-              <SortableTableHeader
-                label="Agent"
-                active
-                direction="asc"
-                onClick={() => {}}
-                className="px-2 py-2"
-              />
-              <th className="py-2 font-medium text-muted-foreground">Statut</th>
-            </tr>
-          </thead>
-        </table>
-        <Button type="button" variant="secondary" onClick={() => toast.success("Action réussie")}>
+        <Table className="max-w-md" dividers="rows" hasHover>
+          <TableHeader>
+            <TableRow isHeaderRow>
+              <SortableTableHeader label="Agent" active direction="asc" onClick={() => {}} />
+              <TableHeaderCell scope="col">Statut</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+        </Table>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => showToast({ body: "Action réussie", type: "info" })}
+        >
           Déclencher un toast
         </Button>
       </Section>

@@ -41,6 +41,7 @@ from nats.js.errors import (
     BucketNotFoundError,
     KeyNotFoundError,
     KeyWrongLastSequenceError,
+    NoKeysError,
     NotFoundError,
 )
 
@@ -299,6 +300,10 @@ class KvActiveJobsStore:
         kv = self._require_kv()
         try:
             keys = await kv.keys(filters=["job."])
+        except NoKeysError:
+            # Empty bucket (no active jobs): nats-py raises instead of
+            # returning [] — the normal empty state, not a failure.
+            return []
         except nats.errors.Error:
             log.exception("active-jobs: list_all keys() failed")
             return []

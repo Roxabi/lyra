@@ -1,3 +1,4 @@
+import { ToastViewport } from "@astryxdesign/core/Toast";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -10,9 +11,11 @@ function renderJobs() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={queryClient}>
-      <JobsPage />
-    </QueryClientProvider>,
+    <ToastViewport>
+      <QueryClientProvider client={queryClient}>
+        <JobsPage />
+      </QueryClientProvider>
+    </ToastViewport>,
   );
 }
 
@@ -28,19 +31,26 @@ describe("JobsPage", () => {
         online: true,
       },
     ]);
-    vi.spyOn(api, "fetchJobs").mockResolvedValue([
-      {
-        job_id: "job-abc",
-        pool_id: "web:smoke:agent:lyra",
-        agent: "lyra",
-        platform: "web",
-        status: "open",
-        started_at: "2026-06-28T12:00:00+00:00",
-        concurrency_mode: "steer",
-        worker_loc: "clipool-worker",
-        steer_subject: "factory.job.job-abc.steer",
-      },
-    ]);
+    vi.spyOn(api, "postJobsStreamToken").mockResolvedValue({ stream_token: "tok" });
+    vi.spyOn(api, "openJobsStream").mockImplementation((_token, onEvent) => {
+      onEvent({
+        type: "snapshot",
+        jobs: [
+          {
+            job_id: "job-abc",
+            pool_id: "web:smoke:agent:lyra",
+            agent: "lyra",
+            platform: "web",
+            status: "open",
+            started_at: "2026-06-28T12:00:00+00:00",
+            concurrency_mode: "steer",
+            worker_loc: "clipool-worker",
+            steer_subject: "factory.job.job-abc.steer",
+          },
+        ],
+      });
+      return { close: vi.fn() } as unknown as EventSource;
+    });
     vi.spyOn(api, "launchJob").mockResolvedValue({
       accepted: true,
       job_id: "job-new",
@@ -65,6 +75,9 @@ describe("JobsPage", () => {
     expect(screen.getByText("Lancer un job OMP")).toBeTruthy();
     expect(screen.getAllByText("Lyra").length).toBeGreaterThan(0);
     expect(screen.getAllByText("open").length).toBeGreaterThan(0);
+    // Astryx Table renders real table semantics (role=table + sortable columnheaders).
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: /Agent/i })).toBeTruthy();
   });
 
   it("submits launch mutation", async () => {
@@ -85,6 +98,8 @@ describe("JobsPage", () => {
         job_name: "omp",
       });
     });
+    // Success toast renders through the real ToastViewport.
+    expect(await screen.findByText(/job-new/)).toBeTruthy();
   });
 
   it("submits cancel mutation", async () => {

@@ -133,7 +133,7 @@ All access enforcement is Hub-side. Adapters are untrusted normalizers.
 | Transport auth | Telegram HMAC webhook secret; Discord gateway token | Adapter container |
 | Access enforcement | C3 — adapters always send PUBLIC; hub applies the ban list (`Authenticator`) and `agent_grants` (ADR-090) | Hub middleware |
 | `auth.db` | Identity grants, ban list, cross-platform aliases | Hub container (`~/.roxabi/factory/auth.db`) |
-| Secrets | Bot tokens delivered as Podman secrets (`type=mount`) — see ADR-074 | `/run/secrets/bot_token-<bot_id>` inside adapter containers |
+| Secrets | Bot tokens delivered as Podman secrets (`type=mount`) — see ADR-055 (absorbs ADR-074) | `/run/secrets/bot_token-<bot_id>` inside adapter containers |
 | NATS channel | TLS + auth tokens required in production | Infrastructure |
 
 ---
@@ -172,9 +172,9 @@ resumes it rather than starting fresh.
 | Volume | File | Container(s) | Access | Contents |
 |---|---|---|---|---|
 | `factory-data.volume` | `~/.roxabi/factory/auth.db` | Hub only | rw | Auth grants, identity aliases |
-| `factory-data.volume` | `~/.roxabi/factory/config.db` | Hub only | rw | Agent registry, user prefs (bot secrets removed — see ADR-074) |
+| `factory-data.volume` | `~/.roxabi/factory/config.db` | Hub only | rw | Agent registry, user prefs (bot secrets removed — ADR-055, absorbed ADR-074) |
 | `factory-data.volume` | `~/.roxabi/factory/turns.db` | Hub (rw, via turn-writer ADR-075) | rw | Conversation turns, pool sessions, lyra→cli session map |
-| `factory-data.volume` | `~/.roxabi/factory/keyring.key` | Hub only | rw | Encryption key for `config.db` sibling stores (see ADR-074) |
+| `factory-data.volume` | `~/.roxabi/factory/keyring.key` | Hub only | rw | Encryption key for `config.db` sibling stores (ADR-055, absorbed ADR-074) |
 | `factory-discord-data.volume` | `~/.roxabi/factory/discord/discord.db` | Discord only | rw | Thread ownership store |
 | `factory-data.volume` | `~/.roxabi/factory/config.toml` | Hub (inline bind, ro) | ro | Runtime config (per-bot entries) |
 | inline bind | `~/.roxabi/factory/config.toml` | Telegram, Discord (inline bind, ro) | ro | Runtime config (per-bot entries) |

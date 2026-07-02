@@ -32,13 +32,13 @@ Parse $ARGUMENTS if present:
 - Token 2: type → `message`, `image`, or `voice`
 - Remaining tokens: content (text) or path
 
-Missing pieces → use DP protocol (load `${CLAUDE_PLUGIN_ROOT}/../shared/references/decision-presentation.md`):
+Missing pieces → present choice or ask user:
 
 | Missing | Pattern | Prompt |
 |---------|---------|--------|
-| platform | DP(A) | "Which platform?" — **Telegram** · **Discord** |
-| type | DP(A) | "What to send?" — **Message** · **Image** · **Voice** |
-| content | DP(B) | "What's the content / file path?" (plain input) |
+| platform | present choice | "Which platform?" — **Telegram** · **Discord** |
+| type | present choice | "What to send?" — **Message** · **Image** · **Voice** |
+| content | ask user | "What's the content / file path?" (plain input) |
 
 ## Step 2 — Get Target User / Channel ID
 
@@ -103,7 +103,7 @@ for meta_raw, content, ts in rows:
 EOF
 ```
 
-Show the results to the user and ask which ID to use via DP(A).
+Show the results to the user and ask which ID to use via present choice.
 If only one result → use it directly without asking.
 
 Store as `TARGET_ID`.

@@ -105,7 +105,7 @@ Present diagnosis as:
 
 ## Phase 5 — Remediation
 
-Present fix options via DP(A) (load `${CLAUDE_PLUGIN_ROOT}/../shared/references/decision-presentation.md`). Common fixes:
+Present fix options from the table below and wait for user reply.
 
 | Fix | Command | When |
 |-----|---------|------|

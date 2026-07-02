@@ -12,9 +12,9 @@ related: [073, 067, 079, 082]
 
 Accepted
 
-> **Update (2026-05-31):** S1 (#1551) and S2 (#1552) landed — `AttachmentIngestStage` wired
-> for voice path (Telegram + Discord). S3–S7 (non-audio attachment types, `PENDING_STORE_KEY`
-> retirement, STT worker simplification #1067) remain.
+> The voice path shipped first (`AttachmentIngestStage` wired for Telegram + Discord).
+> Remaining delivery (non-audio attachment types, `PENDING_STORE_KEY` retirement, STT worker
+> simplification) is tracked in the issues under epic #1537 — slice status lives there, not here.
 
 ## Context
 
@@ -89,7 +89,7 @@ class PendingAttachment:
 
 - **Blob durability before STT.** STT failure no longer loses audio. The blob is in the store before `SttMiddleware` runs; replay and manual retranscription become possible.
 - **N×M trap closed.** Ingest is a single module. New platform → 1 adapter-side fetch closure per attachment type. New attachment type → 1 new `FetchFn` constructor in the adapter + stage coverage extended. No stage duplication.
-- **PENDING_STORE_KEY retirement path.** Once S2–S4 (voice path) and S5–S7 (non-audio path) are merged, `PENDING_STORE_KEY` construction at adapter ingest sites drops to zero and the sentinel can be removed from `roxabi_contracts.blob_ref`.
+- **PENDING_STORE_KEY retirement path.** Once eager ingest covers every attachment type at the adapter sites, `PENDING_STORE_KEY` construction drops to zero and the sentinel can be removed from `roxabi_contracts.blob_ref`.
 - **STT worker simplification (#1067).** `NatsSttClient.transcribe()` can remove the `isinstance(audio, bytes)` branch and the inline `PENDING_STORE_KEY` construction. The `platform_ref` fallback path in the STT worker contract is retired.
 - **Importlinter contract respected.** `AttachmentIngestStage` imports only `roxabi_blobs`, `roxabi_contracts`, and `lyra.core` types. The `inbound-no-adapters` contract requires no new `ignore_imports` entries.
 
@@ -100,7 +100,7 @@ class PendingAttachment:
 - **`Attachment` dataclass change.** Adding `blob_ref: BlobRef | None = None` to `Attachment` is additive (default None) but all Attachment construction sites must be audited for completeness.
 - **Non-audio attachment ceiling (open).** Non-audio attachments have no size cap in code today (`telegram_normalize.py:26-81`, `discord_formatting.py:67-88` pass by opaque ref / CDN URL — zero download). The stage is the first download site. Implementation MUST enforce `MAX_ATTACHMENT_INGEST_BYTES` (recommended 20 MiB = Telegram `getFile` cap) before download — reject + log + user-facing error on oversize. Audio cap is `LYRA_MAX_AUDIO_BYTES` (default 5 MiB), not the platform-advertised limits.
 - **HTTP 500 on oversize.** The blobstore HTTP service returns 500 (not 413) on oversize payloads. The stage must map HTTP 500 from `put()` to a user-facing error; do not propagate silently.
-- **Discord CDN URL expiry.** Discord CDN URLs expire within minutes. Ingest must be eager (within the pipeline, before bus enqueue). Confirm timing in S4/S7.
+- **Discord CDN URL expiry.** Discord CDN URLs expire within minutes. Ingest must be eager (within the pipeline, before bus enqueue). Confirm timing when extending ingest beyond the voice path.
 
 ### Neutral
 

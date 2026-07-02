@@ -299,9 +299,9 @@ Labeled target to prevent doc-drift-by-optimism:
 | ADR | Title | Status |
 |-----|-------|--------|
 | 091 | Sentinelle — four observability planes | Accepted — 2026-06-25; design-only (consumer module not yet built); plane ① grammar amended by ADR-096 |
-| 092 | Observability architecture — control-plane + headless engines | Accepted — 2026-06-25; trace plane amended by ADR-097 (otel-raw v1) |
+| 092 | Observability architecture — control-plane + headless engines | Accepted — 2026-06-25; absorbs ADR-097 (trace plane v1 = otel-raw) |
 | 093 | Operator audit — three-channel deploy logging | Accepted — 2026-06-26 |
 | 094 | Control-plane dashboard consolidation | Accepted — 2026-06-27; BFF read path amended by ADR-097 |
 | 096 | Ingress connector registry + tenant-scoped events | Accepted — 2026-06-29; amends ADR-091 plane ① for ingress subjects |
-| 097 | OTel raw telemetry store (JSONL + SQLite, Langfuse deferred) | Accepted — 2026-06-30 |
+| 097 | OTel raw telemetry store (JSONL + SQLite, Langfuse deferred) | Superseded by ADR-092 §6 — archived (`adr/archive/`) |
 | 098 | PR pipeline read model (dashboard pipeline panel) | Accepted — 2026-06-30; amends ADR-094 |

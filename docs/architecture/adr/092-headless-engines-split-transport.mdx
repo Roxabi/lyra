@@ -4,7 +4,7 @@ description: "The control-plane dashboard is the sole human surface; metrics/log
 status: accepted
 date: 2026-06-25
 deciders: [Mickael]
-related: [038, 076, 084, 088, 091]
+related: [038, 076, 084, 088, 091, 097]
 ---
 
 > **Current truth** → [`docs/architecture/observability.md`](../observability.md){#current-truth}
@@ -59,16 +59,24 @@ Because agents bypass the LiteLLM proxy, LiteLLM telemetry alone is blind to age
 
 The trace plane (OTel / Langfuse) is **not** gated on the distributed harness (**#1490**). Only **cross-NATS span nesting** (#1623) stays harness-gated; single-process traces ship independently.
 
-### 6. Amendment (ADR-097, #2069) — trace plane v1 = otel-raw
+### 6. Amendment (ADR-097, #2069 — absorbed here, 097 archived) — trace plane v1 = otel-raw
+
+**Why otel-raw, not self-hosted Langfuse:** Langfuse self-hosted = six containers — heavy and unexercised on dev when the immediate need is *collect cleanly now, post-process later*. Langfuse is **deferred, not rejected**.
 
 | v1 (2026-06-30) | Choice |
 |---|---|
-| **Sink** | JSONL `~/.local/state/factory/otel/` + SQLite index `otel-raw.db` — see [ADR-097](097-otel-raw-telemetry-store.mdx) |
+| **Sink** | JSONL `~/.local/state/factory/otel/` + SQLite index `otel-raw.db` |
 | **Langfuse** | **Optional / deferred** — not required for collector startup or dashboard v1 |
 | **Instrumentation** | `MessageLifecycleHooks` in `NatsAdapterBase` + `roxabi-otel` package — OTel SDK **not** in `roxabi-nats` |
 | **Dashboard** | BFF raw spans viewer — not Langfuse UI proxy |
 
+**Three-store contract (normative):** **blobstore** holds bytes (spans carry `roxabi.blob_ref.in` / `roxabi.blob_ref.out` refs only) · **turns.db** holds conversation text (join via `job_id` / `pool_id`) · **otel-raw** holds span/timeline metadata. No payload bytes or message text ever land in spans.
+
+**Axial instrumentation boundary (ADR-073):** **one** hook site — injectable hooks in `NatsAdapterBase._dispatch()`; `roxabi-nats` keeps **zero** `opentelemetry` imports (hooks Protocol in `roxabi-contracts`, implementation in `roxabi-otel`). **Rollback is config-only:** `ROXABI_OTEL_ENABLED=0` disables export without image redeploy.
+
 Engine topology diagram below still lists Langfuse as a *possible* headless engine; v1 factory ships **otel-raw** as the active trace sink. Langfuse may return as an optional drill-down engine later.
+
+Full implementation spec: [`artifacts/specs/otel-raw-store-spec.mdx`](../../../artifacts/specs/otel-raw-store-spec.mdx) · historical record: [ADR-097 (archived)](archive/097-otel-raw-telemetry-store.mdx).
 
 ### Engine topology (push vs pull)
 
@@ -103,7 +111,7 @@ Engine topology diagram below still lists Langfuse as a *possible* headless engi
 
 ## See also
 
-- [`docs/architecture/adr/091-sentinelle-four-observability-planes.mdx`](091-sentinelle-four-observability-planes.mdx) — plane taxonomy (what kinds of signal exist)
+- [`docs/architecture/adr/091-four-observability-planes.mdx`](091-four-observability-planes.mdx) — plane taxonomy (what kinds of signal exist)
 - [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx) — Sentinelle consumer spec, probes, v1 triggers
 - [`docs/architecture/observability.md`](../observability.md) — current observability state (logs, trace IDs, turn store)
 - [`docs/architecture/adr/archive/038-health-monitoring-layer-boundaries.mdx`](archive/038-health-monitoring-layer-boundaries.mdx) — plane ③ health-observation layers

@@ -1,7 +1,8 @@
 ---
-title: "ADR-046: nkey provisioning is declarative — auth.conf is a pure function of IDENTITIES × seed dir"
+title: "ADR-046: NATS access artifacts (auth.conf + ACL grants) are derived from acl-matrix.json, never hand-written"
 description: Establish that auth.conf must always be derived from a single IDENTITIES manifest and the on-disk seed directory, never constructed or patched incrementally, and that a --regen-authconf mode in gen-nkeys.sh is the correct mechanism for closing drift without seed rotation.
 status: amended
+supersedes: "ADR-064 (absorbed below; ADR-064 itself superseded ADR-062 Fix 2)"
 ---
 
 > **Current truth** → [`docs/architecture/security-routing.md`](../security-routing.md){#current-truth}
@@ -11,6 +12,8 @@ status: amended
 ## Status
 
 Accepted
+
+Consolidated 2026-07-02: this record now carries the general derivation principle — **all NATS access artifacts (auth.conf, per-identity ACL grants) are pure renders of the `deploy/nats/acl-matrix.json` manifest, never hand-written or patched incrementally** — in two chapters: auth.conf rendering (the original ADR-046 below) and request-reply inbox-grant derivation (absorbed ADR-064, at the end of this record).
 
 Amended 2026-07-01 (consolidation v2): mechanism references refreshed — bash `gen-nkeys.sh` superseded by `factory-acl genkeys` (`scripts/gen_nkeys.py`), the IDENTITIES manifest relocated to the `identities` map in `deploy/nats/acl-matrix.json` v4, and `factory ops verify` (Invariant 5) shipped.
 
@@ -148,3 +151,26 @@ Lane B (containerize, #727/#728) remains independent — it does not need to lan
 - Issue: [#714](https://github.com/Roxabi/lyra/issues/714) (per-role ACLs), [#689](https://github.com/Roxabi/lyra/issues/689) (Lane G voicecli cutover)
 - Script: `deploy/nats/gen-nkeys.sh` (historical — superseded by `scripts/gen_nkeys.py` / `factory-acl genkeys`, see Amendment)
 - Shipped (was Planned): `tools/check-nats-acls.sh`, `factory ops verify` CLI command (`src/factory/cli/ops.py` + `src/factory/cli/ops_audit.py`)
+
+## Absorbed — ADR-064: request-reply inbox grants derived from request_reply_flows
+
+*Absorbed 2026-07-02 (consolidation). ADR-064 (accepted 2026-04-28, #1000) superseded ADR-062 Fix 2. Full historical record: `adr/archive/064-nats-acl-request-reply-flows-derivation.mdx`.*
+
+This chapter extends the derivation principle from auth.conf structure to ACL grant content.
+
+**Problem.** ADR-062 Fix 2 introduced explicit `_inbox.hub.>` publish grants for each responder identity (voice-tts, voice-stt, llm-worker, image-worker, clipool-worker) as a manual postmortem correction. That created a copy-paste pattern with no enforcement: adding a new responder required remembering to update `acl-matrix.json` in multiple places, and omitting any step caused silent auth failures — the exact incident class the postmortem had addressed.
+
+**Decision (Option B — declarative flows with automated derivation).** Replace hand-written `_inbox.{requester}.>` grants with a declarative `request_reply_flows` section in `acl-matrix.json`, each entry `{ requester, responder, subject }`. `load_matrix()` reads the flows and the generator injects the corresponding `_inbox.{requester}.>` grant into the responder's effective publish set (and the requester's subscribe set) at render time — grants are derived, never authored. Adding a new responder is one JSON entry.
+
+The rejected alternative (Option A, status quo) — keep explicit per-responder grants plus a hand-synced spec table — was fully visible and derivation-free but scaled linearly in copy-paste steps with no mechanism catching an omission.
+
+**Accepted trade-off:** grant presence is implicit (readers of `acl-matrix.json` must know flows expand into grants), and a bug in the derivation would silently drop grants for all responders — hence a dedicated CI guard, `scripts/check_request_reply_flows.py`, validating:
+
+1. Both requester and responder identities exist in `acl-matrix.json`
+2. The requester's `publish[]` covers the flow `subject`
+3. Generator template output contains the derived `_inbox.{requester}.>` grant (postcondition)
+4. Regression guards: an unknown responder or requester must cause exit 1
+
+Effective grants are inspectable via `uv run factory-acl genkeys --template-only`.
+
+**Mechanism refresh (2026-07-02):** the derivation survives with intent unchanged. `load_matrix()` now lives in `scripts/_loader.py`; the inbox injection is centralized in `scripts/_effective.py` (`effective_grants()` — single expansion path shared by the renderer and the CI falsification gate, per ADR-079). The CI guard runs as the `request_reply_flows` quality gate (`uv run factory-check-flows` → same check logic, `scripts/gen_nkeys.py`).

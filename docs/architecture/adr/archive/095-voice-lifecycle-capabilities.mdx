@@ -1,7 +1,7 @@
 ---
 title: "ADR-095: Voice lifecycle plane — heartbeat vs capabilities listing"
 description: Split voice worker health (heartbeat) from catalogue discovery (lifecycle.list/status), mirroring llmCLI. voiceCLI owns engines + samples SSoT; hub maps agents to sample_id.
-status: accepted
+status: superseded
 date: 2026-06-28
 deciders: [Mickael, architect, product-lead, devops, axial-adr-review]
 supersedes: []
@@ -9,8 +9,9 @@ superseded_by: []
 related: [052, 076, 079, 049]
 ---
 
-> **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
+> **Current truth** → [`docs/architecture/messaging.md`](../../messaging.md){#current-truth}
 > This ADR is preserved as a decision record.
+> **Archived (consolidation wave 3, 2026-07-02)** — pseudo-decision (contract sheet); invariants live in messaging.md § Voice lifecycle.
 
 ## Status
 

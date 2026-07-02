@@ -18,5 +18,6 @@ Step-by-step procedures for running factory in production (Podman Quadlet). Thes
 | [discord-db-migration.md](discord-db-migration.md) | One-time #1721 — move discord.db to named volume |
 | [outbound-audio-deploy.md](outbound-audio-deploy.md) | Deploy/rollback JetStream outbound audio (#1482) |
 | [cdi-gpu-validation.md](cdi-gpu-validation.md) | GPU passthrough validation (CDI / NVIDIA) |
+| [nats-ops.md](nats-ops.md) | Stream/KV message counts, hub-seed stream admin, backup/restore |
 
 **SSoT elsewhere:** component manifest `deploy/quadlet.toml` · unit files `deploy/quadlet/` · install `deploy/install.sh` · Roxabi container standards `~/projects/docs/container-deployment-standard.md`

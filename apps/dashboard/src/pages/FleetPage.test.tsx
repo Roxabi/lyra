@@ -92,5 +92,8 @@ describe("FleetPage", () => {
     });
     expect(screen.getByText("factory-loki")).toBeTruthy();
     expect(screen.getByText("factory-clipool")).toBeTruthy();
+    // Astryx Table semantics + a sortable columnheader survive the migration.
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: /container/i })).toBeTruthy();
   });
 });

@@ -5,6 +5,7 @@ import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { useToast } from "@astryxdesign/core/Toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,7 +16,6 @@ import { HarnessPicker } from "@/components/HarnessPicker";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/sonner";
 import {
   fetchAgentConfig,
   fetchAgentSoul,
@@ -58,6 +58,7 @@ export function AgentDetailPage() {
   const { t } = useTranslation("agents");
   const { setLiteral } = useShellTitleContext();
   const qc = useQueryClient();
+  const showToast = useToast();
   const [tab, setTab] = useState<string>("Identity");
   const [dirty, setDirty] = useState(false);
 
@@ -121,13 +122,13 @@ export function AgentDetailPage() {
     },
     onSuccess: () => {
       setDirty(false);
-      toast.success(t("saveNotice"));
+      showToast({ body: t("saveNotice"), type: "info" });
       void qc.invalidateQueries({ queryKey: ["agent-config", name] });
       void qc.invalidateQueries({ queryKey: ["agent-soul", name] });
       void qc.invalidateQueries({ queryKey: ["agents-config"] });
     },
     onError: () => {
-      toast.error(t("saveError"));
+      showToast({ body: t("saveError"), type: "error" });
     },
   });
 

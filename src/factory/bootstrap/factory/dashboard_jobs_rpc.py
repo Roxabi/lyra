@@ -8,6 +8,7 @@ from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.job_catalog import list_active_jobs
 from factory.core.messaging.message import Platform
 from factory.core.prompt_resolution import resolve_agent_runtime_defaults
+from factory.core.trace import TraceContext
 from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.obs.hub_tracer import nats_client_span
 from roxabi_contracts.dashboard import (
@@ -56,11 +57,15 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
             message=f"job_name not allowed: {req.job_name!r}",
         ).model_dump()
 
-    pool_id = req.pool_id or RoutingKey(
-        Platform.WEB, _WEB_BOT, f"agent:{req.agent}"
-    ).to_pool_id()
+    pool_id = (
+        req.pool_id
+        or RoutingKey(Platform.WEB, _WEB_BOT, f"agent:{req.agent}").to_pool_id()
+    )
+    # Operator-initiated launch is a fresh root entry point — unlike hub
+    # work-path codecs it has no ambient TraceContext, so mint a root trace
+    # explicitly (mint_work_envelope_fields raises without one, #2069).
     fields = mint_work_envelope_fields(
-
+        trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
         pool_id=pool_id,
     )
     job_id = fields.job_id

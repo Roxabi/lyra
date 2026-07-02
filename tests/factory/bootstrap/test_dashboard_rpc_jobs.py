@@ -54,6 +54,25 @@ class TestJobsLaunch:
         assert subject == "factory.jobs.omp"
         assert b"hello operator" in payload
 
+    @pytest.mark.no_default_trace
+    @pytest.mark.asyncio
+    async def test_launch_mints_trace_without_ambient_context(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        # Prod repro: the dashboard RPC entry point has NO ambient TraceContext
+        # (unlike hub work-path codecs). handle_jobs_launch must mint its own
+        # root trace, not raise — regression from #2069 that shipped a launch 502.
+        result = await handle_jobs_launch(
+            hub,
+            nc,
+            {"agent": "lyra", "prompt": "no ambient trace", "job_name": "omp"},
+        )
+        assert result["accepted"] is True
+        assert result["job_id"]
+        nc.publish.assert_awaited_once()
+        _, payload = nc.publish.await_args.args
+        assert b'"trace_id"' in payload
+
     @pytest.mark.asyncio
     async def test_rejects_unknown_agent(self, hub: MagicMock, nc: AsyncMock) -> None:
         result = await handle_jobs_launch(

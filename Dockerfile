@@ -1,4 +1,7 @@
-FROM python:3.14.6-slim AS builder
+# Builder python MUST satisfy pyproject requires-python (>=3.12,<3.13) — a
+# 3.13+/3.14 base makes `uv sync` unable to build /app/.venv (staging red
+# 2026-07-03, dependabot bump #2160). Dependabot: patch-only via ignore rule.
+FROM python:3.12.10-slim AS builder
 
 # Install system deps (git needed for GitHub-sourced Python deps)
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*

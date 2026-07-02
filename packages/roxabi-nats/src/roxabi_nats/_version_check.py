@@ -202,9 +202,12 @@ def _drop(
     # Rate-limited ERROR log: first drop per (envelope, kind) fires immediately;
     # repeats within _LOG_INTERVAL_S are silent (but still counted).  After the
     # interval elapses, the next drop fires a fresh ERROR log.
+    # "Never logged" must be a missing key, not a 0.0 sentinel: time.monotonic()
+    # counts from boot on Linux, so on a freshly booted CI VM (monotonic < 60 s)
+    # `now - 0.0 < _LOG_INTERVAL_S` would silence the very FIRST drop.
     now = time.monotonic()
-    last = _last_log_ts.get(key, 0.0)
-    if now - last < _LOG_INTERVAL_S:
+    last = _last_log_ts.get(key)
+    if last is not None and now - last < _LOG_INTERVAL_S:
         return
     _last_log_ts[key] = now
     log.error(

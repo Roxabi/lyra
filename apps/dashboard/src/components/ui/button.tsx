@@ -13,24 +13,44 @@ import { isValidElement, type MouseEventHandler, type ReactNode } from "react";
  */
 
 // shadcn variant → Astryx variant. Astryx `primary` reads the brand accent in
-// the roxabi theme, so `default`/`brand` both map to it; `outline` → `secondary`.
+// the roxabi theme, so `default`/`brand` both map to it. Astryx has NO bordered
+// variant (all variants render border:0), so `outline` (transparent+border) maps
+// to `ghost` (transparent) to preserve the fill-vs-transparent contrast that
+// selected/unselected toggles rely on — `secondary` (filled) would flatten it.
 const VARIANT_MAP = {
   default: "primary",
   brand: "primary",
   secondary: "secondary",
-  outline: "secondary",
+  outline: "ghost",
   ghost: "ghost",
   destructive: "destructive",
 } as const satisfies Record<string, ButtonVariant>;
 
 const SIZE_MAP = { default: "md", sm: "sm", lg: "lg" } as const;
 
-/** Concatenate the visible text of a ReactNode tree — used as the accessible name. */
+/**
+ * Concatenate the visible text of a ReactNode tree — used as the accessible name
+ * when rich children are present. Joins siblings with a space (word boundary) and
+ * falls back to a text-bearing prop (`label`/`aria-label`) for components that
+ * carry their text outside `children` (e.g. Astryx `Badge`), so their text isn't
+ * dropped from the synthesized name.
+ */
 function extractText(node: ReactNode): string {
   if (node == null || typeof node === "boolean") return "";
   if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(extractText).join("");
-  if (isValidElement(node)) return extractText((node.props as { children?: ReactNode }).children);
+  if (Array.isArray(node)) return node.map(extractText).filter(Boolean).join(" ");
+  if (isValidElement(node)) {
+    const props = node.props as {
+      children?: ReactNode;
+      label?: unknown;
+      "aria-label"?: unknown;
+    };
+    const childText = extractText(props.children);
+    if (childText) return childText;
+    if (typeof props.label === "string") return props.label;
+    if (typeof props["aria-label"] === "string") return props["aria-label"];
+    return "";
+  }
   return "";
 }
 

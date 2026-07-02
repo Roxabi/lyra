@@ -70,10 +70,15 @@ jobs:
         with:
           node-version: "24"
 
+      # Root dev sync LAST: `uv sync --package roxabi-contracts` prunes the venv
+      # to that package's deps (removing ruff/pyright/radon/…). Gates run with
+      # UV_NO_SYNC=1 (scripts/qg), so the venv state at gate time must be the
+      # full dev env — the old order only worked because every `uv run` used to
+      # re-sync it implicitly.
       - name: Install dependencies
         run: |
-          uv sync --frozen --group dev
           uv sync --frozen --package roxabi-contracts --extra testing
+          uv sync --frozen --group dev
           bun install --frozen-lockfile
 
       - name: Install yq

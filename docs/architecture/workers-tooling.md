@@ -198,10 +198,10 @@ Three observation layers: (1) in-process self-monitoring (circuit breakers, erro
 | 006 | Hub run-loop error reply | Superseded — archived (`adr/archive/`) |
 | 007 | Model-config mismatch | Superseded — archived (`adr/archive/`) |
 | 010 | External tool pattern (Install–Wrap–Declare) | Amended — active |
-| 019 | Multi-bot startup resource sharing | Amended — active |
+| 019 | Multi-bot startup resource sharing | Superseded — archived 2026-07-02 (rationale dead; invariant lives in Key invariants above) |
 | 026 | Pool callback wiring — eager at pool resolution | Superseded — archived (`adr/archive/`) |
 | 030 | Tool-provider protocol for session commands | Superseded — archived (`adr/archive/`) |
 | 031 | ProcessorRegistry & concurrent outbound dispatch | Superseded in part (#372) — archived (`adr/archive/`) |
 | 038 | Health monitoring layer boundaries | Superseded — archived (`adr/archive/`) |
-| 061 | Importlinter independence contract — port-import fix | Amended — active |
+| 061 | Importlinter independence contract — port-import fix | Superseded — archived 2026-07-02 (plan landed minus SessionToolsProtocol, tracked as debt) |
 | 071 | CliPool Claude OAuth token mechanism | Accepted — active |

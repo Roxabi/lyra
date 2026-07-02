@@ -9,8 +9,9 @@ SUBJECTS. A literal that the oracle classifies as a subject but cannot resolve
 (``kind == "subject" and not exists``) is an *orphan*: a subject used in code but
 declared nowhere. Orphans fail CI — unless baselined in the allowlist.
 
-Re-scoped per ADR-081 (#1530): resolution goes through ``oracle.resolve(token)``,
-NOT a bespoke acl-matrix/contracts resolver. The oracle owns subject knowledge.
+Re-scoped per ADR-086 (#1530, formerly ADR-081): resolution goes through
+``oracle.resolve(token)``, NOT a bespoke acl-matrix/contracts resolver.
+The oracle owns subject knowledge.
 
 Module/logger names (``factory.adapters.telegram``) resolve as ``kind == "module"``
 and are never flagged. Three classes of subject-shaped non-subjects are filtered

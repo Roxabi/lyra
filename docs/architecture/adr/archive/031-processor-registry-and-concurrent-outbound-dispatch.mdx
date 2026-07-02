@@ -1,11 +1,12 @@
 ---
 title: "ADR-031: Processor Registry and Concurrent Outbound Dispatch"
 description: Replace session command handlers with a decorator-based processor registry (pre/post hooks into the pool flow), and add per-scope asyncio.Lock fan-out to the outbound dispatcher for concurrent message delivery.
-status: accepted
+status: superseded
 ---
 
-> **Current truth** → [`docs/architecture/workers-tooling.md`](../workers-tooling.md){#current-truth}
+> **Current truth** → [`docs/architecture/workers-tooling.md`](../../workers-tooling.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+> **Archived (consolidation v2, 2026-07-01)** — decision fully absorbed by the domain page above (or superseded as noted); no live invariant is recorded only here.
 
 > **Superseded in part (#372):** the "`post()` non-streaming only" constraint — and its
 > `NotImplementedError` guard for streaming agents — no longer holds. Streaming agents now run

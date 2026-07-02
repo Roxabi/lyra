@@ -1,7 +1,7 @@
 ---
 title: "ADR-055: Quadlet Ecosystem Conventions — Registry, NATS, Network, Secrets, Deploy"
 description: Resolves seven cross-project design questions that block Phase 2 of the Roxabi ecosystem migration from supervisord to Podman Quadlet. Each decision applies to all roxabi projects on M₁ once they begin Quadlet adoption.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/deployment.md`](../deployment.md){#current-truth}
@@ -14,6 +14,16 @@ Accepted (2026-04-24)
 
 **Absorbs:** ADR-053 (deployment topology + container hardening, archived), ADR-054 (credential store + UID rework, archived), ADR-056 (container publishing workflow, archived), ADR-068 (SELinux `:z` Quadlet bind-volume policy, archived) — see `## Supersedes` below for the absorbed content.
 **Migration doc:** `docs/PROD-MIGRATION-STRATEGY.md` — Phase 2 entry criterion; §6 enumerates the seven questions resolved here.
+
+Amended 2026-07-01 (consolidation v2): D2's phased per-project NATS model (incrementing ports 4223/4224 → Phase 4 consolidation) and D5's installed shared deploy library are superseded — consolidation happened big-bang onto a single `factory-nats` on 4222, and deploys converge via `podman auto-update` + `make converge`; the Lyra-vs-factory framing is historical (repo renamed `roxabi-factory`, units `factory-*`).
+
+### Amendment (2026-07-01)
+
+Two decisions in this record no longer describe reality; everything else (D1 registry split, D3 network classes, D4 env/nkey conventions, `UserNS=keep-id:uid=1500`, `type=mount` secrets, `:z` policy, D7 infra-home) remains live and normative.
+
+- **D2 superseded — big-bang, not phased.** The per-project-NATS-then-Phase-4 plan was never executed as phased. Consolidation landed big-bang: a single `factory-nats` Quadlet container binds 4222 and is the **sole NATS on the host** — the host `nats.service` is retired (see `deploy/quadlet/factory-nats.container`: `PublishPort=4222:4222`). No `4223`/`4224` per-project NATS units exist or ever shipped; `deploy/quadlet.toml` declares one `factory-nats` component on `[network.roxabi]` with `factory-nats-*` secrets. The "4223 → 4222 consolidation path" and migration-window port table below are historical.
+- **Lyra → factory naming.** The Lyra-vs-downstream framing throughout is historical: the repo is now `roxabi-factory`, units are `factory-*` (`factory-nats`, `factory-hub`, …), runtime dir is `~/.roxabi/factory/`, and the prod image is `ghcr.io/roxabi/factory` (see `deploy/install.sh`). D7's conclusion (this repo is the ecosystem infra home) still holds under the new name.
+- **D5 superseded (recorded 2026-05-03, #1035 — banner in D5 below).** The `~/.local/lib/roxabi/deploy-lib.sh` install/versioning mechanism was retired before adoption; the live deploy path is `podman auto-update` (GHCR digest pull) + `make converge` on M₁.
 
 ---
 
@@ -81,6 +91,8 @@ These decisions are cross-project. No single project owns them. They must be set
 ---
 
 ### D2 — NATS: shared single container, per-project until Phase 4
+
+> ⚠️ **Superseded (2026-07-01, consolidation v2):** the phased model below (per-project NATS on 4223/4224, Phase 4 consolidation) was replaced by a big-bang consolidation onto a single `factory-nats` container binding 4222; the host `nats.service` is retired. See `### Amendment (2026-07-01)` above. The endgame D2 argued for (one shared NATS, single auth surface) is what shipped — only the phased/incrementing-port path is historical.
 
 **This is the highest-stakes decision.** It determines whether Phase 4 (consolidation) requires a migration or is a no-op.
 
@@ -450,7 +462,7 @@ ADR-054 fixed two runtime failures from ADR-053's Quadlet assumptions. All decis
 - **D2:** `UserNS=keep-id:uid=1500,gid=1500` in all containers (replaces `User=lyra`). Container processes run as host UID 1000 (`mickael`); all `~/.lyra/` files are readable without permission errors.
 - **D3:** Adapter data mounts use `:z` (read-write) without `:ro`.
 - **D4:** `telegram.env.example` and `discord.env.example` are deleted. `hub.env.example` is retained for `LYRA_HEALTH_SECRET` and `LYRA_HEALTH_PORT`.
-- **D5:** File-based credentials (nkey seeds, NATS auth) are delivered as Podman secrets (`type=mount`). `config.toml` is mounted inline via `Volume=%h/.lyra/config.toml:/app/config.toml:ro,z`. No `.volume` units wrapping single files (they trigger Podman's loop-device code path). **⚠️ Amended by ADR-085 (2026-06-08):** `auth.conf` (public bundle, `U…` nkeys + ACLs only, no `S…` seeds) is exempt from this rule — it is delivered as an inline bind mount to enable SIGHUP live reload. Private nkey seed files remain `type=mount`.
+- **D5:** File-based credentials (nkey seeds, NATS auth) are delivered as Podman secrets (`type=mount`). `config.toml` is mounted inline via `Volume=%h/.lyra/config.toml:/app/config.toml:ro,z`. No `.volume` units wrapping single files (they trigger Podman's loop-device code path). **⚠️ Amended by ADR-085 (2026-06-08):** `auth.conf` (public bundle, `U…` nkeys + ACLs only, no `S…` seeds) is exempt from this rule — it is delivered as an inline bind mount to enable SIGHUP live reload. Private nkey seed files remain `type=mount`. ADR-085 is archived (consolidation v2); this carve-out is the authoritative live record of the auth.conf bind-mount exception.
 
 ---
 

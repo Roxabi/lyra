@@ -345,6 +345,7 @@ providers. Domain clients compose via
 - Hub publishes `roster.<platform>` before `hub.ready`; adapters read roster only after `wait_for_hub`.
 - Roster KV documents must never contain auth fields (`owner_users`, `trusted_*`, `default_trust`).
 - Control-plane subjects (`factory.hub.command.*`) must remain deny-listed until a dedicated ADR approves their payloads.
+- Any future durable media type (video, document) must use a distinct 5-token subject family (`factory.outbound.<media>.<platform>.<bot_id>`) and a distinct durable consumer — never share the audio consumer, never collapse onto the 4-token text path. Reuse the `FACTORY_OUTBOUND_AUDIO` stream only if subjects and retention needs align (ADR-077, upheld by ADR-079).
 
 ## Open questions / known gaps
 

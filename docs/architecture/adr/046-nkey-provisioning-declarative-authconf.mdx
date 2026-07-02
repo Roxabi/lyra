@@ -1,7 +1,7 @@
 ---
 title: "ADR-046: nkey provisioning is declarative — auth.conf is a pure function of IDENTITIES × seed dir"
 description: Establish that auth.conf must always be derived from a single IDENTITIES manifest and the on-disk seed directory, never constructed or patched incrementally, and that a --regen-authconf mode in gen-nkeys.sh is the correct mechanism for closing drift without seed rotation.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/security-routing.md`](../security-routing.md){#current-truth}
@@ -11,6 +11,18 @@ status: accepted
 ## Status
 
 Accepted
+
+Amended 2026-07-01 (consolidation v2): mechanism references refreshed — bash `gen-nkeys.sh` superseded by `factory-acl genkeys` (`scripts/gen_nkeys.py`), the IDENTITIES manifest relocated to the `identities` map in `deploy/nats/acl-matrix.json` v4, and `factory ops verify` (Invariant 5) shipped.
+
+### Amendment (2026-07-01)
+
+The decision and Invariants 1–5 remain load-bearing (pure render, IDENTITIES = SSoT, auto-create missing seeds, fail-fast, drift detection). The mechanisms named in the historical text below have been superseded:
+
+- **`deploy/nats/gen-nkeys.sh` (bash) no longer exists.** Provisioning is Python: `factory-acl genkeys` (`scripts/gen_nkeys.py`, modes in `scripts/_modes.py`). The `--regen-authconf` mode survives with intent unchanged — invoked as `factory-acl genkeys --regen-authconf` by `deploy/converge.sh`, surfaced as `make nats-regen-authconf` (see `deploy/install.sh`).
+- **The IDENTITIES manifest is no longer constants embedded in a shell script.** It is the `identities` map in `deploy/nats/acl-matrix.json` (version 4), parsed by `scripts/_loader.py`. Invariant 2 stands with that file as the SSoT.
+- **`factory ops verify` (Invariant 5) is shipped, not planned:** `src/factory/cli/ops.py` (`ops verify` command, per-identity allow/deny probes) + `src/factory/cli/ops_audit.py` (`emit_drift_report`). `tools/check-nats-acls.sh` also exists.
+
+References to `gen-nkeys.sh` in the Context / Options / Decision sections below are historical — accurate for April 2026, superseded as above.
 
 ## Context
 
@@ -69,7 +81,7 @@ auth.conf MUST always be the output of rendering the IDENTITIES manifest against
 
 ### Invariant 2 — IDENTITIES is the single source of truth
 
-The IDENTITIES constant in gen-nkeys.sh (or its successor) is the authoritative list of nkey identities for the deployment. Adding a new process that connects to NATS requires adding it to IDENTITIES first. A process not in IDENTITIES cannot be granted a valid auth.conf entry.
+The IDENTITIES constant in gen-nkeys.sh (or its successor) is the authoritative list of nkey identities for the deployment. *(2026-07-01: the successor is the `identities` map in `deploy/nats/acl-matrix.json` v4 — see Amendment.)* Adding a new process that connects to NATS requires adding it to IDENTITIES first. A process not in IDENTITIES cannot be granted a valid auth.conf entry.
 
 ### Invariant 3 — Missing seeds are auto-created, never silently skipped
 
@@ -134,5 +146,5 @@ Lane B (containerize, #727/#728) remains independent — it does not need to lan
 
 - Spec: [`artifacts/specs/706-per-role-nkeys-acls-spec.mdx`](../../../artifacts/specs/706-per-role-nkeys-acls-spec.mdx)
 - Issue: [#714](https://github.com/Roxabi/lyra/issues/714) (per-role ACLs), [#689](https://github.com/Roxabi/lyra/issues/689) (Lane G voicecli cutover)
-- Script: `deploy/nats/gen-nkeys.sh`
-- Planned: `tools/check-nats-acls.sh`, `factory ops verify` CLI command
+- Script: `deploy/nats/gen-nkeys.sh` (historical — superseded by `scripts/gen_nkeys.py` / `factory-acl genkeys`, see Amendment)
+- Shipped (was Planned): `tools/check-nats-acls.sh`, `factory ops verify` CLI command (`src/factory/cli/ops.py` + `src/factory/cli/ops_audit.py`)

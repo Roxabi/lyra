@@ -1,7 +1,7 @@
 ---
 title: "ADR-058: Typed Error Boundary and User-Visible Error Contract"
 description: Establish a structural contract for surfacing user-visible errors through a typed exception hierarchy and an ErrorBoundaryMiddleware, addressing silent-failure gaps found in #945.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/architecture-patterns.md`](../architecture-patterns.md){#current-truth}
@@ -11,6 +11,40 @@ status: accepted
 ## Status
 
 Accepted
+
+Amended 2026-07-01 (consolidation v2): Option B was never implemented — no typed error
+hierarchy, `ErrorBoundaryMiddleware`, or `NullMessageManager` exists in the codebase; the
+#945 failure classes are handled by simpler inline mechanisms (see Amendment).
+
+### Amendment (2026-07-01)
+
+The Option B mechanisms specified below were never built. As of 2026-07-01,
+`LyraUserError`, `ErrorBoundaryMiddleware`, `NullMessageManager`, `AudioDownloadError`,
+`AudioTooLargeError`, `AudioInvalidFormatError`, and `SttError` have zero occurrences in
+`src/`, `tests/`, and `packages/`. (The `lyra.*` package referenced in the Decision was
+also since renamed to `factory.*`.) The Decision section is preserved as a historical
+record of the intended design — do not grep for its symbols.
+
+What actually handles the #945 failure classes today:
+
+- **Audio download/size failures (adapter level)** — inline `MessageManager` template
+  keys directly in the adapters, no typed hierarchy:
+  `src/factory/adapters/telegram/telegram_inbound.py:170` and
+  `src/factory/adapters/discord/discord_audio.py:156` both reply via the
+  `audio_too_large` key.
+- **STT with no message manager** — `SttMiddleware` still uses the
+  `if hub._msg_manager is None: return _DROP` guard
+  (`src/factory/core/hub/middleware/middleware_stt.py:91`) — the exact guard
+  `NullMessageManager` was meant to replace.
+- **Stream/outbound infrastructure errors** — `OutboundErrorHandler`
+  (`src/factory/outbound/error_handler.py`).
+- **LLM soft errors (user-visible worker errors)** — superseded by ADR-089
+  (centralized `WorkerError` → user-text resolution).
+
+What remains load-bearing is the Context section's #945 root-cause analysis: a
+user-visible error needs an explicit reply path or it drops silently. That principle is
+now realized piecemeal by the mechanisms above rather than by the unified Option B
+contract.
 
 ## Context
 
@@ -67,7 +101,8 @@ values explicitly.
 
 ## Decision
 
-Adopt **Option B** as the target architecture.
+Adopt **Option B** as the target architecture. *(Historical — never implemented; see
+Amendment 2026-07-01.)*
 
 **Layer 1 — Typed exception hierarchy**
 

@@ -89,12 +89,25 @@ def dashboard_url() -> Iterator[str]:
         proc.kill()
 
 
+@pytest.mark.parametrize(
+    ("path", "snapshot_prefix"),
+    [
+        ("chat", "cockpit"),
+        ("design-system", "design-system"),
+    ],
+)
 @pytest.mark.parametrize("theme", ["dark", "light"])
-def test_cockpit_visual(dashboard_url: str, theme: str, tmp_path: Path) -> None:
+def test_dashboard_page_visual(
+    dashboard_url: str,
+    path: str,
+    snapshot_prefix: str,
+    theme: str,
+    tmp_path: Path,
+) -> None:
     from playwright.sync_api import sync_playwright
 
-    snap = _SNAPSHOT_DIR / f"cockpit-{theme}.png"
-    shot = tmp_path / f"cockpit-{theme}.png"
+    snap = _SNAPSHOT_DIR / f"{snapshot_prefix}-{theme}.png"
+    shot = tmp_path / f"{snapshot_prefix}-{theme}.png"
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -107,7 +120,7 @@ def test_cockpit_visual(dashboard_url: str, theme: str, tmp_path: Path) -> None:
         # mount-time mode, so color-scheme (dark) mismatched data-theme (light).
         seed = f"localStorage.setItem('factory-dashboard:theme', {theme!r})"
         page.add_init_script(f"try {{ {seed}; }} catch (e) {{}}")
-        page.goto(f"{dashboard_url}chat", wait_until="networkidle")
+        page.goto(f"{dashboard_url}{path}", wait_until="networkidle")
         page.wait_for_timeout(300)
         page.screenshot(path=str(shot), full_page=False)
         browser.close()

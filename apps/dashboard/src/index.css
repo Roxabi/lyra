@@ -8,6 +8,7 @@
  */
 @layer reset, theme, base, astryx-base, astryx-theme, brand, components, utilities;
 
+@import "../../../brand/reset.css" layer(reset);
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/preflight.css" layer(base);
 @import "@astryxdesign/core/reset.css";
@@ -20,7 +21,7 @@
 @import "@fontsource/outfit/latin-800.css";
 @import "@fontsource/jetbrains-mono/latin-400.css";
 @import "@fontsource/jetbrains-mono/latin-500.css";
-@import "../../../brand/styles.css" layer(brand);
+@import "../../../brand/core.css" layer(brand);
 @import "tailwindcss/utilities.css" layer(utilities);
 
 :root {

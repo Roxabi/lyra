@@ -754,3 +754,45 @@ async def test_wait_for_hub_called_before_start_audio_consumer_discord() -> None
         "This indicates the pre-B1 regression: move wait_for_hub before the "
         "wiring loop in standalone_discord.py."
     )
+
+
+# ---------------------------------------------------------------------------
+# supports_audio capability gate — web smoke skips JetStream (ADR-079 §c)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_start_audio_consumer_skips_jetstream_when_unsupported() -> None:
+    """Adapter with supports_audio=False → NullAudioConsumer, no JetStream bind.
+
+    The web smoke adapter declares ``supports_audio = False``. start_audio_consumer
+    must return the NullAudioConsumer sentinel WITHOUT awaiting js.key_value() —
+    that KV bind is what trips the lean web channel ACL (ADR-079 §c) and ERROR-logs
+    a permission violation on every restart. Gating on the capability removes the
+    attempt at the source rather than swallowing it after the fact.
+    """
+    from factory.adapters.nats.null_audio_consumer import NullAudioConsumer
+    from factory.bootstrap.standalone.audio_consumer_bootstrap import (
+        start_audio_consumer,
+    )
+
+    mock_js = MagicMock()
+    mock_js.key_value = AsyncMock()
+
+    adapter = MagicMock()
+    adapter.supports_audio = False
+
+    result = await start_audio_consumer(mock_js, "web", "smoke", adapter)
+
+    assert isinstance(result, NullAudioConsumer)
+    # The whole point: no KV bind is attempted → no lean-ACL permission violation.
+    mock_js.key_value.assert_not_awaited()
+
+
+def test_outbound_adapters_declare_audio_capability() -> None:
+    """Capability contract: base defaults True; web smoke overrides to False."""
+    from factory.adapters.shared._base_outbound import OutboundAdapterBase
+    from factory.adapters.web.web_adapter import WebAdapter
+
+    assert OutboundAdapterBase.supports_audio is True
+    assert WebAdapter.supports_audio is False

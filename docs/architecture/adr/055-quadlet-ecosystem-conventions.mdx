@@ -12,7 +12,7 @@ status: amended
 
 Accepted (2026-04-24)
 
-**Absorbs:** ADR-053 (deployment topology + container hardening, archived), ADR-054 (credential store + UID rework, archived), ADR-056 (container publishing workflow, archived), ADR-068 (SELinux `:z` Quadlet bind-volume policy, archived) — see `## Supersedes` below for the absorbed content.
+**Absorbs:** ADR-053 (deployment topology + container hardening, archived), ADR-054 (credential store + UID rework, archived), ADR-056 (container publishing workflow, archived), ADR-068 (SELinux `:z` Quadlet bind-volume policy, archived), ADR-074 (bot credential delivery via Podman secrets, archived) — see `## Supersedes` below for the absorbed content.
 **Migration doc:** `docs/PROD-MIGRATION-STRATEGY.md` — Phase 2 entry criterion; §6 enumerates the seven questions resolved here.
 
 Amended 2026-07-01 (consolidation v2): D2's phased per-project NATS model (incrementing ports 4223/4224 → Phase 4 consolidation) and D5's installed shared deploy library are superseded — consolidation happened big-bang onto a single `factory-nats` on 4222, and deploys converge via `podman auto-update` + `make converge`; the Lyra-vs-factory framing is historical (repo renamed `roxabi-factory`, units `factory-*`).
@@ -229,6 +229,8 @@ Secret=voicecli-nats-stt,type=mount,target=/etc/nats/nkeys/voice-stt.seed
 ```
 
 This closes open question 3 from the initial draft — no bind-mount fallback; match ADR-054 uniformly.
+
+Bot platform tokens ride the same secret plane — see `### Absorbed — ADR-074` under `## Supersedes` below.
 
 ---
 
@@ -462,7 +464,7 @@ ADR-054 fixed two runtime failures from ADR-053's Quadlet assumptions. All decis
 - **D2:** `UserNS=keep-id:uid=1500,gid=1500` in all containers (replaces `User=lyra`). Container processes run as host UID 1000 (`mickael`); all `~/.lyra/` files are readable without permission errors.
 - **D3:** Adapter data mounts use `:z` (read-write) without `:ro`.
 - **D4:** `telegram.env.example` and `discord.env.example` are deleted. `hub.env.example` is retained for `LYRA_HEALTH_SECRET` and `LYRA_HEALTH_PORT`.
-- **D5:** File-based credentials (nkey seeds, NATS auth) are delivered as Podman secrets (`type=mount`). `config.toml` is mounted inline via `Volume=%h/.lyra/config.toml:/app/config.toml:ro,z`. No `.volume` units wrapping single files (they trigger Podman's loop-device code path). **⚠️ Amended by ADR-085 (2026-06-08):** `auth.conf` (public bundle, `U…` nkeys + ACLs only, no `S…` seeds) is exempt from this rule — it is delivered as an inline bind mount to enable SIGHUP live reload. Private nkey seed files remain `type=mount`. ADR-085 is archived (consolidation v2); this carve-out is the authoritative live record of the auth.conf bind-mount exception.
+- **D5:** File-based credentials (nkey seeds, NATS auth) are delivered as Podman secrets (`type=mount`). `config.toml` is mounted inline via `Volume=%h/.lyra/config.toml:/app/config.toml:ro,z`. No `.volume` units wrapping single files (they trigger Podman's loop-device code path). **⚠️ Amended by ADR-085 (2026-06-08):** `auth.conf` (public bundle, `U…` nkeys + ACLs only, no `S…` seeds) is exempt from this rule — it is delivered as an inline bind mount to enable SIGHUP live reload. Private nkey seed files remain `type=mount`. ADR-085 is archived (consolidation v2); this carve-out is the authoritative live record of the auth.conf bind-mount exception. Bot platform tokens are the other credential-plane carve-out — see `### Absorbed — ADR-074` below.
 
 ---
 
@@ -492,3 +494,23 @@ ADR-068 resolved the bind-mount label policy for `lyra-jetstream.volume`. Both p
 - **Phase (a) — follow-up:** Move JetStream data to `~/.lyra/nats/jetstream/`. Verified: `deploy/quadlet/lyra-jetstream.volume` now uses `Device=%h/.lyra/nats/jetstream`. The LSM overlap comment added by PR #1062 was removed as the ADR's follow-up instructions required.
 
 **Normative policy:** All Quadlet bind-mount volumes carry `:z` for portability. On the current production host (Ubuntu 26.04 LTS, AppArmor-only), `:z` is a no-op. On SELinux hosts, `:z` is load-bearing. Do not drop `:z` from bind-mounts.
+
+---
+
+### Absorbed — ADR-074: bot tokens on the Podman secret plane (2026-07-02)
+
+ADR-074 (2026-05-24, #1057) extended the D4/ADR-054 credential plane to bot platform tokens. It is the credential-plane peer of the ADR-085 auth.conf carve-out recorded in ADR-054 D5 above: 085 carved a public bundle *out of* `type=mount`; 074 pulled bot tokens *onto* it.
+
+**Decision (live):** each bot's platform token is a per-bot, single-purpose Podman secret delivered `type=mount` — bot tokens join nkey seeds and NATS auth tokens on the same credential plane; there is no second credential mechanism.
+
+- Naming: `factory-bot-<platform>-<bot_id>` (+ `-webhook` when webhook-enabled) — see `deploy/secrets-policy.toml` `[secret-class.bot-token]`. ADR-074's `lyra-bot-*` names are historical (Lyra → factory rename).
+- Per-bot `Secret=` lines are rendered at install time by `tools/render_quadlet.py` into the `{{bot_secrets}}` marker of `factory-telegram.container.tmpl` / `factory-discord.container.tmpl`; files land at `/run/secrets/bot_token-<bot_id>` and `/run/secrets/bot_webhook-<bot_id>` with `mode=0400,uid=1500,gid=1500` — same shape as the `factory-nats-*` nkey lines.
+- Adapter bootstrap reads the plain file (`load_bot_token()` in `src/factory/bootstrap/credentials.py`); missing token fails loud with a `factory bot secret install` hint. Rotation: `factory bot secret install` (`podman secret create --replace`) + adapter restart.
+
+**Residual novel decisions carried from ADR-074:**
+
+1. **Encrypted-DB credential layer deleted (application-architecture removal).** `CredentialStore`, `LyraKeyring`, and the `bot_secrets` config.db table were deleted in #1057. The why: Fernet-at-rest encryption requires the master key (`keyring.key`, since removed) to be distributed to every adapter container — the key is itself a secret, and shipping it widens the attack surface; per-bot rotation had no native granularity. Adapters also lose their last non-read-only `config.db` dependency (reduced blast radius on adapter compromise).
+2. **χ-1 resolution: separate single-purpose secrets, NOT a packed JSON blob.** Token and optional webhook secret are two independent secrets of raw bytes — no JSON parser in the failure-loud bootstrap path, independent rotation, and a nullable webhook is expressed by *omitting* the secret (absent file), never a sentinel value. This matches every other secret on the plane.
+3. **Migration path (historical).** `factory bot secret migrate` read each `bot_secrets` row, decrypted via the old keyring, and issued `podman secret create --replace` per row — one-shot, idempotent. The verb has since been removed; the live CLI surface is `factory bot secret install | rm | list` (`src/factory/cli/bot.py`).
+
+Trade-offs accepted in 074 and still true: secret backup is manual (re-entry from the platform's bot dashboard on host recovery); no centralized read-audit trail beyond Podman + host audit.

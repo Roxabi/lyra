@@ -2,11 +2,12 @@
 title: "ADR-032: LlmEvent → StreamProcessor → RenderEvent — Hexagonal Streaming Pipeline"
 description: Replace AsyncIterator[str] end-to-end with a typed event hierarchy (LlmEvent → RenderEvent) and a domain-layer StreamProcessor, closing the six architectural gaps that block real-time tool-call visibility.
 superseded_by: "ADR-070 (partial — SDK streaming content; hexagonal pipeline contract remains in force), ADR-072 (v1 RenderEvent wire shape)"
-status: amended
+status: superseded by ADR-099
 ---
 
-> **Current truth** → [`docs/architecture/llm-streaming.md`](../llm-streaming.md){#current-truth}
+> **Current truth** → [`docs/architecture/llm-streaming.md`](../../llm-streaming.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+> **Archived (consolidation wave 3, 2026-07-02)** — consolidated into ADR-099 (typed LLM streaming pipeline).
 
 
 > **Superseded by ADR-072 (codec-registry-pattern) for the v1 RenderEvent wire shape.**

@@ -180,7 +180,19 @@ Every NATS identity must connect with `inbox_prefix="_INBOX.<identity-name>"`. T
 
 ### Security event audit
 
-`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `factory.core.cli` — the port. `JetStreamAuditSink` in `factory.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `FACTORY_AUDIT` JetStream stream (`factory.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the lyra.security logger without crashing the runtime. Both `hub_standalone.py` and the unified `factory start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
+`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID,
+pool_id, agent_name) are audited via a port/adapter split that respects import layer
+boundaries. `AuditSink` is a `Protocol` port in `factory.core.ports.audit_sink`;
+`JetStreamAuditSink` in `factory.infrastructure.audit` is the concrete adapter. It publishes
+`SecurityEvent` (a `roxabi-contracts` Pydantic model, no transport imports) to the
+`FACTORY_AUDIT` JetStream stream (`factory.audit.>` subjects, FILE storage, 90-day retention,
+1 GiB cap) under the `factory.audit.security` publish prefix. Emission is fire-and-forget
+and audit failure never blocks the message pipeline: when JetStream is unavailable the sink
+degrades to an in-process security logger instead of crashing the runtime. Both the
+standalone hub bootstrap and the unified `factory start` bootstrap wire the sink. Boundary:
+this stream covers domain/runtime security events only — operator deploy actions
+(`install.sh`, converge, credential rotations) are audited by the separate three-channel
+operator audit (ADR-093), not by `FACTORY_AUDIT`. → ADR-057
 
 ### ACL request/reply derivation
 

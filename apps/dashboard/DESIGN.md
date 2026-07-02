@@ -23,13 +23,17 @@ Scope: **system-level** visual/UI doctrine (tokens, cascade layers, color/spacin
 ```
 brand/tokens/*.css  (SSoT: colors.css, typography.css, spacing.css, elevation.css, motion.css, status.css, fonts.css)
         │
-        ├──► brand/styles.css → apps/dashboard/src/index.css `@theme inline` block
-        │        → Tailwind semantic utilities (bg-card, text-muted-foreground, bg-primary, …)
+        ├──► Dashboard shell (apps/dashboard/src/index.css)
+        │        ├─ `brand/core.css` in `layer(brand)` — tokens + base (no reset)
+        │        ├─ `@theme inline` block — Tailwind semantic utilities (bg-card, text-muted-foreground, …)
+        │        └─ built/roxabi.theme.css in `astryx-theme` layer
+        │
+        ├──► Marketing SSG — `brand/styles.css` unlayered (`reset.css` + `core.css`; single entry point)
         │
         └──► apps/dashboard/src/astryx-theme/roxabi.theme.ts  `tokens: {}` (maps brand var → Astryx token name)
                  → `bun run theme:build` (Astryx CLI)
                  → apps/dashboard/src/astryx-theme/built/{roxabi.theme.css, roxabi.js, roxabi.d.ts, roxabi.variants.d.ts}
-                 → index.css imports built CSS · main.tsx `<Theme theme={roxabiTheme}>` consumes built JS
+                 → main.tsx `<Theme theme={roxabiTheme}>` consumes built JS
 ```
 
 - `roxabi.theme.ts` is a **mapping file only** (`"--color-accent": "var(--accent)"`, never a literal). It `extends: neutralTheme` from `@astryxdesign/theme-neutral` and overrides **only 4 token families**: accent color, font family, radius, motion. Everything else (foreground-on-accent, elevation, semantic status colors, categorical palette) is inherited unmodified from `theme-neutral` — see §8.
@@ -198,6 +202,7 @@ Note on `list-toolbar.tsx`: it deliberately does **not** use Astryx's `Toolbar` 
 - Don't add a second/duplicate global reset "to be safe" — Astryx's own `reset.css` already covers everything Astryx renders.
 - Don't hand-edit `apps/dashboard/src/astryx-theme/built/*` — it's generated. Edit `roxabi.theme.ts`, then rebuild.
 - Don't shrink Astryx component padding/sizing via override classes to "fix" cramped controls — that papers over cascade-layer mistakes (§3) instead of fixing them. Padding collapse from #2148 is fixed on staging; if controls still look cramped, check layer placement first.
+- Don't put `max-w-*` / `truncate` / `line-clamp-*` directly on Astryx `TableCell` (raw `<td>`) — HTML table auto-layout treats `max-width` on `<td>` as a hard constraint and sibling columns collapse to 0px (#2156). Wrap constrained content in an inner `<div className="min-w-0 …">` inside the cell instead.
 
 ---
 

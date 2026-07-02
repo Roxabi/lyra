@@ -58,9 +58,9 @@ Manifest: `deploy/quadlet.toml`. Operator guide: `docs/DEPLOYMENT.md`.
 
 ### Middleware pipeline (in order)
 
-10 stages: trace → platform validation → trust resolution → trust guard → rate limit → STT → binding resolution → pool create → command dispatch → submit to CliPool.
+10 stages: trace → platform validation → identity resolution → rate limit → STT → binding resolution → agent authorization (ADR-090) → message prep → command dispatch → submit to CliPool.
 
-→ See `ARCHITECTURE.md` (Inbound Message Pipeline) for the full annotated 10-stage table.
+→ See [security-routing.md](security-routing.md) for the identity/authorization stages; the assembled order lives in `src/factory/core/hub/middleware/middleware.py`.
 
 ---
 

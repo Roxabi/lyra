@@ -24,9 +24,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install system dependencies
-        run: sudo apt-get install -y portaudio19-dev
-
       - name: Install nats-server
         env:
           NATS_VERSION: "2.10.22"
@@ -109,13 +106,19 @@ jobs:
       - name: Test qg runner
         run: bash tests/scripts/test_qg.sh
 
+      # --only-shell: the visual tests launch default-headless chromium, which
+      # executes the headless-shell binary — the 175 MiB full Chrome download is
+      # never exercised.
       - name: Dashboard visual e2e (#1771)
         run: |
-          uv run playwright install chromium
+          uv run playwright install chromium --only-shell
           uv run pytest tests/e2e/dashboard/ -v
 
+      # tests/integration runs in the dedicated integration job (against real
+      # docker NATS) and tests/e2e in the step above — excluded here so each
+      # suite executes exactly once per run.
       - name: Coverage — factory
-        run: uv run pytest tests/ --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50
+        run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/e2e --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50
 
       - name: Coverage — roxabi_nats
         run: uv run pytest packages/roxabi-nats/tests --cov=roxabi_nats --cov-branch --cov-report=term-missing --cov-fail-under=70
@@ -126,14 +129,15 @@ jobs:
       - name: Coverage — roxabi_obs
         run: uv run pytest packages/roxabi-obs/tests --cov=roxabi_obs --cov-branch --cov-report=term-missing --cov-fail-under=69
 
+  # Self-contained (own checkout/uv sync/docker compose; no artifact from ci),
+  # so it runs in parallel from t=0 — the former needs:[ci] edge was ordering-only.
+  # The old typing_enabled matrix was behaviorally inert here: FACTORY_TYPING_ENABLED
+  # is read by zero tests under tests/integration/ and the hubs built by these tests
+  # never wire a typing publisher; the disabled branch is unit-covered
+  # (tests/core/test_pool_processor_exec.py, tests/adapters/*/test_typing_shims.py).
   integration:
-    needs: [ci]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        typing_enabled: ["true", "false"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -149,7 +153,6 @@ jobs:
       - name: Run integration tests
         env:
           NATS_URL: nats://localhost:4222
-          FACTORY_TYPING_ENABLED: ${{ matrix.typing_enabled }}
         run: uv run pytest tests/integration/ -v
 
       - name: Tear down Docker environment

@@ -70,9 +70,8 @@ Read tools tolerate false positives; write tools must not mutate test/fixture fi
 
 ## One-off analyses vs persistent gates
 
-Persistent gates are enumerated in `.claude/stack.yml` `quality_gates`. One-off analysis scripts (`adr_consolidate.py`, `audit_quality_debt.py`, `classify_quality_debt.py`, `capture_v1_text_baseline.py`, `license_check.py`) always exit 0 — they are reporters, not gates. Run `ls tools/*.py tools/*.sh` for the full listing.
+Persistent gates are enumerated in `.claude/stack.yml` `quality_gates`. One-off analysis scripts (`audit_quality_debt.py`, `classify_quality_debt.py`, `capture_v1_text_baseline.py`, `license_check.py`) always exit 0 — they are reporters, not gates. Run `ls tools/*.py tools/*.sh` for the full listing.
 
-`adr_consolidate.py` — migration tool (flat ADR archive → domain pages); see `artifacts/analyses/archive/adr-consolidation-matrix.md`.
 
 ## Scope
 

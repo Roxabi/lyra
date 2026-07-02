@@ -1,0 +1,133 @@
+---
+title: "ADR-099: Typed LLM streaming pipeline — LlmEvent → StreamProcessor → RenderEvent (v1→v2, AG-UI superset)"
+description: "Consolidation record for the typed streaming lineage — why raw-string streaming was replaced by a hexagonal LlmEvent → StreamProcessor → RenderEvent pipeline, why the v2 vocabulary is a structural AG-UI superset without AG-UI on the wire, and why the CLI substrate streams via a parallel method. Absorbs ADR-028, ADR-032, ADR-070."
+status: accepted
+date: 2026-07-02
+deciders: [Mickael]
+supersedes: [028, 032, 070]
+related: [072, 059, 073]
+---
+
+> **Current truth** → [`docs/architecture/llm-streaming.md`](../llm-streaming.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+## Status
+
+Accepted — 2026-07-02. **Consolidation record**: absorbs ADR-028 (token-level streaming path shape), ADR-032 (hexagonal pipeline), and ADR-070 (RenderEvent v2 / AG-UI modeling), each now archived. These three ADRs are one decision told across eras; this record preserves the WHY and the rejected alternatives in one place. Current state and invariants live in the domain page — not here.
+
+## Context
+
+LLM output reached channel adapters as `AsyncIterator[str]`. That shape failed on three fronts, each surfacing at a different era:
+
+1. **No streaming at all** (era of ADR-028, #320).
+   `LlmProvider.complete()` buffered the entire response. The Claude CLI already emitted
+   `content_block_delta` NDJSON under `--include-partial-messages`, and the downstream plumbing
+   (`dispatch_streaming`, `enqueue_streaming`, adapter `send_streaming`) was ready — the gap was
+   the CLI protocol / driver path, complicated by a subprocess-pool lock whose lifecycle could
+   not survive returning a live iterator from inside a held lock.
+
+2. **Raw strings carry no structure** (era of ADR-032, #371).
+   With `AsyncIterator[str]` end-to-end, real-time tool-call visibility was structurally
+   impossible. Tool-use blocks were processed invisibly inside the driver; adapters could render
+   text and nothing else; the TTS tee consumed the same undifferentiated string stream. Six
+   concrete gaps blocked the hexagonal target: no typed LLM event stream, no event hierarchy
+   module, no domain-layer processor, no render-event hierarchy, a `str`-coupled adapter
+   protocol, no tool-display config surface.
+
+3. **Two event types lose information** (era of ADR-070, #1096/#1097).
+   The v1 model (`TextRenderEvent` + `ToolSummaryRenderEvent`) lost information on four
+   dimensions: no `message_id` correlation or start/end brackets on text; tool args fully
+   discarded (post-hoc bucketed summaries only); no explicit run lifecycle on the bus
+   (observability reconstructed boundaries from `trace_id` heuristics); reasoning conflated
+   with assistant output. The AG-UI protocol demonstrated a richer taxonomy for exactly these
+   four dimensions.
+
+One lineage, three layers: **substrate** (how tokens leave the subprocess) → **contract** (what types flow between layers) → **vocabulary** (how rich those types are). Each era kept its predecessors' invariants; nothing was rewritten twice.
+
+## Decision
+
+### 1. Hexagonal contract (from ADR-032)
+
+The streaming stack is typed end-to-end, in three strictly layered stages:
+
+```
+LlmEvent → StreamProcessor → RenderEvent
+```
+
+- `LlmEvent` and `RenderEvent` are **frozen-dataclass hierarchies** (`LlmEvent` union in `src/factory/core/ports/llm_types.py`, re-exported via `src/factory/core/messaging/events.py`; `RenderEvent` union in `src/factory/core/messaging/render_events.py`). Immutable after construction.
+- `StreamProcessor` (`src/factory/core/processors/stream_processor.py`) is **domain-layer, channel-agnostic**: config-driven aggregation, throttle, per-tool `show` flags — no network, framework, or platform imports. Fully unit-testable in isolation.
+- The dependency rule is **enforced by import-linter**: the LLM event types import stdlib + pydantic only; `StreamProcessor` sees only `LlmEvent`/`RenderEvent`; adapters import `RenderEvent` only. No platform types cross the hexagonal boundary. A new LLM driver implements `stream() → AsyncIterator[LlmEvent]`; a new adapter consumes `AsyncIterator[RenderEvent]`; neither knows the other layer.
+
+**Rejected — additive dual-channel** (keep `send_streaming(AsyncIterator[str])` for text, add a parallel optional `send_tool_events()` method on the protocol):
+
+- The coordination problem is structural, not incidental: text and tool events are interleaved
+  in the *same* underlying LLM stream; splitting them into two parallel iterators requires
+  buffering that defeats live rendering.
+- The voice/TTS path would still consume only `str`, leaving that modality broken.
+- The hexagonal gap stays open — the adapter protocol remains coupled to `str`, and the
+  bifurcation is permanent debt.
+
+**Rejected — tagged-string encoding** (sentinel-wrapped JSON like `"\x00TOOL_SUMMARY:{json}\x00"` interleaved in the str stream):
+
+- Sentinel parsing is fragile; type safety is lost at every consumer; explicitly anti-hexagonal.
+- Disqualified outright by TTS corruption risk: the voice path would synthesize tool-summary
+  JSON as speech unless every consumer remembered to strip it. Smallest implementation surface,
+  largest eventual cleanup debt.
+
+### 2. v2 vocabulary — structural AG-UI superset (from ADR-070)
+
+The `RenderEvent` hierarchy back-ports four AG-UI modeling improvements **without adopting AG-UI as a wire format**:
+
+| Family | Events |
+|---|---|
+| Run lifecycle | `RunStartedRenderEvent`, `RunFinishedRenderEvent`, `RunErrorRenderEvent` |
+| Text triplet | `TextStartRenderEvent`, `TextDeltaRenderEvent`, `TextEndRenderEvent` (+ `TextChunkRenderEvent`) |
+| ToolCall split | `ToolCallStartRenderEvent`, `ToolCallArgsRenderEvent`, `ToolCallEndRenderEvent`, `ToolCallResultRenderEvent` |
+| Reasoning typed | `ReasoningStartRenderEvent`, `ReasoningDeltaRenderEvent`, `ReasoningEndRenderEvent` |
+
+**Rejected — translate-at-edge** (adopt AG-UI as the wire format, keep the internal model):
+
+- Translation cannot synthesize information the source never emitted — v1 carried no per-call
+  args and no explicit run boundaries; an edge adapter can only fabricate synthetic brackets.
+  The four improvements require source-side changes regardless of wire format.
+- Locks the project to a young (`v0.x`) external spec, in flux, with no production consumer.
+- Telegram/Discord — which consume the internal model, not the wire — gain nothing; the
+  information-loss problem on those channels remains.
+
+**Rejected — replace the internal model with AG-UI's `BaseEvent`**:
+
+- Couples the domain model to an evolving external protocol — every AG-UI breaking change
+  propagates through the entire `core → adapters` surface.
+- AG-UI carries no per-event `schema_version`, regressing the ADR-049 schema-floor discipline.
+- AG-UI-only concepts (`StateSnapshot`, `ActivitySnapshot`, frontend-declared `tools[]`) leak
+  into the domain with no consumer; violates the hexagonal contract in layer 1.
+
+The chosen shape makes future AG-UI adoption **mechanical**: the internal model is a structural superset for the four dimensions, so an eventual HTTP/SSE edge adapter is a `match`-on-type translator, not a synthesis effort. `StateSnapshot`/`StateDelta`, `ActivitySnapshot`/`ActivityDelta`, and the AG-UI adapter itself were deferred — gated on a concrete consumer, not rejected.
+
+### 3. Appendix — subprocess substrate (from ADR-028)
+
+Token-level CLI streaming is a **separate parallel method path** (`send_and_read_stream()`, `CliPool.send_streaming()`, `ClaudeCliDriver.stream()`), not a `streaming: bool` flag on the existing methods. The decider was the **lock-lifecycle handoff**: `CliPool.send()` holds the pool entry lock for the full request; a streaming call must acquire → write stdin → **release** → return the live iterator, because `OutboundDispatcher` drains it in a background worker task after `enqueue_streaming()` returns. Making the lock a context that follows a generator out of the method is architecturally invasive; a union return type (`CliResult | AsyncIterator`) also breaks the provider protocol. A third option — promoting the `on_intermediate` callback to per-token — was rejected as a semantic conflict (it means "previous assistant turn", not "token chunk"). The price of the parallel path — duplicated session-id extraction and idle-timeout handling between `send_and_read()` and `send_and_read_stream()` — was accepted as justified by the lock difference; the non-streaming path stayed byte-for-byte untouched.
+
+Three edge-case contracts from ADR-028 **remain in force** at the CLI protocol level, below the `LlmEvent` abstraction:
+
+1. **Cancel-in-flight** — closing the streaming iterator before the terminal `result` event must trigger an `aclose()` handler that resets the pool entry (`CliPool.reset`), else the subprocess blocks on a full stdout pipe until timeouts cascade.
+2. **Session-id on exhausted generator** — the iterator object exposes a `session_id` attribute, set when the `result` event is consumed; `None` if cancelled early (documented, accepted).
+3. **`--include-partial-messages` is spawn-time** — it cannot be toggled on a live process; `streaming` participates in `ModelConfig.__eq__` so the existing config-mismatch check respawns the subprocess automatically.
+
+(ADR-028's fourth contract — discard `input_json_delta` fragments as non-human-readable — was inverted by the v2 vocabulary: those fragments are now surfaced as `ToolCallArgsRenderEvent`.)
+
+## Superseded history
+
+**ADR-028** (accepted, later amended) chose the parallel-methods shape for token-level CLI streaming and specified the four edge-case contracts. What died: the `AnthropicSdkDriver` / `anthropic-sdk` backend it accommodated was removed in #666 (CLI-only), and Edge-Case Contract 3 (discard `input_json_delta`) was superseded by ADR-070 Slice 3. The path shape and contracts 1/2/4 carry forward above.
+
+**ADR-032** (accepted, later amended) replaced `AsyncIterator[str]` end-to-end with the typed hexagonal pipeline and shipped it in 5 independently mergeable phases. What died: its v1 wire shape (`TextRenderEvent`, `ToolSummaryRenderEvent`) was removed by the v2 taxonomy + codec registry (ADR-072), its SDK-driver streaming leg fell with #666, and its "streaming bypasses circuit-breaker" note was struck — both `RetryDecorator.stream()` and `CircuitBreakerDecorator.stream()` (`src/factory/llm/decorators.py`) now wrap the streaming leg. The pipeline contract itself remains normative and is restated in layer 1.
+
+**ADR-070** (accepted) extended the pipeline with the four AG-UI-derived event families, rejecting both wire-format adoption and model replacement. What died along the way: the v1/v2 dual-emit migration ladder and the `StreamingSession.dispatch()` `isinstance` shim were removed at Slice 5 / #1192 once all consumers migrated; `StreamingSession` itself was later dissolved into the `OutboundEmitter` stages. The vocabulary and the deferral gates carry forward in layer 2.
+
+## Consequences
+
+- Real-time tool-call visibility (args included), typed reasoning, and explicit run lifecycle are available on every channel; new drivers/adapters implement one side of the contract only.
+- The non-streaming `complete()` path was never touched across all three eras — zero regression on non-streaming turns, at the cost of managed duplication between `send_and_read()` and `send_and_read_stream()` (justified by the lock-lifecycle difference).
+- Every `RenderEvent` carries a `SCHEMA_VERSION_*` constant; vocabulary growth costs coordinated hub+adapter deploys (ADR-049 discipline) — the price of a versioned typed bus over an unversioned string one.
+- `ToolCallArgsRenderEvent` put raw, user-controlled tool arguments on the bus for the first time; sanitization before emit in `StreamProcessor` is a standing obligation, not a one-off.
+- AG-UI remains an option, not a commitment: if it evolves or fragments, the internal model stays correct with zero migration debt.

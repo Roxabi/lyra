@@ -7,7 +7,7 @@ description: Living current-truth document for messaging and NATS routing decisi
 
 > Status: LIVING — current truth for messaging/NATS decisions.
 > Last updated: 2026-07-02.
-> Source ADRs: 001, 002, 035, 036, 065, 076. Absorbed via 045: 037, 040, 047, 062.
+> Source ADRs: 001, 065, 076 (absorbs 035), 084 → `job-model.md`. Archived into this page: 002, 095. Wire protocol → ADR-100 (`llm-streaming.md`). Absorbed via 045: 037, 040, 047, 062.
 
 ## Scope
 
@@ -137,6 +137,24 @@ absent from subjects; the hub resolves it from the envelope body. Control-plane 
 (`factory.hub.command.*`, `factory.monitor.*`) are reserved but not yet implemented.
 
 → ADR-035
+
+### Voice lifecycle & capabilities
+
+Voice workers expose two NATS surfaces per modality (ADR-095, mirroring the LLM split):
+health (`factory.voice.tts.heartbeat` / `factory.voice.stt.heartbeat` — liveness only; a
+heartbeat MAY carry a `catalog_revision` hash, MUST NOT carry the full catalogue) and
+lifecycle (`factory.voice.tts.lifecycle.{list,status}` / STT equivalent — catalogue +
+runtime status via `VoiceLifecycleRequest` / `VoiceLifecycleResponse` on `ContractEnvelope`).
+The dashboard BFF asks the hub on `factory.dashboard.voice.capabilities`; the hub fans out
+lifecycle `list` through `VoiceLifecycleClient`. Ownership split: blobstore owns clone-sample
+bytes; voiceCLI owns the engine/sample catalogue and engine-capabilities SSoT (voiceCLI-internal,
+ratified by ADR-095 — not restated here); the hub owns only per-agent voice TTS prefs
+(`AgentTTSConfig` — `engine` + `sample_id`, persisted as `voice_json`). VRAM discipline
+ratified by ADR-095: TTS keeps at most one cached engine (LRU, surfaced to the dashboard as
+`max_cached_engines`), STT keeps one warm model, and no TTS engine is pre-warmed at boot.
+Clone engines resolve `TtsRequest.sample_id` via local cache → blobstore GET → engine clone.
+
+→ ADR-095
 
 ### FACTORY_JOBS DLQ flow
 
@@ -276,12 +294,13 @@ at parse (`extra="forbid"`).
 | ADR | Title | Status |
 |-----|-------|--------|
 | 001 | RoutingKey | Accepted — amended by #125 (scope_id) |
-| 002 | Hub dispatch contracts | Accepted — updated 2026-05-08 (middleware decomp, lock-based pool, channel removed) |
-| 035 | NATS subject naming | Accepted |
-| 036 | RenderEvent chunk protocol | Accepted |
+| 002 | Hub dispatch contracts | Superseded — archived (invariants live in § Hub dispatch above) |
+| 035 | NATS subject naming | Superseded by ADR-076 — archived (grammar absorbed there) |
+| 036 | RenderEvent chunk protocol | Superseded by ADR-100 — archived (see `llm-streaming.md`) |
 | 065 | KV readiness probe | Accepted |
 | 072 | Codec registry pattern (v2 RenderEvent) | Accepted — supersedes ADR-032 v1 wire shape |
 | 076 | Three NATS planes (messages / persistence / typing) | Accepted — 2026-05-26; operational landing with Epic #1375 |
 | 077 | Outbound audio subject family | Superseded by ADR-079 |
 | 079 | Audio NATS contract — axial consolidation | Accepted — 2026-05-30 |
+| 095 | Voice lifecycle plane — heartbeat vs capabilities listing | Superseded — archived (invariants live in § Voice lifecycle above) |
 | 037, 040, 047, 062 | (various transport ADRs) | Absorbed by ADR-045 (roxabi-nats SDK) |

@@ -5,6 +5,10 @@
 #   A. A known-good gate passes on the real repo (duplicate_test_basenames).
 #   B. One failing gate does not mark later gates as failed (rc reset per iteration).
 #   C. Invalid files regex returns exit 2 with a clear error.
+#   D. run_order includes every gate listed in quality_gates.stages.
+#   E. CI files: filtering via QG_DIFF_RANGE — skip on non-matching diff, run on
+#      matching diff, fail-open without a range / on a bad range / stay filtered
+#      on an empty diff.
 #
 # Usage: bash tests/scripts/test_qg.sh
 
@@ -160,6 +164,118 @@ done < <(
 if [[ "$missing" -eq 0 ]]; then
   pass "every quality_gates.stages entry appears in qg.run_order"
 fi
+
+# ---------------------------------------------------------------------------
+# E. CI files: filtering via QG_DIFF_RANGE — temp fixture git repo
+# ---------------------------------------------------------------------------
+WORK3="$(mktemp -d)"
+mkdir -p "$WORK3/.claude"
+cat >"$WORK3/.claude/stack.yml" <<'EOF'
+quality_gates:
+  filtered_gate:
+    enabled: true
+    script: echo ran_filtered_marker
+    stages: [ci]
+    files: ^match/
+  unfiltered_gate:
+    enabled: true
+    script: echo ran_unfiltered_marker
+    stages: [ci]
+qg:
+  run_order:
+    ci:
+      - filtered_gate
+      - unfiltered_gate
+EOF
+
+git init "$WORK3" >/dev/null 2>&1
+git -C "$WORK3" config user.email "tester@example.com"
+git -C "$WORK3" config user.name "tester"
+echo base >"$WORK3/other.txt"
+git -C "$WORK3" add other.txt
+git -C "$WORK3" commit -m base >/dev/null 2>&1
+BASE_SHA="$(git -C "$WORK3" rev-parse HEAD)"
+echo change >"$WORK3/nomatch.txt"
+git -C "$WORK3" add nomatch.txt
+git -C "$WORK3" commit -m nomatch >/dev/null 2>&1
+
+run_ci_fixture() {
+  # $1 = QG_DIFF_RANGE value ("" → unset)
+  local range="$1"
+  set +e
+  if [[ -n "$range" ]]; then
+    ci_out="$(
+      QG_REPO_ROOT="$WORK3" QG_STACK="$WORK3/.claude/stack.yml" QG_DIFF_RANGE="$range" \
+        "$QG" run --stage ci 2>&1
+    )"
+  else
+    ci_out="$(
+      QG_REPO_ROOT="$WORK3" QG_STACK="$WORK3/.claude/stack.yml" \
+        "$QG" run --stage ci 2>&1
+    )"
+  fi
+  ci_rc=$?
+  set -e
+}
+
+# E1. Valid range, diff does NOT match filter → filtered gate skips, unfiltered runs
+run_ci_fixture "${BASE_SHA}...HEAD"
+if [[ "$ci_rc" -eq 0 ]] \
+  && printf '%s\n' "$ci_out" | grep -q 'filtered_gate (skipped — no matching files)' \
+  && printf '%s\n' "$ci_out" | grep -q 'ran_unfiltered_marker' \
+  && ! printf '%s\n' "$ci_out" | grep -q 'ran_filtered_marker'; then
+  pass "ci + QG_DIFF_RANGE + non-matching diff: filtered gate skips, unfiltered runs"
+else
+  fail "ci non-matching diff" "rc=$ci_rc output: $ci_out"
+fi
+
+# E2. No QG_DIFF_RANGE → fail-open, filtered gate runs
+run_ci_fixture ""
+if [[ "$ci_rc" -eq 0 ]] \
+  && printf '%s\n' "$ci_out" | grep -q 'ran_filtered_marker' \
+  && printf '%s\n' "$ci_out" | grep -q 'ran_unfiltered_marker'; then
+  pass "ci without QG_DIFF_RANGE: fail-open, all gates run"
+else
+  fail "ci no range" "rc=$ci_rc output: $ci_out"
+fi
+
+# E3. Invalid range → fail-open with warning, all gates run, exit 0
+run_ci_fixture "definitely-not-a-ref...HEAD"
+if [[ "$ci_rc" -eq 0 ]] \
+  && printf '%s\n' "$ci_out" | grep -q '::warning::' \
+  && printf '%s\n' "$ci_out" | grep -q 'ran_filtered_marker' \
+  && printf '%s\n' "$ci_out" | grep -q 'ran_unfiltered_marker'; then
+  pass "ci + invalid QG_DIFF_RANGE: fail-open with ::warning::, all gates run"
+else
+  fail "ci invalid range" "rc=$ci_rc output: $ci_out"
+fi
+
+# E4. Valid range, EMPTY diff → filtered gate skips (nothing matched), unfiltered runs
+run_ci_fixture "HEAD...HEAD"
+if [[ "$ci_rc" -eq 0 ]] \
+  && printf '%s\n' "$ci_out" | grep -q 'filtered_gate (skipped — no matching files)' \
+  && printf '%s\n' "$ci_out" | grep -q 'ran_unfiltered_marker' \
+  && ! printf '%s\n' "$ci_out" | grep -q '::warning::'; then
+  pass "ci + empty diff: filtered gate skips, unfiltered runs, no fail-open warning"
+else
+  fail "ci empty diff" "rc=$ci_rc output: $ci_out"
+fi
+
+# E5. Valid range, diff DOES match filter → filtered gate runs
+mkdir -p "$WORK3/match"
+echo hit >"$WORK3/match/hit.txt"
+git -C "$WORK3" add match/hit.txt
+git -C "$WORK3" commit -m match >/dev/null 2>&1
+run_ci_fixture "${BASE_SHA}...HEAD"
+if [[ "$ci_rc" -eq 0 ]] \
+  && printf '%s\n' "$ci_out" | grep -q 'ran_filtered_marker' \
+  && printf '%s\n' "$ci_out" | grep -q 'ran_unfiltered_marker'; then
+  pass "ci + QG_DIFF_RANGE + matching diff: filtered gate runs"
+else
+  fail "ci matching diff" "rc=$ci_rc output: $ci_out"
+fi
+
+rm -rf "$WORK3"
 
 # ---------------------------------------------------------------------------
 echo "----"

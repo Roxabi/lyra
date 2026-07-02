@@ -172,12 +172,19 @@ quality_gates:
     script: bun run build:dashboard
     requires: bun
     stages: [ci]
+    # Same filter as dashboard_unit_test; dashboard's only workspace dep is
+    # packages/shared (see apps/dashboard/package.json).
+    files: ^(apps/dashboard/|packages/shared/|brand/)|^(bun\.lock|package\.json)$
     description: Dashboard SPA production build (#1771)
 
   dashboard_dist_assert:
     enabled: true
     script: test -f apps/dashboard/dist/index.html
     stages: [ci]
+    # MUST stay identical to dashboard_build's filter: this gate asserts the
+    # build output exists — running it when the build was skipped is a
+    # guaranteed red.
+    files: ^(apps/dashboard/|packages/shared/|brand/)|^(bun\.lock|package\.json)$
 
   trufflehog:
     enabled: true

@@ -54,3 +54,11 @@ updates:
     # semver-*-days: pip-only (see github-actions block above).
     cooldown:
       default-days: 3
+    # The builder image must satisfy pyproject requires-python (>=3.12,<3.13):
+    # a major/minor python bump breaks `uv sync` in docker-build (staging red
+    # 2026-07-03, #2160 bumped 3.12→3.14). Patch bumps only.
+    ignore:
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor

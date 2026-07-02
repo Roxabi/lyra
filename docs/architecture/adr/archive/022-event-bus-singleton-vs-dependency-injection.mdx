@@ -1,11 +1,12 @@
 ---
 title: "ADR-022: EventBus Singleton vs Dependency Injection for Monitoring Emission"
 description: Documents the decision to use a module-level singleton for EventBus access in emitters (Pool, CircuitBreaker, InboundBus) rather than injecting the bus through the existing dependency graph.
-status: amended
+status: superseded
 ---
 
-> **Current truth** → [`docs/architecture/storage.md`](../storage.md){#current-truth}
+> **Current truth** → [`docs/architecture/storage.md`](../../storage.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+> **Archived (consolidation v2, 2026-07-01)** — decision fully absorbed by the domain page above (or superseded as noted); no live invariant is recorded only here.
 
 
 ## Status

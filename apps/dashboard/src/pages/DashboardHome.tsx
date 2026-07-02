@@ -13,7 +13,6 @@ import {
 import { Text } from "@astryxdesign/core/Text";
 import { Briefcase, ChatCircleDots, Robot, Warning } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
@@ -205,8 +204,8 @@ export function DashboardHome() {
               </Text>
               <div className="flex items-center gap-2">
                 <Badge variant="neutral" className="tabular-nums" label={jobs.length} />
-                <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
-                  <Link to="/jobs">{tc("actions.viewAll")}</Link>
+                <Button variant="ghost" size="sm" className="h-8 text-xs" href="/jobs">
+                  {tc("actions.viewAll")}
                 </Button>
               </div>
             </Stack>
@@ -247,8 +246,8 @@ export function DashboardHome() {
             <Text type="label" as="h3">
               {t("chats.title")}
             </Text>
-            <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
-              <Link to="/chat">{t("chats.openChat")}</Link>
+            <Button variant="ghost" size="sm" className="h-8 text-xs" href="/chat">
+              {t("chats.openChat")}
             </Button>
           </Stack>
           <Stack gap={2}>
@@ -259,8 +258,8 @@ export function DashboardHome() {
                 hint={t("chats.emptyHint")}
                 action={
                   agents.length > 0 ? (
-                    <Button size="sm" asChild>
-                      <Link to="/chat">{t("chats.openChat")}</Link>
+                    <Button size="sm" href="/chat">
+                      {t("chats.openChat")}
                     </Button>
                   ) : undefined
                 }
@@ -277,8 +276,13 @@ export function DashboardHome() {
                     avatarSize="sm"
                     subtitle={`${tab.harness} · ${tab.model}`}
                   />
-                  <Button variant="secondary" size="sm" className="h-8 shrink-0 text-xs" asChild>
-                    <Link to="/chat">{tc("actions.open")}</Link>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 shrink-0 text-xs"
+                    href="/chat"
+                  >
+                    {tc("actions.open")}
                   </Button>
                 </div>
               ))

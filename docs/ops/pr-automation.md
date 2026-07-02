@@ -14,7 +14,7 @@ not `viewed` (a different, similarly-named label used elsewhere for acknowledgem
 
 | Job | Trigger | What it does |
 |---|---|---|
-| `auto-merge` | PR `labeled`/`synchronize`/`closed`, `check_suite` completed | If the PR carries `reviewed`, runs `gh pr merge --auto --merge` (merge commit — squash is forbidden project-wide, see `~/projects/ssot/conventions.ssot.md`). Arms GitHub's native auto-merge; it fires once required checks go green. |
+| `auto-merge` | PR `labeled` / `synchronize` / `closed` (`check_suite` also listed in YAML but **inert** for GHA-origin suites — GitHub suppresses the workflow when the suite was created by Actions; `github.event.pull_request.labels` is empty on `check_suite` anyway) | If the PR carries `reviewed`, runs `gh pr merge --auto --merge` (merge commit — squash is forbidden project-wide, see `~/projects/ssot/conventions.ssot.md`). Arms GitHub's native auto-merge; it fires once required checks go green. **Arming is driven by `labeled` + `synchronize` in practice.** |
 | `update-behind-prs` | `push` to `staging`/`main` | Rebases every open **non-draft** PR targeting that branch via the `update-branch` API (additive merge-update, not a force-push). Runs on ALL open non-draft PRs, not just `reviewed` ones, so PRs don't rot as BEHIND while waiting for review. |
 | `close-linked-issues` | PR `closed` + merged | Closes `Closes #N` references in the PR body — `GITHUB_TOKEN`-initiated auto-merges don't trigger GitHub's native issue-closing behavior, so this job does it explicitly. |
 

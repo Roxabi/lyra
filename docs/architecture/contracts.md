@@ -72,7 +72,10 @@ Workers are re-admitted automatically on their next heartbeat (heartbeat TTL: 15
 
 → ADR-052
 
-### Wire-compatible field additions
+### Required field additions (wire-breaking without a shim)
+
+Optional/non-security fields follow ADR-049's minor path (`extra="ignore"` on consumers) — no
+shim sequence. This section covers **semantically required** fields only.
 
 A **required** field added to a `roxabi-contracts` model is wire-breaking even when the change
 looks purely additive, for two independent reasons:
@@ -80,20 +83,27 @@ looks purely additive, for two independent reasons:
 1. **Satellite lag.** llmCLI/voiceCLI/imageCLI are lock-pinned on older `roxabi-contracts` SHAs
    and keep producing payloads without the new field until they bump their lock — hub-side
    deserialization of those payloads would raise.
-2. **JetStream replay.** Persisted messages (e.g. `TurnWriteEvent` on the `turns` stream) replay
-   old payloads to new consumers across a deploy, and M₁ auto-converges on every `staging` merge
-   — the outage window opens immediately on merge, not on the next satellite release.
+2. **JetStream replay.** Persisted messages (e.g. `TurnWriteEvent` on stream `FACTORY_TURNS`)
+   replay old payloads to new consumers across a deploy; M₁ hub uptake follows the next converge
+   after `staging` merge (typically ≤5–10 min via podman-auto-update), not the next satellite
+   release.
 
-**Pattern:** land the field as a `default_factory` mint shim (forward-compat within the current
-`CONTRACT_VERSION`, per ADR-049), have every in-repo producer set it explicitly at each
-construction site, and let satellites echo it after their next lock bump (contracts-bump
-workflow, `docs/ops/contracts-bump-callers.md`). Flip the field to hard-required only on the next
-`CONTRACT_VERSION` bump. Worked example: `WorkEnvelope.job_id` (#1619, ADR-084 Amendment).
+**Ineligible:** security-bearing fields (identity attestation, auth scopes, signed tokens, audit
+provenance) — major `roxabi-contracts` bump + coordinated satellite upgrade only (ADR-049
+§Versioning). No `default_factory` shim.
+
+**Pattern:** land the field as a `default_factory` mint shim (deserialize-compat within the current
+`CONTRACT_VERSION`, transitional per ADR-084 Amendment / #1619), have every in-repo producer set
+it explicitly at each construction site (+ fakes/fixtures/docker stubs), and let satellites echo
+it after their next lock bump (contracts-bump workflow,
+`docs/ops/contracts-bump-callers.md` — `wire-breaking` label when `CONTRACT_VERSION` changes).
+Flip the field to hard-required only on the next `CONTRACT_VERSION` bump (#1841 for `job_id`).
+Worked example: `WorkEnvelope.job_id` (#1619, ADR-084 Amendment).
 
 **How to apply:** before choosing required vs. default for any field addition/requirement
-change, enumerate every producer per direction (in-repo vs. satellite) and every
-stream-persisted model that carries that field. This enumeration is the actual gate — spec
-review alone has missed it before.
+change, enumerate every producer per direction (in-repo vs. satellite), every stream-persisted
+model that carries that field, and extend subject→envelope enforcement tests when adding
+work-plane fields. This enumeration is the actual gate — spec review alone has missed it before.
 
 ## Key invariants
 

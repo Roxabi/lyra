@@ -123,8 +123,9 @@ point and merge, the local worktree (behind `staging`) builds clean — but PR C
 `branch + base` merged (`refs/pull/N/merge`), so the removed symbol resurfaces as a build/test
 failure that only appears post-push. Before pushing any dependency-removal PR: `git fetch &&
 git rebase origin/staging`, re-grep the removed symbol across the whole `src` tree, then push
-`--force-with-lease` (sanctioned specifically for this case — the project's general
-no-force-push convention targets bare `--force`, see `AGENTS.md`).
+with `--force-with-lease` only after confirming no shared ref is affected — never bare
+`--force` (project git policy: `AGENTS.md` forbids `--force`; `--force-with-lease` is not
+documented as a general exception — use only when rebasing a sole-owner feature branch).
 
 ## See also
 

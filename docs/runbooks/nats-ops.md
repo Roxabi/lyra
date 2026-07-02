@@ -52,9 +52,19 @@ nats --server nats://localhost:4222 --nkey ~/.roxabi/factory/nkeys/hub.seed --in
      stream ls --all
 ```
 
+### Before you delete (blast radius)
+
+- **Hub-provisioned streams** (`FACTORY_*`, `KV_*` used by hub/adapters) are recreated empty on
+  boot — `stream rm --force` drops **message history** and can crash-loop consumers until
+  reprovisioned. Converge restarts units but does not restore JetStream data.
+- Stop affected units before destructive ops on live infra (see
+  [outbound-audio-deploy.md](outbound-audio-deploy.md) deploy order for stream-touching changes).
+- Back up to a host path **outside** `factory-jetstream.volume` (`~/.roxabi/factory/nats/jetstream`)
+  — backups co-located on the volume are deleted with the stream.
+
 ### Deleting a KV bucket
 
-A KV bucket is just a stream named `KV_<bucket>` — delete it the same way as any stream:
+A KV bucket is just a stream named `KV_<bucket>`. **Back up first** (see below), then:
 
 ```bash
 nats --server nats://localhost:4222 --nkey ~/.roxabi/factory/nkeys/hub.seed --inbox-prefix _inbox.hub \
@@ -63,19 +73,22 @@ nats --server nats://localhost:4222 --nkey ~/.roxabi/factory/nkeys/hub.seed --in
 
 ### Reversible delete (always do this for anything non-trivial)
 
-Back up before removing — `nats stream restore` can bring it back if the delete turns out to be
-wrong:
+Back up before removing — `nats stream restore` can bring it back only if the stream is absent
+and backup data lives off the JetStream volume:
 
 ```bash
+BACKUP_ROOT="/var/backups/nats/$(date +%Y%m%dT%H%M%S)"
+mkdir -p "$BACKUP_ROOT"
+
 nats --server nats://localhost:4222 --nkey ~/.roxabi/factory/nkeys/hub.seed --inbox-prefix _inbox.hub \
-     stream backup <STREAM> <dir>
+     stream backup <STREAM> "$BACKUP_ROOT"
 
 nats --server nats://localhost:4222 --nkey ~/.roxabi/factory/nkeys/hub.seed --inbox-prefix _inbox.hub \
      stream rm <STREAM> --force
 
-# to undo:
+# to undo (stream must not exist — verify with stream ls / jsz first):
 nats --server nats://localhost:4222 --nkey ~/.roxabi/factory/nkeys/hub.seed --inbox-prefix _inbox.hub \
-     stream restore <dir>
+     stream restore "$BACKUP_ROOT"
 ```
 
 ## See also

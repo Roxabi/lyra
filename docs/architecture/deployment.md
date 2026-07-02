@@ -1,18 +1,24 @@
 # factory — — Deployment & Operations
 
-> Last updated: 2026-07-01
+> Last updated: 2026-07-02
 
 ## Overview
 
-Production on M₁ runs **16 active Quadlet containers** on `roxabi.network`, communicating over NATS
-(23 units are declared in `deploy/quadlet.toml`; the Langfuse observability stack ×6 and
-`factory-otel-collector` ship disabled). `docs/architecture/CURRENT.generated.md` (Process Topology) enumerates all 23 declared
-components; the active-vs-disabled split comes from the `disabled = true` flags in
-`deploy/quadlet.toml` (Langfuse ×6 + `factory-otel-collector` ship disabled). Derive the count
-from those two files rather than hand-maintaining it here. The core message path is the hub, the telegram/discord adapters
+Production on M₁ runs the active Quadlet fleet on `roxabi.network`, communicating over NATS.
+`docs/architecture/CURRENT.generated.md` (Process Topology) is the generated SSoT enumerating
+every declared component; the active-vs-disabled split comes from the `disabled = true` flags in
+`deploy/quadlet.toml` (the Langfuse observability stack and `factory-otel-collector` ship
+disabled). Derive any count from those two files rather than hand-maintaining it here. The core
+message path is the hub, the telegram/discord adapters
 and the clipool worker (diagram + table below); the full active set also includes
-`factory-dashboard`, `factory-socialmedia-adapter`, `factory-ingress`, `factory-cloudflared`, and
-the `factory-loki` / `factory-promtail` / `factory-otel` observability units.
+`factory-dashboard`, `factory-socialmedia-adapter`, `factory-ingress`, `factory-cloudflared`,
+the `factory-loki` / `factory-promtail` / `factory-otel` observability units, and the llmCLI
+cloud gateway. The cloud gateway — `factory-litellm` (LiteLLM proxy) plus the
+`llmcli-xai-forwarder` / `llmcli-fw-forwarder` relays — is vendored from Roxabi/llmCLI:
+deployment (host placement, converge lifecycle, digest pin) is owned in this repo because the
+always-on M₁ hub must answer cloud LLM traffic 24/7, while code and image stay with llmCLI
+(built and published by llmCLI CI, pinned by digest — not auto-updated). Local GPU inference
+remains in Roxabi/llmCLI on the M₂ worker.
 
 ```
 ┌──────────────┐  NATS inbound   ┌─────────────┐  NATS cmd    ┌──────────────┐
@@ -43,10 +49,12 @@ Manifest: `deploy/quadlet.toml`. Operator guide: `docs/DEPLOYMENT.md`.
 
 ## Hub — central brain
 
+> Deployment-level summary. Bus/routing detail is owned by [messaging.md](messaging.md); identity/authorization detail by [security-routing.md](security-routing.md).
+
 | Responsibility | Mechanism |
 |---|---|
 | Receive platform messages | NATS `factory.inbound.<platform>.<bot_id>` |
-| Auth / trust resolution | C3 pattern — adapters always send PUBLIC, hub resolves |
+| Identity + authorization | Ban list via `Authenticator`; `agent_grants` is the sole access SSoT (ADR-090) |
 | Rate limiting | Per-user throttle (middleware stage 4) |
 | STT | Audio → text (middleware stage 5) |
 | Routing | `(platform, bot_id, scope_id)` → agent binding |
@@ -66,6 +74,8 @@ Manifest: `deploy/quadlet.toml`. Operator guide: `docs/DEPLOYMENT.md`.
 
 ## Adapters — platform bridges
 
+> Deployment-level summary. Adapter pipeline detail (stages, media, audio) is owned by [adapters.md](adapters.md).
+
 Discord writes `discord.db` (thread ownership + session cache) from its private volume. Telegram has no local store.
 
 | Responsibility | Detail |
@@ -76,12 +86,15 @@ Discord writes `discord.db` (thread ownership + session cache) from its private 
 | Receive outbound | ← NATS `factory.outbound.<platform>.<bot_id>` → platform API |
 | Thread tracking | `discord.db` (Discord only) |
 
-> Adapters **must never** derive trust level — always send `PUBLIC`. Trust is
-> resolved exclusively by the Hub (C3 pattern).
+> Adapters **must never** gate access — transport auth only, always send `PUBLIC`
+> (C3 pattern). Access enforcement is exclusively Hub-side: ban list + `agent_grants`
+> (ADR-090); the legacy trust-gating stages were removed (#2121).
 
 ---
 
 ## CliPool — Claude subprocess runner
+
+> Deployment-level summary. Worker lifecycle and tooling detail is owned by [workers-tooling.md](workers-tooling.md).
 
 | Responsibility | Detail |
 |---|---|
@@ -112,14 +125,14 @@ command argument from the Hub over NATS.
 
 ## Security
 
-All trust resolution is Hub-side. Adapters are untrusted normalizers.
+All access enforcement is Hub-side. Adapters are untrusted normalizers.
 → See `security-routing.md` for trust levels, Authenticator design, GuardChain, and NATS infra hardening.
 
 | Layer | Mechanism | Location |
 |---|---|---|
 | Transport auth | Telegram HMAC webhook secret; Discord gateway token | Adapter container |
-| Trust resolution | C3 — adapters always send PUBLIC, hub resolves via Authenticator | Hub middleware stage 2–3 |
-| `auth.db` | Identity grants, trust assignments, cross-platform aliases | Hub container (`~/.roxabi/factory/auth.db`) |
+| Access enforcement | C3 — adapters always send PUBLIC; hub applies the ban list (`Authenticator`) and `agent_grants` (ADR-090) | Hub middleware |
+| `auth.db` | Identity grants, ban list, cross-platform aliases | Hub container (`~/.roxabi/factory/auth.db`) |
 | Secrets | Bot tokens delivered as Podman secrets (`type=mount`) — see ADR-074 | `/run/secrets/bot_token-<bot_id>` inside adapter containers |
 | NATS channel | TLS + auth tokens required in production | Infrastructure |
 
@@ -208,16 +221,16 @@ resumes it rather than starting fresh.
 Seven design questions deferred from ADR-053 are closed here. Each applies to all roxabi projects on M₁ adopting Quadlet. → ADR-055
 
 - **D1 — Image registry namespace:** Project-named, no `roxabi-` prefix. CI/prod images go to `ghcr.io/roxabi/<project>`; local dev builds use `localhost/<project>-<service>:dev`. The `roxabi-` prefix is reserved for genuinely shared SDKs (e.g. `roxabi-nats`), not per-project container images.
-- **D2 — NATS topology:** Per-project NATS during migration; shared NATS at Phase 4. Each project runs its own `<project>-nats.container` on an incrementing port (Lyra: 4223, voiceCLI: 4224, …) until Phase 4 consolidates onto a single `nats.container` at port 4222 on `roxabi.network`.
-- **D3 — Podman network:** NATS-bus participants share `roxabi.network` at Phase 4; HTTP-only projects (forge, intel, idna, live) use isolated per-project networks. Topology follows communication intent.
+- **D2 — NATS topology (historical):** the phased plan — per-project NATS containers on incrementing ports during migration, consolidating at Phase 4 — never happened as phased. Reality: a single big-bang consolidation put every bus participant on the one `factory-nats` container (port 4222) on `roxabi.network`; the legacy host `nats.service` was retired and `factory-nats` is the sole NATS server on the hub host.
+- **D3 — Podman network:** NATS-bus participants share `roxabi.network` (in effect today); HTTP-only projects (forge, intel, idna, live) use isolated per-project networks. Topology follows communication intent.
 - **D4 — Env file path:** `~/.<project>/env/<service>.env` per project. factory uses `~/.roxabi/factory/env/hub.env`; voiceCLI uses `~/.voicecli/env/tts.env`. Centralizing under `~/.roxabi/env/` is deferred — the per-project runtime root is already established.
-- **D5 — Deploy script:** Shared shell library at `deploy/lib/deploy-common.sh`, installed to `~/.local/lib/roxabi/deploy-lib.sh` at bootstrap. Superseded in practice by `podman auto-update.timer` (GHCR registry auto-pull) + `make converge` as manual fallback (#1035).
-- **D6 — Upgrade coordination:** Independent releases by default; batch coordination only for shared-infra breaking changes (NATS auth.conf change, Phase 4 NATS consolidation, `roxabi.network` rename, breaking NATS contract version bump per ADR-049).
-- **D7 — Shared infra home:** `roxabi-factory` repo. NATS config, auth.conf, nkey issuance, Quadlet patterns, and deploy scripts live here because Lyra created the patterns. No `roxabi-infra` repo will be created.
+- **D5 — Deploy script:** Shared shell library at `deploy/lib/deploy-common.sh` (change-gate, drift classification, host-role guards). Superseded in practice by the self-converging production host: the `factory-quadlet-sync` timer pulls `origin/staging` and runs `make converge` on every HEAD advance (fetch-retry hardened against network flaps, #2118); the `factory-post-autoupdate` timer polls GHCR image digests and converges on drift; `podman-auto-update` runs staggered as a catch-up net. Converge's change-gate classifies the drift and scopes the restarts: docs/tests/CI-only commits are code-only and skip the fleet restart, auth-only drift restarts `factory-nats` alone, and runtime-path changes are structural and run the full converge (#2126). `make converge` remains the manual path on the hub host.
+- **D6 — Upgrade coordination:** Independent releases by default; batch coordination only for shared-infra breaking changes (NATS auth.conf change, the NATS single-server consolidation — now done, `roxabi.network` rename, breaking NATS contract version bump per ADR-049).
+- **D7 — Shared infra home:** `roxabi-factory` repo. NATS config, auth.conf, nkey issuance, Quadlet patterns, and deploy scripts live here because the factory project (formerly Lyra) created the patterns. No `roxabi-infra` repo will be created.
 
 ### Container publishing workflow
 
-CI builds container images and pushes them to GHCR via `.github/workflows/publish.yml` (bake pipeline). Key invariants resolved in ADR-056: actions are SHA-pinned (no floating action tags), semver parsing strips the `factory/` tag prefix, `FACTORY_IMAGE` (local build) is separated from `GHCR_IMAGE` (registry name). Production hosts pull from GHCR via `podman auto-update` — images are never built on the production host. → ADR-056
+CI builds container images and pushes them to GHCR via `.github/workflows/publish.yml` (bake pipeline). Publishing is CI-gated and post-merge only: `publish.yml` fires via `workflow_run` after CI succeeds on a push to `staging` (release tags publish directly), and PRs get a build-only Dockerfile check in CI instead (#2047). Images are content-addressed: provenance/SBOM attestations and the baked build-revision were dropped, so a commit that leaves image content unchanged does not move the pushed digest (#2120) — the converge code-only skip depends on this. Key invariants resolved in ADR-056: actions are SHA-pinned (no floating action tags), semver parsing strips the `factory/` tag prefix, `FACTORY_IMAGE` (local build) is separated from `GHCR_IMAGE` (registry name). Production hosts pull from GHCR via `podman auto-update` — images are never built on the production host. → ADR-056
 
 ### Credential store
 
@@ -247,11 +260,12 @@ The proposal was superseded by the Quadlet + `podman auto-update` path before `r
 
 - All production deployment uses Quadlet (no supervisord)
 - Container images come from GHCR, never built on the production host
+- Deploys are role-guarded: `make converge` and `make quadlet-install` refuse to run on hosts lacking the `factory-hub` role (#2117)
 - Credentials use `type=mount` Podman secrets (nkey seeds, NATS auth tokens) — **exception:** `auth.conf` (public ACL bundle, `U…` keys only, no private seeds) is delivered as an inline bind mount for live SIGHUP reload; private NKey seed files remain `type=mount` per ADR-054 D5 (ADR-085)
 - All Quadlet bind-mount volumes carry `:z` for portability
 - All containers use `UserNS=keep-id:uid=1500,gid=1500` (host UID 1000)
-- Deploy coordination is independent per project; batch only for NATS auth.conf changes or Phase 4 consolidation
-- Lyra repo is the ecosystem infra home — no `roxabi-infra` repo
+- Deploy coordination is independent per project; batch only for shared-infra breaking changes (e.g. NATS auth.conf changes)
+- The roxabi-factory repo is the ecosystem infra home — no `roxabi-infra` repo
 
 ### See also
 

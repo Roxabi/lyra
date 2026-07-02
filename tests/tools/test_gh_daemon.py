@@ -53,6 +53,10 @@ def daemon_env(monkeypatch, tmp_path: Path) -> dict[str, Path]:
     monkeypatch.setenv("FACTORY_GH_PEM_PATH", str(pem))
     monkeypatch.setenv("FACTORY_GH_DISPENSER_SOCK", str(sock))
     monkeypatch.setenv("FACTORY_GH_CACHE_PATH", str(cache))
+    # run_daemon() reads NATS_URL directly from os.environ (mint-failure
+    # publishing, optional). Strip any host-set value so daemon tests never
+    # attempt a real NATS connect based on the developer's/CI's ambient env.
+    monkeypatch.delenv("NATS_URL", raising=False)
     return {"pem": pem, "sock": sock, "cache": cache}
 
 

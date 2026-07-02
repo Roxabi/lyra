@@ -327,3 +327,54 @@ _code_change_is_inert() {
     done <<< "${changed}"
     return 0
 }
+
+# Decide whether a 'code-only' drift is IMAGE-CARRIED — i.e. every changed file is either
+# inert (same allowlist as _code_change_is_inert, kept in lockstep) or ships to the fleet
+# exclusively inside the tracked images (src/, packages/, apps/, brand/ — baked in by
+# publish.yml, never bind-mounted from the checkout: every bind-mounted runtime config
+# lives under deploy/, which is deliberately NOT in this allowlist; the %h/projects mounts
+# in clipool/omp are live agent workspaces a restart cannot refresh further).
+#
+#   _code_change_is_image_carried <last_fingerprint> <current_fingerprint>
+#
+# Returns 0 (image-carried → skip the pre-image restart) ONLY if EVERY changed path matches
+# the inert ∪ image-carried allowlist. The restart is deferred, not lost: publish.yml builds
+# the new image, then factory-post-autoupdate (*:2/5) — with podman-auto-update (*:4/5) as
+# catch-up net — detects the digest drift on fields 4/5, pulls, and runs the structural
+# converge that actually carries the new code. Restarting before the image exists deploys
+# nothing: the fleet bounces on the OLD image, then bounces again when the image lands
+# ("every code merge = 2 full-fleet restarts", audit 2026-07-01 §5.7).
+#
+# Returns 1 (NOT image-carried → full converge now) for any host-carried path (deploy/,
+# tools/, scripts/, Dockerfile, docker/, pyproject.toml, uv.lock, Makefile, …) AND for any
+# undecidable case. Same fail-safe direction as _code_change_is_inert: a mis-classification
+# can only over-restart. If the image build fails (red staging CI → publish skipped), the
+# fleet keeps the old image — the same end state today's pre-image restart produces, since
+# that restart carries no new code either.
+_code_change_is_image_carried() {
+    local last_git cur_git changed p
+    last_git=$(cut -d: -f1 <<< "${1}")
+    cur_git=$(cut -d: -f1 <<< "${2}")
+
+    # Both commits must be real and resolvable — else fail-safe to a full converge.
+    [ -n "${last_git}" ] && [ "${last_git}" != "none" ] || return 1
+    [ -n "${cur_git}" ]  && [ "${cur_git}"  != "none" ] || return 1
+
+    changed=$(cd "${FACTORY_DIR}" && git diff --name-only "${last_git}" "${cur_git}" 2>/dev/null) \
+        || return 1
+    # Empty diff = identical trees (e.g. a no-op/empty commit) → nothing to restart for.
+    [ -z "${changed}" ] && return 0
+
+    while IFS= read -r p; do
+        [ -z "${p}" ] && continue
+        case "${p}" in
+            # image-carried: reaches the fleet only via factory:staging-svc / factory:staging
+            src/*|packages/*|apps/*|brand/*) ;;
+            # inert set — keep in lockstep with _code_change_is_inert above
+            docs/*|tests/*|artifacts/*|.github/*) ;;
+            *.md|*.txt|LICENSE|CHANGELOG|CHANGELOG.md|.gitignore|.editorconfig|.pre-commit-config.yaml) ;;
+            *) return 1 ;;  # a host-carried runtime path changed → full converge now
+        esac
+    done <<< "${changed}"
+    return 0
+}

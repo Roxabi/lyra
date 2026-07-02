@@ -3,7 +3,10 @@
 Fingerprint format:
   <git_head>:<unit_sha>:<auth_sha>:<voicecli_head>:<staging-svc-digest>:<staging-digest>
   - field 0 (git_head) ALONE   → code-only (git advanced but no artifact changed; converge.sh
-                                  resolves inert docs/CI commits via _code_change_is_inert).
+                                  resolves inert docs/CI commits via _code_change_is_inert and
+                                  src/packages/apps/brand-only commits via
+                                  _code_change_is_image_carried — restart deferred to the
+                                  post-autoupdate digest converge).
                                   git_head + any other field → structural.
   - field 1 (unit_sha)         → structural
   - field 2 (auth_sha)         → auth
@@ -217,4 +220,102 @@ def test_code_change_is_inert(tmp_path: Path) -> None:
     )
     assert _inert(repo, base, "none", env) is False, (
         "missing current git_head → not inert"
+    )
+
+
+def _image_carried(repo: Path, last_git: str, cur_git: str, env: dict) -> bool:
+    """True iff _code_change_is_image_carried exits 0 (skip pre-image restart)."""
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source {DEPLOY_COMMON} >/dev/null 2>&1; FACTORY_DIR="{repo}"; '
+            f'_code_change_is_image_carried "{_fp_git(last_git)}" "{_fp_git(cur_git)}"',
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    return result.returncode == 0
+
+
+def test_code_change_is_image_carried(tmp_path: Path) -> None:
+    """Image-carried allowlist: src/packages/apps/brand (± inert paths) → defer the restart to
+    the post-autoupdate digest converge; any host-carried path (deploy/, tools/, lockfiles, …)
+    or an undecidable diff → full converge now (same fail-safe direction as _code_change_is_inert)."""
+    repo = tmp_path / "factory"
+    repo.mkdir()
+
+    # Same git-env isolation as test_code_change_is_inert (pre-push GIT_DIR leak).
+    env = {**os.environ}
+    for v in subprocess.run(
+        ["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True
+    ).stdout.split():
+        env.pop(v, None)
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(repo), *args], check=True, env=env, capture_output=True
+        )
+
+    def head() -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            env=env,
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (repo / "README.md").write_text("base\n")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    base = head()
+
+    # image-carried commit: src/ + packages/ + apps/ + brand/, mixed with inert docs/
+    for d in ("src", "packages", "apps", "brand", "docs"):
+        (repo / d).mkdir()
+    (repo / "src" / "app.py").write_text("code\n")
+    (repo / "packages" / "lib.py").write_text("lib\n")
+    (repo / "apps" / "ui.tsx").write_text("ui\n")
+    (repo / "brand" / "theme.css").write_text("css\n")
+    (repo / "docs" / "x.md").write_text("d\n")
+    git("add", "-A")
+    git("commit", "-qm", "image-carried + docs")
+    image_head = head()
+
+    # host-carried commit: deploy/ config (bind-mounted, needs a real converge)
+    (repo / "deploy").mkdir()
+    (repo / "deploy" / "acl-matrix.json").write_text("{}\n")
+    git("add", "-A")
+    git("commit", "-qm", "deploy change")
+    deploy_head = head()
+
+    # host-carried commit: root lockfile (host tooling reads the checkout directly)
+    (repo / "uv.lock").write_text("lock\n")
+    git("add", "-A")
+    git("commit", "-qm", "lockfile change")
+    lock_head = head()
+
+    assert _image_carried(repo, base, image_head, env) is True, (
+        "src/packages/apps/brand (+docs) must be image-carried → skip"
+    )
+    assert _image_carried(repo, image_head, deploy_head, env) is False, (
+        "deploy/ change must force a converge now"
+    )
+    assert _image_carried(repo, deploy_head, lock_head, env) is False, (
+        "uv.lock change must force a converge now"
+    )
+    assert _image_carried(repo, base, lock_head, env) is False, (
+        "mixed image-carried + host-carried range must force a converge now"
+    )
+    # undecidable → fail-safe: converge now
+    assert _image_carried(repo, "none", image_head, env) is False, (
+        "missing last git_head → converge"
+    )
+    assert _image_carried(repo, base, "none", env) is False, (
+        "missing current git_head → converge"
     )

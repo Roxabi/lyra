@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -71,7 +73,8 @@ class TestJobsLaunch:
         assert result["job_id"]
         nc.publish.assert_awaited_once()
         _, payload = nc.publish.await_args.args
-        assert b'"trace_id"' in payload
+        data = json.loads(payload)
+        uuid.UUID(data["trace_id"])  # a well-formed root trace was minted
 
     @pytest.mark.asyncio
     async def test_rejects_unknown_agent(self, hub: MagicMock, nc: AsyncMock) -> None:

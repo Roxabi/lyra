@@ -61,11 +61,12 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
         req.pool_id
         or RoutingKey(Platform.WEB, _WEB_BOT, f"agent:{req.agent}").to_pool_id()
     )
-    # Operator-initiated launch is a fresh root entry point — unlike hub
-    # work-path codecs it has no ambient TraceContext, so mint a root trace
-    # explicitly (mint_work_envelope_fields raises without one, #2069).
+    # Operator-initiated launch is a fresh root entry point — it runs in its own
+    # dashboard-RPC subscription task that TraceMiddleware never touches, so it
+    # always mints a NEW root trace (like inbound), never reuses ambient context.
+    # mint_work_envelope_fields raises without a trace_id (#2069).
     fields = mint_work_envelope_fields(
-        trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
+        trace_id=TraceContext.generate(),
         pool_id=pool_id,
     )
     job_id = fields.job_id

@@ -51,9 +51,7 @@ def _make_stub(stubs: Path, name: str, script: str) -> None:
     """Write a stub executable to the stubs directory."""
     p = stubs / name
     p.write_text(script, encoding="utf-8")
-    p.chmod(
-        stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
-    )
+    p.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
 
 
 def _run_converge(
@@ -120,7 +118,7 @@ def _run_converge(
             stubs,
             "systemctl",
             f'#!/bin/sh\necho "$@" >> "{systemctl_log}"\n'
-            "case \"$*\" in\n"
+            'case "$*" in\n'
             "  *is-failed*) exit 1;;\n"
             "  *) exit 0;;\n"
             "esac\n",
@@ -241,9 +239,14 @@ def _auth_drift_fingerprints() -> tuple[str, str]:
 
 
 def _structural_drift_fingerprints() -> tuple[str, str]:
-    """Return (last, current) where git_head (field 0) differs → structural drift."""
-    last = "git_OLD:unit222:auth333:voice444"
-    current = "git_NEW:unit222:auth333:voice444"
+    """Return (last, current) where unit_sha (field 1) differs → structural drift.
+
+    NOTE: field 0 (git_head) differing ALONE is now classified 'code-only' (converge.sh
+    resolves it via a paths git-diff), so it is no longer an unambiguous structural trigger.
+    field 1 (installed unit hash) is — a units change always means containers must restart.
+    """
+    last = "git111:unit_OLD:auth333:voice444"
+    current = "git111:unit_NEW:auth333:voice444"
     return last, current
 
 
@@ -284,8 +287,7 @@ class TestAuthDrift:
         _, lines = self._run()
         for client in STRUCTURAL_CLIENTS:
             assert not any(f"restart {client}" in line for line in lines), (
-                f"auth drift must NOT restart {client}; "
-                f"systemctl log: {lines!r}"
+                f"auth drift must NOT restart {client}; systemctl log: {lines!r}"
             )
 
     def test_daemon_reload_called(self) -> None:
@@ -306,9 +308,7 @@ class TestAuthDrift:
             None,
         )
         assert reload_idx is not None, f"expected daemon-reload; got: {lines!r}"
-        assert restart_idx is not None, (
-            f"expected restart factory-nats; got: {lines!r}"
-        )
+        assert restart_idx is not None, f"expected restart factory-nats; got: {lines!r}"
         assert reload_idx < restart_idx, (
             f"daemon-reload (idx {reload_idx}) must precede restart factory-nats "
             f"(idx {restart_idx}); got: {lines!r}"
@@ -364,8 +364,7 @@ class TestStructuralDrift:
         _, lines = self._run()
         for client in STRUCTURAL_CLIENTS:
             assert any(f"restart {client}" in line for line in lines), (
-                f"structural drift must restart {client}; "
-                f"systemctl log: {lines!r}"
+                f"structural drift must restart {client}; systemctl log: {lines!r}"
             )
 
     def test_daemon_reload_called(self) -> None:
@@ -386,9 +385,7 @@ class TestStructuralDrift:
             None,
         )
         assert reload_idx is not None, f"expected daemon-reload; got: {lines!r}"
-        assert restart_idx is not None, (
-            f"expected restart factory-nats; got: {lines!r}"
-        )
+        assert restart_idx is not None, f"expected restart factory-nats; got: {lines!r}"
         assert reload_idx < restart_idx, (
             f"daemon-reload (idx {reload_idx}) must precede restart factory-nats "
             f"(idx {restart_idx}); got: {lines!r}"

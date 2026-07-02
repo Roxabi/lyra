@@ -1,6 +1,5 @@
 import { Badge } from "@astryxdesign/core/Badge";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { Button } from "@/components/ui/button";
@@ -57,8 +56,8 @@ export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps)
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-medium">{t("context.activeJobs")}</h3>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" asChild>
-              <Link to="/jobs">{tc("actions.viewAll")}</Link>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" href="/jobs">
+              {tc("actions.viewAll")}
             </Button>
           </div>
           {isLoading ? (

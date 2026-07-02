@@ -31,7 +31,7 @@ feature/fix branch → PR → staging → (promote) → main
 1. Create a branch from `staging` with a descriptive name: `feat/discord-voice`, `fix/pool-lock-timeout`
 2. Open a PR targeting `staging`
 3. Pass CI (lint, typecheck, tests)
-4. Merge — auto-merge is enabled for approved PRs
+4. Merge — auto-merge is enabled once a PR carries the `reviewed` label (no PR review count is required on `staging`); see [docs/ops/pr-automation.md](docs/ops/pr-automation.md) for the full mechanism (label gate, Dependabot auto-labelling, rebase-on-push)
 
 ## Commit conventions
 
@@ -75,6 +75,10 @@ bun run lint             # biome check — must pass (CI + pre-commit hook)
 bun run format           # biome check --write — auto-fix (run if lint-js fails, then re-stage)
 bun run --filter @roxabi-factory/dashboard test   # vitest — pre-push when dashboard changes
 ```
+
+See [docs/standards/frontend-patterns.md](docs/standards/frontend-patterns.md) for Astryx
+component-API gotchas (`Stack`, `Card`, `Dialog`, `Toast`) worth knowing before touching
+`apps/dashboard/`.
 
 Git hooks run quality gates locally:
 

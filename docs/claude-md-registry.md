@@ -27,11 +27,16 @@ Instruction content lives in `AGENTS.md`. Each `CLAUDE.md` is a thin shim (`@AGE
 | `src/factory/infrastructure/jobs/CLAUDE.md` | `src/factory/infrastructure/jobs/AGENTS.md` | FACTORY_JOBS WorkQueue stream + DLQ router provisioning (ADR-088, #1203) |
 | `src/factory/nats/CLAUDE.md` | `src/factory/nats/AGENTS.md` | in-tree NATS integration (subjects, codec, domain clients) |
 | `src/factory/tools/CLAUDE.md` | `src/factory/tools/AGENTS.md` | GitHub token dispenser (gh_token helper) |
+| `src/factory/dashboard/CLAUDE.md` | `src/factory/dashboard/AGENTS.md` | control-plane BFF axis (ADR-094) — session-ID footgun |
 | `packages/roxabi-nats/CLAUDE.md` | `packages/roxabi-nats/AGENTS.md` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/CLAUDE.md` | `packages/roxabi-contracts/AGENTS.md` | NATS contract schemas (ADR-049) |
 | `packages/roxabi-blobs/CLAUDE.md` | `packages/roxabi-blobs/AGENTS.md` | BlobStore client SDK (consumed by hub + adapters) |
+| `packages/roxabi-otel/CLAUDE.md` | `packages/roxabi-otel/AGENTS.md` | OTel impl of MessageLifecycleHooks (keeps OTel out of roxabi-nats) |
+| `packages/roxabi-obs/CLAUDE.md` | `packages/roxabi-obs/AGENTS.md` | fleet plane ③ reporter — periodic ContainerReport publish |
+| `packages/roxabi-satellite/CLAUDE.md` | `packages/roxabi-satellite/AGENTS.md` | shared NATS satellite plumbing for GPU worker CLIs |
 | `plugins/factory-ops/CLAUDE.md` | `plugins/factory-ops/AGENTS.md` | ops plugin (debug, remote inspection) |
 | `plugins/factory-send/CLAUDE.md` | `plugins/factory-send/AGENTS.md` | message-send plugin (HTTP → Telegram/Discord) |
 | `plugins/refine-agent/CLAUDE.md` | `plugins/refine-agent/AGENTS.md` | agent-profile refine plugin |
 | `tools/CLAUDE.md` | `tools/AGENTS.md` | quality gates + analysis scripts |
+| `scripts/CLAUDE.md` | `scripts/AGENTS.md` | platform orchestration (bash) + domain operational tooling — scripts/ vs tools/ boundary |
 | `deploy/CLAUDE.md` | `deploy/AGENTS.md` | Podman + Quadlet prod deploy (reference impl) |

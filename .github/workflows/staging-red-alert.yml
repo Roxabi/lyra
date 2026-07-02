@@ -1,0 +1,94 @@
+name: Staging red alert
+
+# A red CI on staging silently SKIPS publish (workflow_run gate in publish.yml):
+# the fleet keeps running the previous image until staging is green again — 12.5%
+# of staging pushes at audit time (artifacts/analyses/ci-cd-optimization-2026-07).
+# Surface it as a native notification: open/refresh an assigned `ci-staging-red`
+# issue on failure, close it when staging is green again. Zero secrets by design
+# (github.token only) — GitHub watch "Participating" delivers the ping.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [staging]
+
+permissions:
+  issues: write
+  contents: read # branches/staging tip read (stale-run guard)
+
+# Serialize runs (FIFO, no cancel): two staging pushes completing close together
+# must not race open-vs-close on the same alert issue.
+concurrency:
+  group: staging-red-alert
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    # Push-event runs only — mirrors publish.yml's gate: PR runs never publish,
+    # so a red PR run must not page anyone here either. head_repository parity
+    # is belt-and-suspenders against fork-originated workflow_run events.
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      ASSIGNEE: MickaelV0
+    steps:
+      - name: Skip stale runs (out-of-order completion)
+        # workflow_run completions are not ordered: an old red run finishing
+        # AFTER a newer green one must not reopen the alert (and vice versa).
+        # Only the run for the current staging tip gets to decide.
+        id: tip
+        run: |
+          tip=$(gh api "repos/${REPO}/branches/staging" --jq .commit.sha)
+          if [ "$tip" = "$HEAD_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "Stale run: head ${HEAD_SHA:0:8} != staging tip ${tip:0:8} — the tip's run decides."
+          fi
+
+      - name: Ensure ci-staging-red label exists
+        # Self-heal: a deleted label would otherwise fail issue create silently
+        # on some gh versions. --force makes this idempotent.
+        if: steps.tip.outputs.current == 'true' && env.CONCLUSION != 'success'
+        run: |
+          gh label create ci-staging-red -R "$REPO" --force \
+            --description "Staging CI red — publish skipped" --color B60205
+
+      - name: Open or refresh alert issue (staging red)
+        # Structural mirror of publish.yml's gate (`conclusion == 'success'`):
+        # ANY non-success conclusion (failure, timed_out, cancelled,
+        # action_required, startup_failure, stale, neutral) skips publish, so
+        # any non-success must alert — hand-enumerating conclusions drifted
+        # (review #2144 panel: parallel-path-drift, cancelled was silent).
+        if: steps.tip.outputs.current == 'true' && env.CONCLUSION != 'success'
+        run: |
+          body="Staging CI **${CONCLUSION}** on \`${HEAD_SHA:0:8}\`: ${RUN_URL}
+
+          publish is skipped while staging is red — the fleet stays on the previous image until a green run."
+          existing=$(gh issue list -R "$REPO" --label ci-staging-red --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" -R "$REPO" --body "$body"
+          else
+            gh issue create -R "$REPO" \
+              --title "🔴 staging CI red — publish skipped" \
+              --body "$body" \
+              --label ci-staging-red \
+              --assignee "$ASSIGNEE"
+          fi
+
+      - name: Close alert issues (staging green)
+        if: steps.tip.outputs.current == 'true' && env.CONCLUSION == 'success'
+        run: |
+          for n in $(gh issue list -R "$REPO" --label ci-staging-red --state open --json number --jq '.[].number'); do
+            gh issue close "$n" -R "$REPO" \
+              --comment "Staging CI green again on \`${HEAD_SHA:0:8}\`: ${RUN_URL}"
+          done

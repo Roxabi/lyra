@@ -1,15 +1,14 @@
 /* ──────────────────────────────────────────────────────────────────────────
    BASE — Roxabi Factory cockpit
-   Reset + ember canvas. UI components live in React (Astryx).
-────────────────────────────────────────────────────────────────────────── */
+   Ember canvas + cockpit cosmetics. UI components live in React (Astryx).
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+   NOTE: the global box-model reset (`*{box-sizing;margin:0;padding:0}`) does NOT
+   live here. This file is imported into `@layer brand` (apps/dashboard/src/index.css),
+   which sits ABOVE `@layer astryx-base`; a universal reset here would win by cascade-
+   layer position (layers beat specificity) and zero every Astryx component's padding
+   app-wide (#2148). The reset is declared in the consumer's lowest `reset` layer
+   instead — see apps/dashboard/src/index.css and apps/dashboard/DESIGN.md §3.
+────────────────────────────────────────────────────────────────────────── */
 
 html {
   font-size: 16px;

@@ -129,6 +129,9 @@ documented as a general exception — use only when rebasing a sole-owner featur
 
 ## See also
 
+- `apps/dashboard/DESIGN.md` — the **system-level** design doctrine (token pipeline SSoT, the
+  cascade-layer contract as anti-drift rule #1, component decision tree, do/don't, pre-ship
+  checklist). This file is its per-component-API companion; that file is the "why/rule".
 - `artifacts/plans/astryx-migration.md` — migration driver, slice plan, and M₁ post-merge visual
   verification protocol (epic #2087)
 - `docs/standards/backend-patterns.md` — the backend equivalent of this doc

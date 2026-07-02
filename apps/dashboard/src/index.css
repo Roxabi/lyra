@@ -23,6 +23,28 @@
 @import "../../../brand/styles.css" layer(brand);
 @import "tailwindcss/utilities.css" layer(utilities);
 
+/*
+ * Global box-model reset — assigned to the lowest `reset` layer (declared first in
+ * the @layer statement above; layer assignment is by name, not source position, so
+ * it must sit AFTER the @imports to keep them valid). It previously rode in through
+ * brand/base.css → `@layer brand` (position 6, above `astryx-base`), where cascade-
+ * layer order (which beats specificity outright) let this zero-specificity
+ * `*{padding:0}` override every Astryx StyleX component-padding rule → cramped/
+ * clipped controls app-wide (#2148). In `reset` it still normalizes non-Astryx
+ * elements (nothing lower re-adds their padding) while Astryx's own `astryx-base`
+ * padding legitimately wins. Anti-drift rule: never let a universal selector land in
+ * `brand`/`components`/`utilities`. See apps/dashboard/DESIGN.md §3.
+ */
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+}
+
 :root {
   color-scheme: dark;
 }

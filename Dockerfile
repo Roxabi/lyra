@@ -64,7 +64,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 # Bump together with roxabi-container base release and update this comment.
 # NOTE: amd64 child digest (valid — single-platform build). Re-pin to the multi-arch INDEX
 # digest before adding `platforms` to docker-bake.hcl (see base-svc note above).
-FROM ghcr.io/roxabi/base@sha256:dab0e1477f5e6cea6d8090e0f15421cfb2cbcd237dace12717afba5d9be14bbc AS agent-runtime
+FROM ghcr.io/roxabi/base@sha256:26a0060d1d0d47b0f5f9ec25e767d503365c391d36610b5538b0fea475e26e8f AS agent-runtime
 
 USER root
 

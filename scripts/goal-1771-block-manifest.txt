@@ -60,6 +60,8 @@ brand/assets/factory-favicon.svg
 brand/assets/factory-mark-dark.svg
 brand/assets/factory-mark-light.svg
 brand/base.css
+brand/core.css
+brand/reset.css
 brand/styles.css
 brand/tokens/colors.css
 brand/tokens/elevation.css

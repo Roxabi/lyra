@@ -34,11 +34,11 @@ updates:
     labels:
       - dependencies
       - ci
+    # semver-*-days cooldowns are pip-only — dependabot rejects them for
+    # github-actions/docker, and ONE invalid property disables the whole file
+    # (live check-run ".github/dependabot.yml" red after #2136).
     cooldown:
       default-days: 3
-      semver-major-days: 3
-      semver-minor-days: 3
-      semver-patch-days: 3
 
   # Dockerfile pins ghcr.io/roxabi/base* by sha256 digest — without this
   # ecosystem the base-image update path is fully manual and digests rot
@@ -51,8 +51,6 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - dependencies
+    # semver-*-days: pip-only (see github-actions block above).
     cooldown:
       default-days: 3
-      semver-major-days: 3
-      semver-minor-days: 3
-      semver-patch-days: 3

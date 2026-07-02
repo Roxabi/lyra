@@ -108,18 +108,13 @@ function EditButton({
       variant="outline"
       size="sm"
       className="h-7 shrink-0 gap-1.5 px-2.5 text-xs active:scale-[0.98]"
-      asChild
+      href={`/agents/${agentName}`}
+      aria-label={t("edit")}
+      onClick={onClick}
     >
-      <Link
-        to="/agents/$name"
-        params={{ name: agentName }}
-        aria-label={t("edit")}
-        onClick={onClick}
-      >
-        <PencilSimple className="size-3.5" aria-hidden />
-        {t("edit")}
-        <CaretRight className="size-3.5 opacity-60" aria-hidden />
-      </Link>
+      <PencilSimple className="size-3.5" aria-hidden />
+      {t("edit")}
+      <CaretRight className="size-3.5 opacity-60" aria-hidden />
     </Button>
   );
 }

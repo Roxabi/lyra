@@ -1,9 +1,13 @@
 /* ──────────────────────────────────────────────────────────────────────────
-   ROXABI FACTORY — DESIGN SYSTEM
-   Global entry point. App and marketing surfaces @import THIS file only.
-   Token values: factory-site/assets/css/tokens.css (Forge v17 / v2 dense).
-   Structure: roxabi-live brand/ (split tokens).
-   Dashboard SPA imports reset.css + core.css separately (cascade layers).
+   RESET — universal box model + margin/padding zeroing
+   Extracted from base.css so dashboard can place this in @layer reset (below
+   astryx-base) while marketing SSG keeps it unlayered via brand/styles.css.
 ────────────────────────────────────────────────────────────────────────── */
-@import "reset.css";
-@import "core.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}

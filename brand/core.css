@@ -1,9 +1,12 @@
 /* ──────────────────────────────────────────────────────────────────────────
-   ROXABI FACTORY — DESIGN SYSTEM
-   Global entry point. App and marketing surfaces @import THIS file only.
-   Token values: factory-site/assets/css/tokens.css (Forge v17 / v2 dense).
-   Structure: roxabi-live brand/ (split tokens).
-   Dashboard SPA imports reset.css + core.css separately (cascade layers).
+   CORE — Forge tokens + document defaults (no universal reset).
+   Dashboard imports this file in @layer brand; marketing uses styles.css.
 ────────────────────────────────────────────────────────────────────────── */
-@import "reset.css";
-@import "core.css";
+@import "tokens/fonts.css";
+@import "tokens/colors.css";
+@import "tokens/typography.css";
+@import "tokens/spacing.css";
+@import "tokens/elevation.css";
+@import "tokens/motion.css";
+@import "tokens/status.css";
+@import "base.css";

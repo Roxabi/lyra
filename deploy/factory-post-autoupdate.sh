@@ -57,6 +57,8 @@ main() {
         # one tick. Also covers a converge that crashed between podman pull and stamp write,
         # and a tick whose converge lost the flock -n to a concurrent quadlet-sync converge.
         # When nothing actually changed, converge no-ops on the stamp (drift=none, <1s).
+        # LOAD-BEARING PAIR: converge.sh's image-carried skip (_code_change_is_image_carried)
+        # defers restarts to THIS call — removing or re-gating it silently strands deferred code.
         echo "==> Running make converge (change-gated)..."
         make -C "${FACTORY_DIR}" converge
         _refresh_fleet_digests

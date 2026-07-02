@@ -221,6 +221,14 @@ def test_code_change_is_inert(tmp_path: Path) -> None:
     assert _inert(repo, base, "none", env) is False, (
         "missing current git_head → not inert"
     )
+    # empty diff (same commit both sides) → identical trees → genuinely inert
+    assert _inert(repo, inert_head, inert_head, env) is True, (
+        "same-commit range (empty diff) must be inert"
+    )
+    # well-formed but unresolvable SHA → rev-parse guard fail-safes to NOT inert
+    assert _inert(repo, "deadbeef" * 5, inert_head, env) is False, (
+        "unresolvable last git_head → not inert"
+    )
 
 
 def _image_carried(repo: Path, last_git: str, cur_git: str, env: dict) -> bool:
@@ -345,4 +353,12 @@ def test_code_change_is_image_carried(tmp_path: Path) -> None:
     )
     assert _image_carried(repo, base, "none", env) is False, (
         "missing current git_head → converge"
+    )
+    # empty diff (same commit both sides) → identical trees → nothing to restart for
+    assert _image_carried(repo, image_head, image_head, env) is True, (
+        "same-commit range (empty diff) must skip"
+    )
+    # well-formed but unresolvable SHA → rev-parse guard fail-safes to converge now
+    assert _image_carried(repo, "deadbeef" * 5, image_head, env) is False, (
+        "unresolvable last git_head → converge"
     )

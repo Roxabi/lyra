@@ -305,6 +305,18 @@ _path_is_inert() {
     esac
 }
 
+# Both stamp git_heads must be real, resolvable commits BEFORE they are handed to
+# git diff — a corrupted stamp value must not be parseable as a flag/pathspec or
+# resolve to something unexpected (review #2144: stamp fields are trusted input).
+# Shared by both code-only classifiers (same lockstep rationale as _path_is_inert).
+_stamp_commits_resolvable() {
+    [ -n "${1}" ] && [ "${1}" != "none" ] || return 1
+    [ -n "${2}" ] && [ "${2}" != "none" ] || return 1
+    (cd "${FACTORY_DIR}" \
+        && git rev-parse --verify --quiet "${1}^{commit}" >/dev/null \
+        && git rev-parse --verify --quiet "${2}^{commit}" >/dev/null) || return 1
+}
+
 # Decide whether a 'code-only' drift (git HEAD advanced, no tracked artifact changed) is INERT —
 # i.e. the commit range touches only non-runtime files and needs no converge/restart.
 #
@@ -322,8 +334,7 @@ _code_change_is_inert() {
     cur_git=$(cut -d: -f1 <<< "${2}")
 
     # Both commits must be real and resolvable — else fail-safe to a full converge.
-    [ -n "${last_git}" ] && [ "${last_git}" != "none" ] || return 1
-    [ -n "${cur_git}" ]  && [ "${cur_git}"  != "none" ] || return 1
+    _stamp_commits_resolvable "${last_git}" "${cur_git}" || return 1
 
     changed=$(cd "${FACTORY_DIR}" && git diff --name-only "${last_git}" "${cur_git}" 2>/dev/null) \
         || return 1
@@ -373,8 +384,7 @@ _code_change_is_image_carried() {
     cur_git=$(cut -d: -f1 <<< "${2}")
 
     # Both commits must be real and resolvable — else fail-safe to a full converge.
-    [ -n "${last_git}" ] && [ "${last_git}" != "none" ] || return 1
-    [ -n "${cur_git}" ]  && [ "${cur_git}"  != "none" ] || return 1
+    _stamp_commits_resolvable "${last_git}" "${cur_git}" || return 1
 
     changed=$(cd "${FACTORY_DIR}" && git diff --name-only "${last_git}" "${cur_git}" 2>/dev/null) \
         || return 1

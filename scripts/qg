@@ -93,10 +93,15 @@ gate_has_stage() {
 changed_files() {
   local stage="$1"
   local -a files=()
+  # -z + NUL-delimited mapfile: default core.quotePath C-quotes non-ASCII
+  # paths, which would never match a files: regex (same fix as the CI diff
+  # in cmd_run). --diff-filter=ACMR is kept on the staged branch on purpose:
+  # staged-file semantics deliberately diverge from the CI diff, where
+  # deletions must trigger gates.
   if [[ "$stage" == "pre-push" && -n "${PRE_COMMIT_FROM_REF:-}" && -n "${PRE_COMMIT_TO_REF:-}" ]]; then
-    mapfile -t files < <(git -C "$REPO_ROOT" diff --name-only "${PRE_COMMIT_FROM_REF}...${PRE_COMMIT_TO_REF}" 2>/dev/null || true)
+    mapfile -d '' -t files < <(git -C "$REPO_ROOT" diff --name-only -z "${PRE_COMMIT_FROM_REF}...${PRE_COMMIT_TO_REF}" 2>/dev/null || true)
   else
-    mapfile -t files < <(git -C "$REPO_ROOT" diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+    mapfile -d '' -t files < <(git -C "$REPO_ROOT" diff --cached --name-only -z --diff-filter=ACMR 2>/dev/null || true)
   fi
   if [[ ${#files[@]} -eq 0 ]]; then
     return 0
@@ -241,6 +246,9 @@ run_gate() {
   local -a changed=("$@")
 
   if [[ "$gate" == "doc_drift_bundle" ]]; then
+    # Deliberate short-circuit BEFORE the enabled/stage/files checks below —
+    # the bundle composes doc_drift + doc_semantic_drift itself. A `files:`
+    # entry on doc_drift_bundle would be dead config: it always runs.
     run_doc_drift_bundle
     return $?
   fi
@@ -352,17 +360,25 @@ cmd_run() {
   fi
 
   # CI stage: compute the PR merge-base diff when ci.yml provided a range.
-  # Triple-dot includes deletions — deliberate, deleted files must trigger
-  # gates. Any git failure (bad ref, shallow clone) → fail OPEN with a
-  # warning: CI_FILTER_ACTIVE stays 0 and every gate runs.
+  # Triple-dot includes deletions and --no-renames splits a move into D+A —
+  # deliberate: deleting or moving a file OUT of a filtered tree must still
+  # trigger its gates. -z (NUL-delimited) keeps non-ASCII/control-char paths
+  # intact — default core.quotePath C-quotes them ("caf\303\251.ts"), which
+  # would never match a files: regex and silently skip gates. Any git failure
+  # (bad ref, shallow clone) → fail OPEN with a warning: CI_FILTER_ACTIVE
+  # stays 0 and every gate runs.
   if [[ "$stage" == "ci" && -n "${QG_DIFF_RANGE:-}" ]]; then
-    local ci_diff=""
-    if ci_diff=$(git -C "$REPO_ROOT" diff --name-only "$QG_DIFF_RANGE" 2>/dev/null); then
+    local difftmp errtmp git_err
+    difftmp=$(mktemp)
+    errtmp=$(mktemp)
+    if git -C "$REPO_ROOT" diff --name-only -z --no-renames "$QG_DIFF_RANGE" >"$difftmp" 2>"$errtmp"; then
       CI_FILTER_ACTIVE=1
-      mapfile -t changed < <(printf '%s' "$ci_diff")
+      mapfile -d '' -t changed <"$difftmp"
     else
-      echo "::warning::qg: git diff '${QG_DIFF_RANGE}' failed (bad ref or shallow clone?) — files: filters disabled, running ALL ci gates (fail-open)" >&2
+      git_err=$(tr '\n' ' ' <"$errtmp")
+      echo "::warning::qg: git diff '${QG_DIFF_RANGE}' failed (${git_err:-no stderr}) — files: filters disabled, running ALL ci gates (fail-open)" >&2
     fi
+    rm -f "$difftmp" "$errtmp"
   fi
 
   local failed=0 rc=0 n

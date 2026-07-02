@@ -172,19 +172,25 @@ quality_gates:
     script: bun run build:dashboard
     requires: bun
     stages: [ci]
-    # Same filter as dashboard_unit_test; dashboard's only workspace dep is
-    # packages/shared (see apps/dashboard/package.json).
-    files: ^(apps/dashboard/|packages/shared/|brand/)|^(bun\.lock|package\.json)$
+    # Superset of dashboard_unit_test's filter (dashboard's only workspace dep
+    # is packages/shared — see apps/dashboard/package.json), plus the e2e
+    # inputs: src/factory/adapters/web/ serves the built SPA and ci.yml's
+    # "Dashboard visual e2e" step pytest.skips when apps/dashboard/dist/ is
+    # missing — a PR touching the web adapter or tests/e2e/dashboard/ must
+    # trigger this build or the e2e suite silently self-skips. MUST stay
+    # byte-identical to dashboard_dist_assert's filter (asserted by
+    # tests/scripts/test_qg.sh).
+    files: ^(apps/dashboard/|packages/shared/|brand/|src/factory/adapters/web/|tests/e2e/dashboard/)|^(bun\.lock|package\.json)$
     description: Dashboard SPA production build (#1771)
 
   dashboard_dist_assert:
     enabled: true
     script: test -f apps/dashboard/dist/index.html
     stages: [ci]
-    # MUST stay identical to dashboard_build's filter: this gate asserts the
-    # build output exists — running it when the build was skipped is a
-    # guaranteed red.
-    files: ^(apps/dashboard/|packages/shared/|brand/)|^(bun\.lock|package\.json)$
+    # MUST stay byte-identical to dashboard_build's filter: this gate asserts
+    # the build output exists — running it when the build was skipped is a
+    # guaranteed red. Identity asserted by tests/scripts/test_qg.sh.
+    files: ^(apps/dashboard/|packages/shared/|brand/|src/factory/adapters/web/|tests/e2e/dashboard/)|^(bun\.lock|package\.json)$
 
   trufflehog:
     enabled: true

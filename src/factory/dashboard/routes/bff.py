@@ -14,10 +14,6 @@ from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
     stub_fleet,
-    stub_jobs_cancel,
-    stub_jobs_launch,
-    stub_jobs_list,
-    stub_jobs_steer,
     stub_ops_health,
     stub_ops_logs,
     stub_pipeline,
@@ -34,15 +30,9 @@ from factory.dashboard.pipeline_stream import (
 from factory.dashboard.routes.bff_admin import register_admin_routes
 from factory.dashboard.routes.bff_agents import register_agent_routes
 from factory.dashboard.routes.bff_common import map_hub_errors
+from factory.dashboard.routes.bff_jobs import register_jobs_routes
 from factory.dashboard.stream_tokens import StreamTokenRegistry
 from roxabi_contracts.dashboard import (
-    DashboardJobsCancelRequest,
-    DashboardJobsCancelResponse,
-    DashboardJobsLaunchRequest,
-    DashboardJobsLaunchResponse,
-    DashboardJobsListResponse,
-    DashboardJobsSteerRequest,
-    DashboardJobsSteerResponse,
     DashboardOpsHealthResponse,
     DashboardOpsLogsResponse,
     DashboardSessionsListResponse,
@@ -113,68 +103,7 @@ def build_bff_router(  # noqa: C901, PLR0915
                 raise mapped from exc
             raise
 
-    @router.get("/jobs")
-    async def list_jobs() -> DashboardJobsListResponse:
-        if e2e_enabled():
-            return stub_jobs_list()
-        try:
-            return await hub.list_jobs()
-        except Exception as exc:
-            mapped = map_hub_errors(exc)
-            if mapped is not None:
-                raise mapped from exc
-            raise
-
-    @router.post("/jobs/launch")
-    async def launch_job(
-        body: DashboardJobsLaunchRequest,
-    ) -> DashboardJobsLaunchResponse:
-        if body.agent not in adapter.agent_names:
-            raise HTTPException(
-                status_code=400, detail=f"unknown agent: {body.agent!r}"
-            )
-        if e2e_enabled():
-            return stub_jobs_launch(body.agent)
-        try:
-            return await hub.launch_job(
-                agent=body.agent,
-                prompt=body.prompt,
-                job_name=body.job_name,
-                model=body.model,
-            )
-        except Exception as exc:
-            mapped = map_hub_errors(exc)
-            if mapped is not None:
-                raise mapped from exc
-            raise
-
-    @router.post("/jobs/steer")
-    async def steer_job(
-        body: DashboardJobsSteerRequest,
-    ) -> DashboardJobsSteerResponse:
-        if e2e_enabled():
-            return stub_jobs_steer(body.job_id)
-        try:
-            return await hub.steer_job(body.job_id, body.text)
-        except Exception as exc:
-            mapped = map_hub_errors(exc)
-            if mapped is not None:
-                raise mapped from exc
-            raise
-
-    @router.post("/jobs/cancel")
-    async def cancel_job(
-        body: DashboardJobsCancelRequest,
-    ) -> DashboardJobsCancelResponse:
-        if e2e_enabled():
-            return stub_jobs_cancel(body.job_id)
-        try:
-            return await hub.cancel_job(body.job_id)
-        except Exception as exc:
-            mapped = map_hub_errors(exc)
-            if mapped is not None:
-                raise mapped from exc
-            raise
+    register_jobs_routes(router, adapter, hub, tokens)
 
     @router.get("/sessions/turns")
     async def list_session_turns(

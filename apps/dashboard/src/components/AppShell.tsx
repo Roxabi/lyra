@@ -1,11 +1,11 @@
 import { AppShell as AstryxAppShell } from "@astryxdesign/core/AppShell";
 import { LinkProvider } from "@astryxdesign/core/Link";
+import { ToastViewport } from "@astryxdesign/core/Toast";
 import { Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppSideNav } from "@/components/layout/AppSideNav";
 import { AppTopNav } from "@/components/layout/AppTopNav";
 import { RouterLink } from "@/components/layout/RouterLink";
-import { Toaster } from "@/components/ui/sonner";
 import { resolveNavFlags } from "@/lib/nav";
 import { ShellTitleProvider } from "@/lib/shell-title";
 import { cn } from "@/lib/utils";
@@ -27,33 +27,37 @@ export function AppShell() {
   return (
     <ShellTitleProvider key={pathname}>
       <LinkProvider component={RouterLink}>
-        <AstryxAppShell
-          className="ember-canvas bg-background text-foreground"
-          topNav={<AppTopNav />}
-          sideNav={<AppSideNav />}
-          // Mobile nav is the SideNav in a hamburger drawer (#2090 replaces the
-          // former bottom-tab bar). Controlled so the route-change effect closes it.
-          mobileNav={{ isOpen: mobileNavOpen, onOpenChange: setMobileNavOpen }}
-        >
-          <div
-            className={cn(
-              "mx-auto w-full",
-              fullBleed
-                ? // overflow-hidden so pages that own their internal scroll (chat)
-                  // don't stack a second scroll region inside Astryx's scrollable
-                  // content area.
-                  "h-full min-h-0 max-w-none overflow-hidden p-0"
-                : cn(
-                    "px-4 py-4 md:px-6 md:py-6",
-                    wideLayout ? "max-w-6xl xl:max-w-7xl" : "max-w-5xl",
-                  ),
-            )}
+        {/* ToastViewport provides the ToastContext for useToast() across every
+            page + dialog (they render under this subtree) and renders the toast
+            stack; it adds no wrapping DOM element around the shell. */}
+        <ToastViewport position="bottomEnd">
+          <AstryxAppShell
+            className="ember-canvas bg-background text-foreground"
+            topNav={<AppTopNav />}
+            sideNav={<AppSideNav />}
+            // Mobile nav is the SideNav in a hamburger drawer (#2090 replaces the
+            // former bottom-tab bar). Controlled so the route-change effect closes it.
+            mobileNav={{ isOpen: mobileNavOpen, onOpenChange: setMobileNavOpen }}
           >
-            <Outlet />
-          </div>
-        </AstryxAppShell>
+            <div
+              className={cn(
+                "mx-auto w-full",
+                fullBleed
+                  ? // overflow-hidden so pages that own their internal scroll (chat)
+                    // don't stack a second scroll region inside Astryx's scrollable
+                    // content area.
+                    "h-full min-h-0 max-w-none overflow-hidden p-0"
+                  : cn(
+                      "px-4 py-4 md:px-6 md:py-6",
+                      wideLayout ? "max-w-6xl xl:max-w-7xl" : "max-w-5xl",
+                    ),
+              )}
+            >
+              <Outlet />
+            </div>
+          </AstryxAppShell>
+        </ToastViewport>
       </LinkProvider>
-      <Toaster />
     </ShellTitleProvider>
   );
 }

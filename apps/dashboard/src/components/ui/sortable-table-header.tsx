@@ -1,6 +1,12 @@
+import { TableHeaderCell } from "@astryxdesign/core/Table";
 import type { SortDirection } from "@/lib/sort";
-import { cn } from "@/lib/utils";
 
+/**
+ * Sortable column header — an Astryx `TableHeaderCell` (native `<th>` styled via
+ * TableContext) wrapping the app's sort button + direction arrow. Must be
+ * rendered inside an Astryx `Table`. Sort state stays app-driven (`useTableSortable`
+ * is data-driven only); this keeps the existing tested sort logic.
+ */
 export interface SortableTableHeaderProps {
   label: string;
   active: boolean;
@@ -17,8 +23,9 @@ export function SortableTableHeader({
   className,
 }: SortableTableHeaderProps) {
   return (
-    <th
-      className={cn("py-2 pr-3 font-medium text-muted-foreground", className)}
+    <TableHeaderCell
+      scope="col"
+      className={className}
       aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
     >
       <button
@@ -29,6 +36,6 @@ export function SortableTableHeader({
         {label}
         {active ? <span aria-hidden>{direction === "asc" ? "↑" : "↓"}</span> : null}
       </button>
-    </th>
+    </TableHeaderCell>
   );
 }

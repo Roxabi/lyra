@@ -6,8 +6,8 @@ description: Living reference for the NATS SDK, shared schema package, voice/ima
 # Cross-project Contracts — factory
 
 > Status: LIVING — current truth for cross-project NATS contracts and shared schemas.
-> Last updated: 2026-05-09.
-> Source ADRs: 045, 049, 052, 073. Absorbed: 037, 040, 044, 047, 050, 062, 066.
+> Last updated: 2026-07-02.
+> Source ADRs: 045, 049, 052, 073, 084. Absorbed: 037, 040, 044, 047, 050, 062, 066.
 
 ## Scope
 
@@ -72,6 +72,39 @@ Workers are re-admitted automatically on their next heartbeat (heartbeat TTL: 15
 
 → ADR-052
 
+### Required field additions (wire-breaking without a shim)
+
+Optional/non-security fields follow ADR-049's minor path (`extra="ignore"` on consumers) — no
+shim sequence. This section covers **semantically required** fields only.
+
+A **required** field added to a `roxabi-contracts` model is wire-breaking even when the change
+looks purely additive, for two independent reasons:
+
+1. **Satellite lag.** llmCLI/voiceCLI/imageCLI are lock-pinned on older `roxabi-contracts` SHAs
+   and keep producing payloads without the new field until they bump their lock — hub-side
+   deserialization of those payloads would raise.
+2. **JetStream replay.** Persisted messages (e.g. `TurnWriteEvent` on stream `FACTORY_TURNS`)
+   replay old payloads to new consumers across a deploy; M₁ hub uptake follows the next converge
+   after `staging` merge (typically ≤5–10 min via podman-auto-update), not the next satellite
+   release.
+
+**Ineligible:** security-bearing fields (identity attestation, auth scopes, signed tokens, audit
+provenance) — major `roxabi-contracts` bump + coordinated satellite upgrade only (ADR-049
+§Versioning). No `default_factory` shim.
+
+**Pattern:** land the field as a `default_factory` mint shim (deserialize-compat within the current
+`CONTRACT_VERSION`, transitional per ADR-084 Amendment / #1619), have every in-repo producer set
+it explicitly at each construction site (+ fakes/fixtures/docker stubs), and let satellites echo
+it after their next lock bump (contracts-bump workflow,
+`docs/ops/contracts-bump-callers.md` — `wire-breaking` label when `CONTRACT_VERSION` changes).
+Flip the field to hard-required only on the next `CONTRACT_VERSION` bump (#1841 for `job_id`).
+Worked example: `WorkEnvelope.job_id` (#1619, ADR-084 Amendment).
+
+**How to apply:** before choosing required vs. default for any field addition/requirement
+change, enumerate every producer per direction (in-repo vs. satellite), every stream-persisted
+model that carries that field, and extend subject→envelope enforcement tests when adding
+work-plane fields. This enumeration is the actual gate — spec review alone has missed it before.
+
 ## Key invariants
 
 - All cross-project NATS schemas live in `packages/roxabi-contracts/`; none are re-implemented in satellite repos.
@@ -84,6 +117,7 @@ Workers are re-admitted automatically on their next heartbeat (heartbeat TTL: 15
 - External consumers pin `roxabi-nats` and `roxabi-contracts` by tag (`roxabi-nats/vX.Y.Z`); branch pinning is forbidden in `staging`/`main` of any production satellite.
 - All binary fixtures in `roxabi-contracts` are synthetically generated (never from real user data or model outputs).
 - `NatsAdapterBase._dispatch()` is the only caller of `deserialize()` in production paths; direct `Model.model_validate_json()` on raw `msg.data` is forbidden (bypasses 1 MB byte-size gate).
+- A required field added to any model MUST go through the default-mint shim → producer enumeration → `CONTRACT_VERSION` bump sequence (see "Wire-compatible field additions" above); shipping a bare required field is a wire-breaking change, not an additive one.
 
 ## Open questions / known gaps
 
@@ -109,6 +143,7 @@ Workers are re-admitted automatically on their next heartbeat (heartbeat TTL: 15
 | 045 | Extract roxabi-nats SDK as uv workspace subpackage | Accepted |
 | 049 | Extract roxabi-contracts as shared schema package | Accepted |
 | 052 | Registry-authoritative voice routing | Amended |
+| 084 | WorkEnvelope — the job_id invariant | Amended |
 | 037 | NatsOutboundListener placement and adapter standalone bootstrap | Absorbed by ADR-045 |
 | 040 | NATS messaging architecture review (9-finding table) | Absorbed by ADR-045 |
 | 047 | NATS connector ownership pattern (7 rules + satellite grep-gate) | Absorbed by ADR-045 |

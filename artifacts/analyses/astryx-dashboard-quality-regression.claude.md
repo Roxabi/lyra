@@ -1,0 +1,96 @@
+# Root-Cause Review — Astryx Dashboard Migration Quality Loss
+
+> **Status (2026-07-02):** Root cause #1 **fixed on staging** via #2152 / `c71be0924` (issue #2148 closed) — universal reset extracted to `brand/reset.css` and imported as `layer(reset)` below `astryx-base`; verified (Astryx Button padding `0`→`8px 12px`, visual gate extended to `/design-system`). Root causes #2 (Table auto-layout collapse), #3 (`--color-on-accent`), #4 (bordered variant) remain as follow-ups (#2109 for #3/#4). Superseded PR #2151 carried this evidence trail forward in a docs-only merge. `apps/dashboard/DESIGN.md` is the forward-looking doctrine.
+
+## 1. Executive summary
+
+**Root cause:** `apps/dashboard/src/index.css:9` declares the cascade-layer order `reset, theme, base, astryx-base, astryx-theme, brand, components, utilities`, and imports the legacy pre-Astryx universal reset (`brand/base.css:6-12`, `*{margin:0;padding:0}`) into the `brand` layer — which sits *after* `astryx-base`. Because CSS cascade layers dominate specificity outright, this single misplaced `layer()` binding zeroes the padding on every unguarded Astryx primitive (Button, Badge, TextInput, Card, TextArea, SegmentedControl) app-wide, regardless of the correct non-zero token values Astryx itself ships. This is CONFIRMED via live CSSOM + prod-bundle byte tracing, not inferred. Contributing causes, ranked: (2) an Astryx `<td>`/table-layout auto-collapse bug independently wrecking Fleet and the Agents table view; (3) `roxabi.theme.ts` wiring only 4 of the needed token families (accent color, font, radius, motion) — omitting `--color-on-accent` and elevation/glow tokens; (4) Astryx v0.1.2 shipping zero bordered-variant components, silently mapped `outline→ghost` and losing affordance; (5) a hybrid Astryx/hand-rolled-Tailwind coexistence model adopted with no governance, producing visibly inconsistent chrome on the same screen. The process failure that let all of this ship: a 12-stage migration (S0–S12) with no visual-regression gate, a component catalog page (`DesignSystemPage.tsx`) that was never checked for actual rendered padding, and no frontend/design doc to encode the constraints Astryx imposes.
+
+## 2. What you're seeing (per surface)
+
+| Surface | Symptom | Screenshot evidence |
+|---|---|---|
+| Home | Count badges/CTA text touch pill edges; "En ligne" badge yellow-on-green in light mode; cards have zero elevation; table rows ~160px tall next to 0px-padded controls | `overall_quality:2`, critical padding findings |
+| Jobs | "Lancer" button text touches all 3 edges; short-label badges ("Actif") clipped by fixed corner radius worse than long labels | `overall_quality:2` |
+| Agents (list+detail) | Table view **functionally broken** — only 1 of 11 columns visible, rows 240-305px tall; Soul-tab ghost buttons render as plain unstyled inline words | `overall_quality:1` (worst page) |
+| Chat | Send button icon stacks above label and text overflows the pill; session-resume rows collapse from 2-column to stacked layout | `overall_quality:2` |
+| Fleet | **6 of 7 table columns render 0 pixels** — Status/Digest/Health/Revision/Age entirely invisible; filter chips are bare unstyled text | `overall_quality:1` (worst page, tied) |
+| Ops (Supervision) | Page title glued to viewport corner (0px inset); Card bg identical to page bg (no elevation); log stream has zero severity hierarchy | `overall_quality:2` |
+| Spans | Card content flush against rounded corner (8x-zoom-confirmed); filter inputs' placeholder text touches left edge | `overall_quality:2` |
+| Integrations | "Enregistrer le jeton" button fully invisible (no bg, no border) — indistinguishable from paragraph text | `overall_quality:2` |
+| Users/Admin | Icon+label stack vertically and overflow past button boundary (icon passed as raw `children` instead of Astryx's `icon` prop, interacting with Tailwind's `svg{display:block}` preflight) | `overall_quality:2` |
+| Pipeline | Filter toggles are bare inline text; Card padding mismatched against an adjacent hand-rolled alert box in the same column | `overall_quality:2` |
+| Design System (catalog) | The catalog page meant to prevent this shows the bug itself — Button/Badge variants clipped in both themes | `overall_quality:2` |
+
+Net: **9 of 10 audited pages score ≤2/5**, 2 score 1/5 (functionally broken tables), and every page independently reproduces the same padding-collapse signature — this is a systemic, not page-local, defect.
+
+## 3. Ranked root causes
+
+### #1 — Cascade-layer reset order zeroes all Astryx padding
+**Severity:** critical · **Verdict: CONFIRMED**
+
+- **Symptom:** every unguarded Astryx primitive (Button, Badge, TextInput, TextArea, SegmentedControl, Card content) computes `padding: 0px` in production.
+- **Mechanism:** `apps/dashboard/src/index.css:9` → `@layer reset, theme, base, astryx-base, astryx-theme, brand, components, utilities;`. Line 23 imports `brand/styles.css` `layer(brand)`; `brand/styles.css:14` imports `brand/base.css` with no layer keyword (inherits `brand`). `brand/base.css:6-12`'s universal `*,*::before,*::after{margin:0;padding:0}` therefore lands in the `brand` layer, positioned *after* `astryx-base` in the declared order. Cascade layers decide the winner before specificity is even evaluated, so this zero-specificity reset beats Astryx's own `.xrrkdod{padding-inline:var(--spacing-3)}` / `.xf314gf{padding-inline:var(--spacing-2)}` rules unconditionally.
+- **Exact location:** `apps/dashboard/src/index.css:9,23` + `brand/base.css:6-12`.
+- **Blast radius:** app-wide — every page that renders an Astryx Button, Badge, TextInput, TextArea, SegmentedControl, or Card interior. Corroborated by two independent traces: live CSSOM on prod (`design-system` page) and byte-offset layer tracing of the compiled prod bundle (`_all.css`: `astryx-base@10347 < astryx-theme@131652 < brand@149139`).
+- **Note:** the adjacent claim that Astryx's CSS is imported "unlayered" and therefore *should* outrank `utilities` (index.css comment, secondary finding #4) was checked and is **REFUTED** — `astryx.css` self-wraps its entire contents in `@layer astryx-base{...}`, so it is correctly layered and does *not* outrank utilities. This does not change #1's diagnosis; it only means the fix is scoped to the reset, not to the astryx.css import statement.
+
+### #2 — Astryx Table auto-layout collapse (columns vanish)
+**Severity:** critical · **Verdict: well-evidenced via live Playwright CSSOM probe (not in the formal adversarial verification set — treat as PLAUSIBLE pending the same rigor applied to #1)**
+
+- **Symptom:** Fleet table shows only the Image column; 6/7 columns render at 0px width. Agents table view balloons row height to 240-305px with only 1 of ~5 content groups visible.
+- **Mechanism:** distinct from #1 — not a padding issue. The Image `<td>` carries Tailwind `max-w-[220px] truncate` directly on the cell (`FleetPage.tsx:213`), forcing `white-space:nowrap` and an unbreakable min-content width; every sibling cell inherits Astryx's `overflow-wrap:break-word`/`word-break:break-word` defaults, letting their min-content shrink toward 0. Browser table auto-layout does not treat `max-width` on a `<td>` as a hard constraint when other columns can shrink further, so Image claims the full table width and the rest collapse to `width:0px`. Live probe confirms: Image `<td>` renders at 1130px vs its declared 220px max-width; header row 37px vs body rows 240-305px.
+- **Exact location:** `apps/dashboard/src/pages/FleetPage.tsx:154-227` (esp. `:213`); `apps/dashboard/src/components/agents/AgentsListPanel.tsx:328-404` (children-mode Table usage, likely bypassing Astryx's intended `columns`+`data` API which presumably sets `table-layout:fixed`).
+- **Blast radius:** Fleet page (critical, page-breaking) + Agents list table view (critical, page-breaking). Two pages fully non-functional as data tables.
+
+### #3 — `roxabi.theme.ts` foreground/on-accent token never wired
+**Severity:** high · **Verdict: PARTIALLY_TRUE — root-cause, but narrower and less severe than first framed**
+
+- **Symptom:** primary CTA text color differs by theme in a way that reads as off-brand (dark mode: near-black `rgb(23,23,23)` text on Forge orange).
+- **Mechanism:** `apps/dashboard/src/astryx-theme/roxabi.theme.ts:32-33` overrides only `--color-accent`/`--color-accent-muted`, never Astryx's real foreground token `--color-on-accent` (consumed by `@astryxdesign/core/Button.tsx:174-175`). `theme-neutral`'s untouched default (`light-dark(#ffffff,#171717)`) is used instead of the brand's own `--accent-on` (`brand/tokens/colors.css:34,75`).
+- **Correction to the raw claim:** this is a **brand-fidelity gap, not a legibility regression**. Contrast math: current `#171717` on `#e85d04` ≈ 5.12:1 (passes WCAG AA). Naively substituting the brand's `--accent-on` (`#fafafa`) on the same orange ≈ 3.35:1 (**fails** AA) — the "fix" as literally stated would make things worse. In light mode there is zero divergence (both resolve to `#ffffff`).
+- **Exact location:** `apps/dashboard/src/astryx-theme/roxabi.theme.ts:26-52` (missing `--color-on-accent` key).
+- **Blast radius:** every primary-orange CTA across all pages, both themes (visually), but functionally only the dark-mode hue/brand-fidelity is at stake — not accessibility.
+
+### #4 — Astryx v0.1.2 ships no bordered variant
+**Severity:** high · **Verdict: PARTIALLY_TRUE — real, but overstated in the original framing**
+
+- **Symptom:** "Outline"/"Ghost" buttons and "Outline" badges render as unstyled inline text.
+- **Mechanism:** `@astryxdesign/core@0.1.2`'s `Button.tsx`/`Badge.tsx` genuinely define zero border rules across all variants (`borderWidth:0` in `styles.base`) — confirmed in package source, compiled theme CSS, and the live prod bundle (only `.astryx-button.destructive` and 14 unbordered `.astryx-badge.*` rules exist). `components/ui/button.tsx:15-24` documents this and maps shadcn `outline`→Astryx `ghost` (transparent) "to preserve fill-vs-transparent contrast" — but the result is literal borderless text for that one mapped variant.
+- **Correction:** the original claim over-generalized to "Secondary" buttons/badges too — checked against pre-migration git history and those already used `border-transparent` (invisible border) before the migration, so nothing visible was lost there. Only the `outline`/`ghost`-mapped controls and Badge's "Outline" demo genuinely lost a real boundary.
+- **Exact location:** `apps/dashboard/src/components/ui/button.tsx:15-24` (VARIANT_MAP); upstream limitation in `@astryxdesign/core@0.1.2` `Button.tsx`/`Badge.tsx`.
+- **Blast radius:** every page using an outline/secondary-boundary button or an Integrations-style bordered CTA (Integrations "Enregistrer le jeton" is the worst instance — fully invisible primary action on a security-sensitive form).
+
+### #5 — Elevation/glow tokens never mapped onto Astryx surfaces
+**Severity:** medium · **Verdict: PARTIALLY_TRUE — contributing, NOT a migration regression**
+
+- **Symptom:** Cards have zero shadow/depth; dark-mode card interior (`rgb(27,27,27)`) is actually *darker* than the surrounding canvas (`rgb(38,38,38)`) — inverted elevation.
+- **Mechanism:** `brand/tokens/elevation.css` defines `--shadow-sm/-md/-panel`, `--glow-accent/-ember`; `roxabi.theme.ts` never references them; confirmed dead (zero `var()` consumption) in the entire compiled prod bundle.
+- **Correction — important:** `git log --diff-filter=A -- brand/tokens/elevation.css` and full-history grep show these tokens have **never** been consumed, before or after the migration (introduced in the original pre-Astryx cockpit ship, PR #1771). The pre-migration baseline used generic Tailwind `shadow-sm`/`shadow-md` utilities, not brand elevation either. This is **pre-existing unimplemented debt**, not something Astryx broke.
+- **Exact location:** `apps/dashboard/src/astryx-theme/roxabi.theme.ts` (absent keys); `brand/tokens/elevation.css:1-7` (orphaned).
+- **Blast radius:** every Card surface, both themes — but as a flatness carried forward, not introduced.
+
+### #6 — Only 4 of N token families wired (framing cause behind #3/#5)
+**Severity:** medium (structural) · **Verdict: PARTIALLY_TRUE — contributing**
+
+- roxabi.theme.ts (`v0.1.2`-extending `neutralTheme`) wires exactly: `--color-accent[-muted]`, 3× `--font-family-*`, 5× `--radius-*`, 3× `--duration-*` + `--ease-standard`. This narrow scope is *why* #3 and #5 exist — it explains, but does not itself cause, the padding collapse (#1), which is orthogonal and unaffected by token completeness (Astryx's own spacing scale is numerically identical to brand's `spacing.css` scale at every shared step — wiring more tokens would not change which cascade layer wins).
+
+## 4. Why the migration let this happen (process)
+
+- **The visual-regression gate that exists did not catch it — its baseline was re-captured to the broken state.** `tests/e2e/dashboard/test_dashboard_visual.py` screenshots the cockpit `/chat` view (dark + light, 3% pixel tolerance) against committed baselines. During the migration those baselines (`tests/e2e/dashboard/snapshots/cockpit-*.png`) were regenerated to the padding-0 render, so the gate went green **on the regression** instead of blocking it. It also only covers `/chat`, not `/design-system` (where the clipping is starkest). The cutover commit (S12, `4248c0e5`) separately asserts the token/utility CSS is "byte-identical" — true for tokens, but the regressions came from the S1–S11 **component** swaps, which the re-baselined snapshot did not defend.
+- **The catalog page is not a doctrine, and nobody rendered it.** `DesignSystemPage.tsx` is an interactive component catalog, not written design standards — and it independently reproduces every finding (clipped Button/Badge, no elevation, no bordered variant) that shipped across the rest of the app. If the catalog itself had been screenshotted and eyeballed once per theme before S12, the padding bug would have been caught in one page instead of ten.
+- **A component-API doc exists, but no *system-level* doc encodes the cascade-layer contract.** `docs/standards/frontend-patterns.md` (on the `docs/promote-memory-audit` branch, not yet on staging; component-API gotchas for Stack/Card/Dialog/Toast) even states "unlayered Tailwind wins over Astryx's layered CSS **by cascade-layer position, not specificity**" and documents multiple *per-component padding workarounds* (`pl-6`/`pr-6` on edge cells, the `Card padding={0}` → TableCell edge-collapse-to-8px). So the team understood layer-position-beats-specificity — but treated padding collapse as a family of per-component symptoms to patch, and **never identified the one systemic cause**: `brand/base.css`'s `*{padding:0}` reset sitting in `@layer brand` above `astryx-base`. The missing artifact is a system-level design doctrine (cascade-layer invariant + token pipeline + component decision tree), which is exactly what the accompanying `DESIGN.md` now provides — `frontend-patterns.md` stays as its per-component companion.
+- **Cascade-layer ordering was never audited as a cross-cutting concern.** The layer list (`reset, theme, base, astryx-base, astryx-theme, brand, components, utilities`) was extended to accommodate Astryx without re-examining what `brand/base.css` — a pre-Astryx artifact — would do once it landed above `astryx-base`. This is a one-line, easily-reviewable diff that no review process caught.
+- **Hybrid coexistence (Astryx primitives + hand-rolled Tailwind) shipped without a decision rule.** Multiple pages mix an Astryx Table with hand-rolled `div` rows for structurally identical content (Home's Agents card vs. Jobs actifs/Chats récents), and mix Astryx Button/Badge with hand-rolled EmptyState/ListToolbar on the same screen — with no stated rule for when to use which, so inconsistency is now baked into the codebase, not just the CSS bug.
+- **Component-API misuse went unreviewed.** `AgentsListPanel.tsx` and `FleetPage.tsx` use Astryx `Table` in manual children-mode (`TableRow`/`TableCell`) rather than its `columns`+`data` API — plausibly the unsupported/lower-fidelity path — and nothing (lint, snapshot test, code review) flagged that as a footgun before two pages' tables broke outright.
+
+## 5. Fix direction (smallest change → most quality restored first)
+
+1. **Relocate the reset (#1, highest ROI).** Move `brand/base.css`'s universal `*{margin:0;padding:0}` out of the `brand` layer into the lowest `reset` layer (or drop it entirely, since Astryx ships its own zero-specificity `:where()` reset in `astryx-base` that already does this job per its documented contract). This is a one-line `@import` change with app-wide blast radius — it resolves the dominant share of "critical" findings across all 10 pages in one move.
+2. **Fix the Table auto-layout collapse (#2).** Move the `max-w`/`truncate` Tailwind classes off the raw `<td>` onto an inner wrapper element; audit whether `AgentsListPanel`/`FleetPage` should be migrated from Table's children-mode to its `columns`+`data` API (likely the properly-supported, width-safe path). This unblocks two currently non-functional pages.
+3. **Wire `--color-on-accent` deliberately, with a contrast check against Forge orange specifically** (#3) — do not blindly copy the brand's `--accent-on` value without verifying WCAG AA against the actual orange fill; pick or compute a foreground that both matches brand intent and clears contrast in both themes.
+4. **Decide a bordered-affordance strategy for Astryx v0.1.2's border-0 limitation** (#4) — either accept the constraint and design a consistent non-border secondary affordance (tint/fill-based) across the whole app instead of the current silent `outline→ghost` shim, or patch/fork the primitive locally. Priority: fix the Integrations "Enregistrer le jeton" instance first (invisible primary action on a credentials form).
+5. **Map `brand/tokens/elevation.css` onto Astryx surface tokens** (#5) — lower urgency since it's pre-existing debt, not a regression, but cheap once the reset (#1) is fixed since surfaces will otherwise still read flat.
+6. **Close the process gap:** **extend** the existing cockpit visual gate (`test_dashboard_visual.py`) to also snapshot `/design-system` in both themes and assert non-zero control padding, and make re-baselining a reviewed step (a snapshot regenerated in the same PR that changes rendering must be eyeballed, not rubber-stamped) so a future cascade/token change can't silently re-bless a regression; land the system-level `DESIGN.md` doctrine (cascade-layer invariant, token pipeline, decision tree) alongside the existing per-component `docs/standards/frontend-patterns.md`, cross-referenced; and pick one governing rule for Astryx-vs-hand-rolled component choice per content type (tables, empty states, toolbars) to remove the "two design languages on one screen" findings.
+
+**Files referenced:** `apps/dashboard/src/index.css`, `brand/base.css`, `brand/reset.css`, `apps/dashboard/src/astryx-theme/roxabi.theme.ts`, `apps/dashboard/src/pages/FleetPage.tsx`, `apps/dashboard/src/components/agents/AgentsListPanel.tsx`, `apps/dashboard/src/components/ui/button.tsx`, `brand/tokens/elevation.css`, `apps/dashboard/DESIGN.md`.

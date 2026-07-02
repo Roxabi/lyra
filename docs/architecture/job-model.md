@@ -280,7 +280,7 @@ The job subtree (`factory.job.<id>.*`) IS the trace — no separate observabilit
 | #1792 | D | Shape D — steerable stateful + runtime control | Open epic — remaining blocker #1778 (#1619, #1203 closed) |
 | #1793 | A | Unify subject taxonomy (`factory.job.<id>.*`) | ✅ Closed |
 | #1794 | B | Amend ADR-084 → `job_id=run` | ✅ Closed |
-| #1795 | E | **JobResult** → pub/sub + 3-tier transport | Open |
+| #1795 | E | **JobResult** → pub/sub + 3-tier transport | ✅ Closed — hub close-on-result via `ResultCloseListener` (PR #2153) |
 | #1796 | C | Active-jobs registry (NATS-KV **factory-active-jobs**) | ✅ Closed — substrate; write path landed later via PR #2125 (see caveat) |
 | #1797 | D | Concurrency router (shared inbound stage) | Open |
 | #1798 | F | STT/LLM/TTS/image → sub-jobs | Open |

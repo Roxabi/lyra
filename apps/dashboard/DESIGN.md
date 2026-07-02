@@ -211,6 +211,7 @@ Note on `list-toolbar.tsx`: it deliberately does **not** use Astryx's `Toolbar` 
 6. Changing how a brand value maps into Astryx? Edit `apps/dashboard/src/astryx-theme/roxabi.theme.ts`'s `tokens: {}` block — always `var(--brand-token)`, never a literal, and if you add a background/color token, also wire its foreground pair (§6) with a contrast check.
 7. Run `bun run --cwd apps/dashboard theme:build` → regenerates `src/astryx-theme/built/{roxabi.theme.css,roxabi.js,roxabi.d.ts,roxabi.variants.d.ts}`. Commit these — CI's `theme_build_drift` gate (`scripts/check-theme-build-drift.sh`) diffs a fresh build against the committed copy and **fails the pipeline** on drift.
 8. Add/update the demo in `DesignSystemPage.tsx` so the change is visually reviewable in the catalog.
+8b. **If your change alters rendering** (spacing, color, layout), regenerate the cockpit visual-regression baseline and **eyeball it** before committing: `bun run build:dashboard` then `UPDATE_DASHBOARD_SNAPSHOTS=1 uv run pytest tests/e2e/dashboard/test_dashboard_visual.py` (writes `tests/e2e/dashboard/snapshots/cockpit-{dark,light}.png`; regenerate with the pinned playwright so it matches CI). CI's `ci` job runs this gate at 3% tolerance. **Never re-bless a snapshot you haven't looked at** — re-baselining to a regressed render is exactly how the padding bug shipped green (see the root-cause review).
 9. Run Astryx's own health check before pushing: `node apps/dashboard/node_modules/@astryxdesign/cli/bin/astryx.mjs --json doctor` (mirrors CI's `astryx_doctor` gate — catches Node-floor, core↔cli version misalignment, missing peer deps; only `status:"fail"` blocks, warnings are tolerated).
 10. `bun run lint` (Biome, `lint_js`) + `bun run --filter @roxabi-factory/dashboard test` (Vitest, `dashboard_unit_test`, pre-push) + `bun run build:dashboard` (`dashboard_build`, CI) must pass.
 
@@ -241,5 +242,5 @@ Note on `list-toolbar.tsx`: it deliberately does **not** use Astryx's `Toolbar` 
 5. If I added/changed a background color token: did I wire its matching foreground token and verify WCAG contrast (≥4.5:1 normal / ≥3:1 large+UI)?
 6. Did I avoid faking a bordered variant, a one-off shadow, or any other override that fights an Astryx primitive instead of designing around its actual capabilities (§8)?
 7. Did I add/update the demo in `DesignSystemPage.tsx` for any new pattern?
-8. `astryx doctor` clean (no `fail` checks)? `bun run lint`, dashboard Vitest suite, `bun run build:dashboard` all green?
+8. `astryx doctor` clean (no `fail` checks)? `bun run lint`, dashboard Vitest suite, `bun run build:dashboard`, and the `tests/e2e/dashboard/` visual-regression gate all green? If my change altered rendering, did I regenerate **and eyeball** the cockpit snapshots (never rubber-stamp)?
 9. Am I about to add padding/margin/sizing overrides to compensate for cramped Astryx controls? If yes — stop, that's very likely masking the §3 cascade bug, not a legitimate style choice.

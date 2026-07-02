@@ -1,6 +1,6 @@
 # Runbook — Outbound audio deploy (#1482)
 
-JetStream-backed outbound audio: subjects `factory.outbound.audio.<platform>.<bot_id>`, stream `FACTORY_OUTBOUND_AUDIO`, KV `factory_outbound_audio_sent`. ADR-077.
+JetStream-backed outbound audio: subjects `factory.outbound.audio.<platform>.<bot_id>`, stream `FACTORY_OUTBOUND_AUDIO`, KV `factory_outbound_audio_sent`. ADR-079 (supersedes ADR-077).
 
 ## Parameters
 

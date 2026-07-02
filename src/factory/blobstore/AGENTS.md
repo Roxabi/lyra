@@ -110,5 +110,5 @@ The bare per-call `get_blobstore_client()` factory has been removed (ADR-082). `
 - `docs/runbooks/README.md` — install, secret rotation, backup procedures
 - `docs/architecture/adr/067-blobstore-abstraction-flat-fs-content-addressed.mdx` — Protocol
   contract, HTTP API mapping, auth plane decisions
-- `docs/architecture/adr/082-blobstore-driven-port.mdx` — driven-port pattern + injection wiring
+- `docs/architecture/adr/archive/082-blobstore-driven-port.mdx` — driven-port pattern + injection wiring
 - `artifacts/specs/1330-v8-http-fronted-blobstore-spec.mdx` — V8 full spec

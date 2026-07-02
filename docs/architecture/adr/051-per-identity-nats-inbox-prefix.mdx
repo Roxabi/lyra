@@ -1,7 +1,7 @@
 ---
 title: "ADR-051: Per-identity NATS inbox prefix as a security invariant"
 description: Eliminate bus-wide _INBOX.> ACL grants by assigning each NATS identity a scoped inbox_prefix at connect time, so that an identity's ephemeral inboxes are confined to _INBOX.<identity>.> and a leaked seed cannot be used to read other identities' request-reply traffic.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/security-routing.md`](../security-routing.md){#current-truth}
@@ -11,6 +11,29 @@ status: accepted
 ## Status
 
 Accepted
+
+Amended 2026-07-01 (consolidation v2): inbox prefix normalized to lowercase `_inbox.<identity>` (postmortem Fix 1) and set via `nats_connect(identity_name=...)` instead of a raw `inbox_prefix` kwarg; the identity roster below is historical.
+
+### Amendment (2026-07-01)
+
+The security invariant of this ADR (scoped per-identity inbox, bounded blast radius) is fully
+alive and enforced. Two mechanics described below are superseded:
+
+- **Casing:** the ADR mandates uppercase `_INBOX.<identity>`. Code and ACLs normalized to
+  **lowercase** `_inbox.<identity>` (postmortem Fix 1 — nats-py emits lowercase
+  identity-scoped inboxes). `deploy/nats/acl-matrix.json` grants are lowercase
+  `_inbox.<identity>.>` throughout; the defensive dual upper/lower grants described in the
+  Consequences section are gone.
+- **API:** the raw `inbox_prefix` kwarg convention is retired. The canonical entry point is
+  `nats_connect(identity_name=...)` (`packages/roxabi-nats/src/roxabi_nats/connect.py`),
+  which validates the token and sets `inbox_prefix=f"_inbox.{identity_name}"` internally.
+  The `inbox_prefix` CI gate (`scripts/check_inbox_prefix.py`) flags raw `_INBOX`
+  f-string/literal constructions and mandates `identity_name=`.
+
+The identity roster in the Scope table is stale: `tts-adapter` / `stt-adapter` no longer
+exist in `acl-matrix.json`, and the live roster has grown well beyond the table
+(clipool-worker, turn-writer, blobstore, omp-worker, …). The matrix is the SSoT for
+current identities and grants.
 
 ## Context
 
@@ -101,6 +124,10 @@ Apply `inbox_prefix="_INBOX.hub"` only to the hub's connect call; leave other id
 
 ### Rule
 
+*(Historical — superseded, see Amendment 2026-07-01: prefix is now lowercase
+`_inbox.<identity>` and is set via `nats_connect(identity_name=...)`, not a raw
+`inbox_prefix` kwarg.)*
+
 Every NATS identity connecting through `roxabi_nats.nats_connect` MUST supply `inbox_prefix`
 equal to `_INBOX.<identity-name>`. Example: hub identity connects with
 `inbox_prefix="_INBOX.hub"`.
@@ -110,6 +137,9 @@ equal to `_INBOX.<identity-name>`. Example: hub identity connects with
 roles.
 
 ### Scope
+
+*(Historical roster as of #715 — `tts-adapter` / `stt-adapter` no longer exist in
+`acl-matrix.json`; see Amendment 2026-07-01.)*
 
 All identities currently holding `_INBOX.>` in `acl-matrix.json`:
 
@@ -134,6 +164,10 @@ already forwards `**extra` to `nats.connect()`. No SDK code change is required; 
 `inbox_prefix` kwarg is a caller-supplied parameter. Each call site passes its identity-specific
 prefix. The SDK README MUST document `inbox_prefix` as a required-by-convention parameter for
 any identity that holds an inbox ACL grant.
+
+*(Superseded — see Amendment 2026-07-01: the SDK grew a first-class `identity_name=`
+parameter that derives the prefix internally; caller-supplied raw `inbox_prefix` is
+gate-banned.)*
 
 ### Relation to ADR-046 (nkey provisioning)
 
@@ -199,7 +233,8 @@ connect call from the start. The `_INBOX.>` wildcard is not available for new id
   versions) requires a matching `_inbox.<identity>.>` grant until all deployed nats-py versions
   are confirmed to use uppercase. tts-adapter, stt-adapter, and image-worker entries in
   `acl-matrix.json` currently include the lowercase variant defensively; this pattern continues
-  with the scoped prefix.
+  with the scoped prefix. *(Historical — resolved the other way: lowercase `_inbox.` became
+  canonical, uppercase grants were dropped; see Amendment 2026-07-01.)*
 
 ### Neutral
 

@@ -4,14 +4,14 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { dashboardDevMockPlugin } from "./dev-mock/plugin";
 
-const repoRoot = path.resolve(__dirname, "../..");
+const repoRoot = path.resolve(import.meta.dirname, "../..");
 const useMock = process.env.DASHBOARD_MOCK !== "0";
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), dashboardDevMockPlugin()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
   server: {

@@ -1,3 +1,4 @@
+import type { ServerResponse } from "node:http";
 import type { Connect, Plugin } from "vite";
 import {
   createMockAdminUser,
@@ -40,13 +41,13 @@ function readJsonBody(req: Connect.IncomingMessage): Promise<unknown> {
   });
 }
 
-function sendJson(res: Connect.ServerResponse, status: number, body: unknown) {
+function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(body));
 }
 
-function sendSseChatStream(res: Connect.ServerResponse, userText: string) {
+function sendSseChatStream(res: ServerResponse, userText: string) {
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -71,7 +72,7 @@ function sendSseChatStream(res: Connect.ServerResponse, userText: string) {
 
 async function handleMockApi(
   req: Connect.IncomingMessage,
-  res: Connect.ServerResponse,
+  res: ServerResponse,
   next: Connect.NextFunction,
 ) {
   const url = new URL(req.url ?? "/", "http://localhost");

@@ -75,6 +75,12 @@ jobs:
           yq --version
 
       - name: Quality gates (stack.yml)
+        env:
+          # PR-only: honor gates' files: filters against the merge-base diff
+          # (origin/<base> exists thanks to fetch-depth: 0). Empty on push to
+          # staging/main, workflow_dispatch, or any future merge_group event →
+          # scripts/qg fails OPEN and runs ALL gates (previous behavior).
+          QG_DIFF_RANGE: ${{ github.event_name == 'pull_request' && format('origin/{0}...HEAD', github.base_ref) || '' }}
         run: scripts/qg run --stage ci
 
       # CI extras — repo-specific infra checks (not generic quality_gates)

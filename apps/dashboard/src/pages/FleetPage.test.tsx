@@ -95,5 +95,11 @@ describe("FleetPage", () => {
     // Astryx Table semantics + a sortable columnheader survive the migration.
     expect(screen.getByRole("table")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: /container/i })).toBeTruthy();
+    // Regression guard (#2156): all 7 columns must stay visible (max-w on <td> collapses siblings).
+    const headers = screen.getAllByRole("columnheader");
+    expect(headers).toHaveLength(7);
+    for (const header of headers) {
+      expect((header.textContent ?? "").replace(/[↑↓]/g, "").trim().length).toBeGreaterThan(0);
+    }
   });
 });

@@ -1,4 +1,4 @@
-FROM python:3.12.10-slim AS builder
+FROM python:3.14.6-slim AS builder
 
 # Install system deps (git needed for GitHub-sourced Python deps)
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*

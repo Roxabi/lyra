@@ -254,7 +254,7 @@ work-plane fields. This enumeration is the actual gate — spec review alone has
 | 049 | Extract roxabi-contracts as shared schema package | Amended |
 | 052 | Registry-authoritative voice routing | Amended |
 | 084 | WorkEnvelope — the job_id invariant | Amended — current truth in `job-model.md` |
-| 095 | Voice lifecycle plane — heartbeat vs capabilities listing | Accepted |
+| 095 | Voice lifecycle plane — heartbeat vs capabilities listing | Superseded — archived (invariants live in `messaging.md` § Voice lifecycle) |
 | 037 | NatsOutboundListener placement and adapter standalone bootstrap | Absorbed by ADR-045 |
 | 040 | NATS messaging architecture review | Absorbed by ADR-045 |
 | 047 | NATS connector ownership pattern | Absorbed by ADR-045 |

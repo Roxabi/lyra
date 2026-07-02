@@ -1,6 +1,6 @@
 ---
 title: "ADR-075: TurnWriter subscriber-writer sublayer under infrastructure/"
-description: Authorise src/lyra/infrastructure/turn_writer/ as a new subdirectory per infrastructure/ Governance rule. Single cross-platform NATS subscriber writes L1 raw turns to SQLite; deployed as Quadlet sibling lyra-turn-writer.container.
+description: Authorise src/factory/infrastructure/turn_writer/ as a new subdirectory per infrastructure/ Governance rule. Single cross-platform NATS subscriber writes L1 raw turns to SQLite; deployed as Quadlet sibling factory-turn-writer.container.
 status: accepted
 date: 2026-05-25
 deciders: [Mickael, architect, devops, axial-adr-review]
@@ -23,8 +23,8 @@ subscriber-writer that consumes a NATS subject and writes turns to SQLite — re
 current direct-write deviation documented in ADR-068 Application Map (TurnStore row: "tolerated
 until α-refactor #1331 lands").
 
-The proposed code lives at `src/lyra/infrastructure/turn_writer/`. The Governance rule in
-`src/lyra/infrastructure/CLAUDE.md` states:
+The proposed code lives at `src/factory/infrastructure/turn_writer/`. The Governance rule in
+`src/factory/infrastructure/CLAUDE.md` states:
 
 > Any new subdirectory under `infrastructure/` requires its own ADR.
 
@@ -55,7 +55,7 @@ existing `TurnStore` implementation.
 New `turn_writer/` sublayer owns the subscriber-writer lifecycle. `TurnStore` in `stores/`
 remains a passive SQLite implementation. The writer subscribes to `factory.turns.write` on
 JetStream durable consumer `turn-writer-v1` (stream `FACTORY_TURNS`) and calls `TurnStore` for
-persistence. Deployed as a separate Quadlet unit `lyra-turn-writer.container`.
+persistence. Deployed as a separate Quadlet unit `factory-turn-writer.container`.
 
 - **Pros:** Clean axial boundary per ADR-073 (one stage = one process). Independent restart
   without restarting hub or adapters. NATS JetStream persistence buffers writes during
@@ -75,7 +75,7 @@ Add the TurnWriter subscription to the hub startup sequence as an in-process bac
 
 ## Decision
 
-**Authorise `src/lyra/infrastructure/turn_writer/` as a new sublayer of `infrastructure/`.**
+**Authorise `src/factory/infrastructure/turn_writer/` as a new sublayer of `infrastructure/`.**
 
 Implementation shape:
 
@@ -84,7 +84,7 @@ Implementation shape:
   `FACTORY_TURNS`.
 - `TurnWriter` depends on `TurnStore` (from `infrastructure/stores/`) for SQLite persistence.
   It is not a store itself; it is a lifecycle component that owns the subscriber loop.
-- Deployed as Quadlet sibling `lyra-turn-writer.container` on `lyra-hub` (M₁).
+- Deployed as Quadlet sibling `factory-turn-writer.container` on `factory-hub` (M₁).
 
 **Panel vote (2026-05-25):** axial-adr-review voted Option 2 — stage boundary = process
 boundary per ADR-073; architect and devops voted Option 3 (simpler deployment). The
@@ -98,7 +98,7 @@ deviation from ADR-073, which the panel declined to accept.
 
 - Clean axial boundary: TurnWriter is one stage, one process. Restart policy is independent of
   hub and adapters. No stage concern leaks into hub startup.
-- NATS JetStream provides a persistence buffer: if `lyra-turn-writer` crashes and restarts, it
+- NATS JetStream provides a persistence buffer: if `factory-turn-writer` crashes and restarts, it
   resumes from the durable consumer offset — zero turn writes lost.
 - Pattern scales additively: each future writer (L2SummaryWriter, etc.) gets its own container
   and its own durable consumer on `FACTORY_TURNS`. The hub and adapters are unaffected. Growth
@@ -108,7 +108,7 @@ deviation from ADR-073, which the panel declined to accept.
 
 ### Negative
 
-- New Quadlet unit `lyra-turn-writer.container` requires:
+- New Quadlet unit `factory-turn-writer.container` requires:
   - New container definition in `deploy/quadlet/`.
   - New secret provisioning (NATS credentials for the writer identity).
   - Update to `deploy/install.sh` to provision the writer unit.
@@ -133,4 +133,4 @@ proliferation that would fragment the turn audit log.
 - ADR-073 — Axis of Decomposition: Stage of Pipeline (stage = process boundary argument)
 - Spec: `artifacts/specs/1331-turnstore-alpha-refactor-spec.mdx`
 - Plan: `artifacts/plans/1331-turnstore-alpha-refactor-plan.mdx`
-- Infrastructure governance: `src/lyra/infrastructure/CLAUDE.md`
+- Infrastructure governance: `src/factory/infrastructure/CLAUDE.md`

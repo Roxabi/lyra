@@ -1,15 +1,16 @@
 ---
 title: "ADR-097: OTel raw telemetry store — JSONL + SQLite without Langfuse v1"
 description: "Trace plane v1 persists OTLP spans as local JSONL under ~/.local/state/factory/otel/ with a SQLite index for dashboard queries. Langfuse deferred; three-store contract with blobstore and turns.db."
-status: accepted
+status: superseded by ADR-092
 date: 2026-06-30
 deciders: [Mickael]
 related: [068, 073, 084, 092, 094]
 issue: 2069
 ---
 
-> **Current truth** → [`docs/architecture/observability.md`](../observability.md){#current-truth}
+> **Current truth** → [`docs/architecture/observability.md`](../../observability.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+> **Archived (consolidation wave 3, 2026-07-02)** — absorbed into ADR-092 §6 (amendment masquerading as ADR).
 
 ## Status
 
@@ -83,10 +84,10 @@ Control-plane BFF exposes `GET /api/bff/spans` — paginated raw JSON, filters `
 
 ## See also
 
-- [ADR-092](092-observability-architecture.mdx) — amended: trace plane v1 = otel-raw
-- [ADR-094](094-control-plane-dashboard-consolidation.mdx) — amended: BFF raw spans engine
-- [ADR-068](068-ecosystem-service-plane.mdx) — service-plane access patterns
-- [ADR-084](084-workenvelope-job-id-invariant.mdx) — `job_id` / `trace_id` semantics
+- [ADR-092](../092-headless-engines-split-transport.mdx) — amended: trace plane v1 = otel-raw
+- [ADR-094](../094-control-plane-dashboard-consolidation.mdx) — amended: BFF raw spans engine
+- [ADR-068](../068-shared-state-nats-mediated-host-invisible.mdx) — service-plane access patterns
+- [ADR-084](../084-workenvelope-job-id-invariant.mdx) — `job_id` / `trace_id` semantics
 - Specs: `artifacts/specs/otel-raw-store-spec.mdx`, `otel-correlation-ids-spec.mdx`, `otel-span-attributes-spec.mdx`
-- [`docs/architecture/observability.md`](../observability.md) — current truth (observability domain page)
-- [`docs/runbooks/otel-traces.md`](../../runbooks/otel-traces.md) — startup without Langfuse
+- [`docs/architecture/observability.md`](../../observability.md) — current truth (observability domain page)
+- [`docs/runbooks/otel-traces.md`](../../../runbooks/otel-traces.md) — startup without Langfuse

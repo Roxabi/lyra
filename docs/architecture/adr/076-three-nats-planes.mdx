@@ -1,10 +1,10 @@
 ---
-title: "ADR-076: Three NATS planes — messages, persistence, typing/lifecycle"
-description: Catalogue the three orthogonal NATS planes that emerged in Lyra and the rule for choosing Core vs JetStream when adding a subject.
-status: accepted
+title: "ADR-076: NATS transport model — three planes + domain-first subject grammar"
+description: Catalogue the three orthogonal NATS planes and the rule for choosing Core vs JetStream when adding a subject; absorbs ADR-035's domain-first subject grammar.
+status: amended
 date: 2026-05-26
 deciders: [Mickael, architect, product-lead, devops, axial-adr-review]
-supersedes: []
+supersedes: [035]
 superseded_by: []
 related: [035, 045, 065, 073, 075]
 ---
@@ -19,6 +19,21 @@ Accepted — 2026-05-26.
 The decision is ratified now; the third plane (`factory.typing.*`) lands operationally with
 Epic #1375 / T1 (#1376). The ADR documents the pattern that already underlies the messages
 and persistence planes and prescribes where the new plane fits.
+
+Amended 2026-07-02 (consolidation wave 3): this record now also carries the domain-first
+subject grammar it builds on — ADR-035 is absorbed below and archived.
+
+## Absorbed — ADR-035: domain-first subject grammar
+
+The token grammar the planes inherit. Decision (Option A, 2026-05): every subject follows
+`factory.{domain}.{qualifier...}` — domain-first, not direction- or platform-first — because
+domain segments map one-to-one onto nkey ACL wildcards (one grant per domain), and because
+direction is a property of the flow, not of the name. Constraints that survive: subject tokens
+never contain dots; `scope_id` is resolved from the envelope body, never encoded in the subject;
+control-plane subjects stay deny-listed until a dedicated ADR approves their payloads.
+Amended along the way: the `lyra.` prefix became `factory.` (repo rename), and the numeric-only
+`bot_id` rule was corrected to the real slug rule `[A-Za-z0-9_-]+` once the web platform landed.
+Full record with options and token tables: `archive/035-nats-subject-naming-convention.mdx`.
 
 ## Context
 

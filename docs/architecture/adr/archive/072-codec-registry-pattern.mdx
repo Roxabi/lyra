@@ -2,15 +2,16 @@
 id: ADR-072
 title: "Codec registry pattern for NATS RenderEvent dispatch"
 description: Replace the if-elif decode chain in NatsRenderEventCodec with a dict[type, CodecBranch] registry and inverse index, eliminating the silent default-routing bug and making codec completeness machine-checkable.
-status: amended
+status: superseded by ADR-100
 date: 2026-05-14
 issue: "#1192"
 supersedes: "ADR-032 (Slice 3 of #1192 will add the matching superseded banner to ADR-032)"
 related: "ADR-070 (parent epic — RenderEvent v2 AG-UI modeling)"
 ---
 
-> **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
+> **Current truth** → [`docs/architecture/messaging.md`](../../messaging.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+> **Archived (consolidation wave 3, 2026-07-02)** — consolidated into ADR-100 (RenderEvent NATS wire protocol).
 
 
 ## Status

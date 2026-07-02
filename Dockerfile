@@ -40,7 +40,7 @@ RUN bun run build:dashboard
 # NOTE: this is the amd64 child digest (valid — docker-bake.hcl is single-platform/amd64).
 # Before adding a `platforms` entry to docker-bake.hcl, re-pin to the multi-arch INDEX digest:
 #   docker buildx imagetools inspect --format '{{.Manifest.Digest}}' ghcr.io/roxabi/base-svc:latest
-FROM ghcr.io/roxabi/base-svc@sha256:42b1d64e6e4a98d0840539aee73f3c3a43ab46683c9d6fe777b5cc725f5629c7 AS svc-runtime
+FROM ghcr.io/roxabi/base-svc@sha256:5d082ecbb89552bf02ecfce43d80703b0da95a28df10e01aa1b91e28375b9736 AS svc-runtime
 
 USER root
 

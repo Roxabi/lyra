@@ -81,7 +81,9 @@ quality_gates:
   typecheck:
     enabled: true
     script: uv run pyright
-    stages: [pre-commit, ci]
+    # pre-push (not pre-commit): pyright costs ~10-22s per run — too heavy for
+    # every commit, still blocks type errors before they reach CI.
+    stages: [pre-push, ci]
 
   file_length:
     enabled: true
@@ -151,7 +153,10 @@ quality_gates:
     script: bun run lint
     requires: bun
     stages: [pre-commit, ci]
-    files: ^(apps/|packages/shared/|brand/|biome\.json|package\.json|bun\.lock)$
+    # Prefix alternation MUST NOT be $-anchored: the old pattern
+    # ^(apps/|...)$ matched no nested file path, silently skipping biome on
+    # every frontend change once files: filters are honored.
+    files: ^(apps/|packages/|brand/)|^(biome\.json|package\.json|bun\.lock)$
     description: Biome lint on apps/packages/brand (#1771)
 
   dashboard_unit_test:
@@ -159,7 +164,7 @@ quality_gates:
     script: bun run --filter @roxabi-factory/dashboard test
     requires: bun
     stages: [pre-push, ci]
-    files: ^(apps/dashboard/|packages/shared/|brand/)
+    files: ^(apps/dashboard/|packages/shared/|brand/)|^(bun\.lock|package\.json)$
     description: Vitest unit tests for dashboard SPA (#1771)
 
   dashboard_build:
@@ -237,8 +242,16 @@ quality_gates:
 
   doc_drift_bundle:
     enabled: true
-    stages: [ci]
+    # pre-push too: symbol deletions repeatedly reach CI as doc-drift reds
+    # (fresh deletions are not grandfathered by the baseline) — catch pre-push.
+    stages: [pre-push, ci]
     description: legacy symbol grep + doc_drift + doc_semantic_drift
+
+  pytest_smoke:
+    enabled: true
+    script: PYTHONPATH=src uv run pytest tests/ -m smoke -q
+    stages: [pre-push]
+    description: fast in-process smoke tests — the only local pytest net (full suites run in CI); PYTHONPATH=src so worktree pushes test the worktree src, not the main checkout's editable install
 
   secrets_drift:
     enabled: true
@@ -319,7 +332,6 @@ qg:
   run_order:
     pre-commit:
       - lint
-      - typecheck
       - file_length
       - file_exemptions
       - hardcoded_constants
@@ -331,6 +343,9 @@ qg:
       - codes_sync
       - lint_js
     pre-push:
+      - typecheck
+      - pytest_smoke
+      - doc_drift_bundle
       - dashboard_unit_test
       - trufflehog
       - check_single_write_tool_display_config

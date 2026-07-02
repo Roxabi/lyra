@@ -14,6 +14,12 @@ set -euo pipefail
 REPO_ROOT="${QG_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 STACK="${QG_STACK:-${REPO_ROOT}/.claude/stack.yml}"
 
+# Gates invoke `uv run <tool>`; without no-sync, uv re-resolves and rewrites
+# uv.lock / bakes worktree paths into the shared symlinked .venv when a gate
+# runs from a linked worktree (git hooks fire there too). CI is unaffected:
+# ci.yml runs `uv sync --frozen` before any gate.
+export UV_NO_SYNC=1
+
 BUN_HINT="bun not installed — https://bun.sh (see package.json packageManager)"
 TRUFFLEHOG_HINT="trufflehog not installed — https://github.com/trufflesecurity/trufflehog/releases"
 
@@ -211,7 +217,7 @@ EOF
 }
 
 run_gate() {
-  local gate="$1" stage_filter="${2:-}" 
+  local gate="$1" stage_filter="${2:-}"
   shift 2 || true
   local -a changed=("$@")
 

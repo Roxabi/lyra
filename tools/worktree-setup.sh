@@ -55,5 +55,17 @@ refresh_ccc_index() {
   fi
 }
 
+# Hooks live in the shared common hooks dir (one install covers the main
+# checkout and every linked worktree), but dev-setup may never have run on this
+# machine — worktree creation is the flow agents always pass through, so
+# self-heal here. Non-fatal: a missing pre-commit binary must not block
+# worktree creation.
+ensure_hooks() {
+  if [ -f tools/install-hooks.sh ]; then
+    bash tools/install-hooks.sh || echo "worktree-setup: hook install failed — continuing" >&2
+  fi
+}
+
 link_venv
 refresh_ccc_index
+ensure_hooks

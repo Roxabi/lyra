@@ -287,13 +287,31 @@ _classify_drift() {
     return 0
 }
 
+# Single source of truth for the non-runtime (inert) path allowlist — shared by
+# _code_change_is_inert and _code_change_is_image_carried. Extracting it here is what
+# enforces their lockstep (review #2144: parallel-path-drift — the list was authored
+# twice with only a comment binding the copies).
+#
+# `*.md`/`*.txt` are inert anywhere in the tree: no runtime config is a bind-mounted,
+# read-at-startup .md/.txt today (all mounted config is *.json/*.conf/*.yml/*.toml — grep
+# `Volume=` in deploy/quadlet/ before ever adding one), and any .md/.txt baked into the image
+# moves image digest fields 4/5, so factory-post-autoupdate's independent digest poll still
+# converges the fleet even when this git-diff path skips. Adversarially reviewed (0 holes).
+_path_is_inert() {
+    case "${1}" in
+        docs/*|tests/*|artifacts/*|.github/*) return 0 ;;
+        *.md|*.txt|LICENSE|CHANGELOG|CHANGELOG.md|.gitignore|.editorconfig|.pre-commit-config.yaml) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Decide whether a 'code-only' drift (git HEAD advanced, no tracked artifact changed) is INERT —
 # i.e. the commit range touches only non-runtime files and needs no converge/restart.
 #
 #   _code_change_is_inert <last_fingerprint> <current_fingerprint>
 #
 # Returns 0 (inert → safe to skip) ONLY if EVERY file changed between the two stamps' git_head
-# (field 0) matches a conservative non-runtime allowlist (docs / tests / CI / artifacts / *.md).
+# (field 0) matches the conservative non-runtime allowlist (_path_is_inert).
 # Returns 1 (NOT inert → run a full converge) for any runtime-relevant path (src, packages, apps,
 # deploy, tools, config, Dockerfile, lockfiles, …) AND for any undecidable case (a git_head is
 # "none"/empty, or `git diff` fails because a commit is missing). This is a NEGATIVE allowlist:
@@ -312,18 +330,10 @@ _code_change_is_inert() {
     # Empty diff = identical trees (e.g. a no-op/empty commit) → genuinely inert.
     [ -z "${changed}" ] && return 0
 
-    # `*.md`/`*.txt` are inert anywhere in the tree: no runtime config is a bind-mounted,
-    # read-at-startup .md/.txt today (all mounted config is *.json/*.conf/*.yml/*.toml — grep
-    # `Volume=` in deploy/quadlet/ before ever adding one), and any .md/.txt baked into the image
-    # moves image digest fields 4/5, so factory-post-autoupdate's independent digest poll still
-    # converges the fleet even when this git-diff path skips. Adversarially reviewed (0 holes).
     while IFS= read -r p; do
         [ -z "${p}" ] && continue
-        case "${p}" in
-            docs/*|tests/*|artifacts/*|.github/*) ;;
-            *.md|*.txt|LICENSE|CHANGELOG|CHANGELOG.md|.gitignore|.editorconfig|.pre-commit-config.yaml) ;;
-            *) return 1 ;;  # a runtime-relevant path changed → NOT inert → full converge
-        esac
+        # a runtime-relevant path changed → NOT inert → full converge
+        _path_is_inert "${p}" || return 1
     done <<< "${changed}"
     return 0
 }
@@ -378,12 +388,10 @@ _code_change_is_image_carried() {
             # apps/dashboard/ (not apps/*): only the dashboard is baked into an image —
             # apps/artifacts/ etc. ship in NO tracked image, so their digest re-arm never
             # fires; anything else under apps/ falls through to structural (fail-safe).
-            src/*|packages/*|apps/dashboard/*|brand/*) ;;
-            # inert set — keep in lockstep with _code_change_is_inert above
-            docs/*|tests/*|artifacts/*|.github/*) ;;
-            *.md|*.txt|LICENSE|CHANGELOG|CHANGELOG.md|.gitignore|.editorconfig|.pre-commit-config.yaml) ;;
-            *) return 1 ;;  # a host-carried runtime path changed → full converge now
+            src/*|packages/*|apps/dashboard/*|brand/*) continue ;;
         esac
+        # not image-carried → inert (shared allowlist) or host-carried → full converge now
+        _path_is_inert "${p}" || return 1
     done <<< "${changed}"
     return 0
 }

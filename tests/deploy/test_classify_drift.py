@@ -308,6 +308,18 @@ def test_code_change_is_image_carried(tmp_path: Path) -> None:
     git("commit", "-qm", "lockfile change")
     lock_head = head()
 
+    # host-carried negatives from the function's own doc comment — each as an
+    # ISOLATED single-file commit so no allowed path can mask the negative.
+    host_carried_heads: dict[str, tuple[str, str]] = {}
+    for rel in ("Dockerfile", "tools/x.sh", "scripts/x.py", "Makefile"):
+        prev = head()
+        f = repo / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("x\n")
+        git("add", "-A")
+        git("commit", "-qm", f"host-carried {rel}")
+        host_carried_heads[rel] = (prev, head())
+
     assert _image_carried(repo, base, image_head, env) is True, (
         "src/packages/apps-dashboard/brand (+docs) must be image-carried → skip"
     )
@@ -323,6 +335,10 @@ def test_code_change_is_image_carried(tmp_path: Path) -> None:
     assert _image_carried(repo, base, lock_head, env) is False, (
         "mixed image-carried + host-carried range must force a converge now"
     )
+    for rel, (prev, cur) in host_carried_heads.items():
+        assert _image_carried(repo, prev, cur, env) is False, (
+            f"{rel} is host-carried (ships in no tracked image) → must force a converge now"
+        )
     # undecidable → fail-safe: converge now
     assert _image_carried(repo, "none", image_head, env) is False, (
         "missing last git_head → converge"

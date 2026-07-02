@@ -59,6 +59,7 @@ def _run_converge(
     last_fingerprint: str,
     current_fingerprint: str,
     voice_dir_exists: bool = False,
+    git_diff_paths: list[str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     """Run converge.sh directly via ``bash deploy/converge.sh`` in a hermetic env.
 
@@ -72,6 +73,12 @@ def _run_converge(
         representing the "current" system state.
     voice_dir_exists:
         If True, creates ``VOICE_DIR/.git`` so the voicecli branch fires.
+    git_diff_paths:
+        When set, the ``git`` stub prints these paths for ``git diff …`` —
+        drives the code-only resolvers (`_code_change_is_inert` /
+        `_code_change_is_image_carried`), which classify the commit range by
+        its changed paths. When None, ``git`` is a plain exit-0 stub (empty
+        diff → the inert early-return fires for code-only fingerprints).
 
     Returns
     -------
@@ -125,8 +132,24 @@ def _run_converge(
         )
 
         # git: stub for git pull and git rev-parse (compute_convergence_state is
-        # overridden so git is only called for `git pull --ff-only`)
-        _make_stub(stubs, "git", "#!/bin/sh\nexit 0\n")
+        # overridden). When git_diff_paths is set, `git diff …` prints those
+        # paths so the code-only paths-classifiers see a controlled diff.
+        if git_diff_paths is None:
+            _make_stub(stubs, "git", "#!/bin/sh\nexit 0\n")
+        else:
+            diff_file = tmp_path / "git_diff_paths.txt"
+            diff_file.write_text(
+                "".join(f"{p}\n" for p in git_diff_paths), encoding="utf-8"
+            )
+            _make_stub(
+                stubs,
+                "git",
+                "#!/bin/sh\n"
+                'case "$1" in\n'
+                f'  diff) cat "{diff_file}";;\n'
+                "esac\n"
+                "exit 0\n",
+            )
 
         # make: stub for `make -C ... quadlet-install NO_RESTART=1`
         _make_stub(stubs, "make", "#!/bin/sh\nexit 0\n")
@@ -247,6 +270,18 @@ def _structural_drift_fingerprints() -> tuple[str, str]:
     """
     last = "git111:unit_OLD:auth333:voice444"
     current = "git111:unit_NEW:auth333:voice444"
+    return last, current
+
+
+def _code_only_drift_fingerprints() -> tuple[str, str]:
+    """Return (last, current) where ONLY git_head (field 0) differs → code-only drift.
+
+    converge.sh resolves code-only via the paths git-diff (`git_diff_paths` harness
+    knob): inert-only → skip; image-carried-only → skip (deferred to the digest
+    converge); any host-carried path → fall through to structural.
+    """
+    last = "git_OLD:unit222:auth333:voice444"
+    current = "git_NEW:unit222:auth333:voice444"
     return last, current
 
 
@@ -420,3 +455,83 @@ class TestStructuralDrift:
             f"voicecli-stt must not be restarted when VOICE_DIR/.git absent; "
             f"systemctl log: {lines!r}"
         )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# C — code-only drift → two-tier paths resolver inside _do_converge (#2144)
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class TestCodeOnlyDrift:
+    """code-only drift (field 0 alone): inert and image-carried ranges SKIP the
+    restart; host-carried ranges fall through to a full structural converge.
+
+    These tests pin the CONTROL FLOW through converge.sh lines 40-60 — the helper
+    predicates alone are covered in test_classify_drift.py, but deleting or
+    reordering the converge.sh branches would not fail those unit tests.
+    """
+
+    def _run(
+        self, paths: list[str]
+    ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+        last, current = _code_only_drift_fingerprints()
+        return _run_converge(
+            last_fingerprint=last,
+            current_fingerprint=current,
+            git_diff_paths=paths,
+        )
+
+    def test_inert_range_skips_all_restarts(self) -> None:
+        """docs/tests-only range → inert skip: stamp recorded, zero systemctl calls.
+
+        Non-tautology: deleting the inert branch (converge.sh:41-46) drops the
+        range into the image-carried tier (docs/ is in the shared inert
+        allowlist there too) — the MESSAGE assertion below then fails → RED.
+        """
+        result, lines = self._run(["docs/x.md", "tests/t.py"])
+        assert result.returncode == 0, (
+            f"inert skip must exit 0; stderr={result.stderr!r}"
+        )
+        assert "Only non-runtime files changed" in result.stdout, (
+            f"expected the inert skip message; stdout={result.stdout!r}"
+        )
+        assert lines == [], f"inert skip must issue NO systemctl calls; got: {lines!r}"
+
+    def test_image_carried_range_defers_restart(self) -> None:
+        """src/packages-only range → image-carried skip: no pre-image restart.
+
+        Non-tautology: deleting the image-carried branch (converge.sh:47-58)
+        makes this range fall through to structural — the no-restart assertion
+        fails → RED (this is the PR's headline behavior change).
+        """
+        result, lines = self._run(
+            ["src/factory/core/hub.py", "packages/roxabi-nats/src/x.py"]
+        )
+        assert result.returncode == 0, (
+            f"image-carried skip must exit 0; stderr={result.stderr!r}"
+        )
+        assert "Only image-carried code changed" in result.stdout, (
+            f"expected the image-carried skip message; stdout={result.stdout!r}"
+        )
+        assert lines == [], (
+            f"image-carried skip must issue NO systemctl calls (the restart is "
+            f"deferred to the post-autoupdate digest converge); got: {lines!r}"
+        )
+
+    def test_host_carried_range_falls_through_to_structural(self) -> None:
+        """deploy/-touching range → structural: NATS + all clients restart now.
+
+        Non-tautology: if either skip tier over-matched host-carried paths, the
+        restart assertions fail → RED (fail-safe direction of the classifier).
+        """
+        result, lines = self._run(["deploy/nats/acl-matrix.json", "src/x.py"])
+        assert result.returncode == 0, (
+            f"structural converge must exit 0; stderr={result.stderr!r}"
+        )
+        assert any("restart factory-nats" in line for line in lines), (
+            f"host-carried code-only drift must restart factory-nats; got: {lines!r}"
+        )
+        for client in STRUCTURAL_CLIENTS:
+            assert any(f"restart {client}" in line for line in lines), (
+                f"host-carried code-only drift must restart {client}; got: {lines!r}"
+            )

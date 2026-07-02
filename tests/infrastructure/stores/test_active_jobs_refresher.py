@@ -260,3 +260,28 @@ async def test_closed_job_heartbeat_no_longer_refreshes(
     await coord.on_heartbeat("loc-G")
 
     port.refresh.assert_not_called()
+
+
+@pytest.mark.asyncio()
+async def test_close_port_failure_still_untracks_job(
+    port: AsyncMock, coord: RegistryCoordinator
+) -> None:
+    """A failed port close must still untrack the job (zombie guard).
+
+    Regression guard: if the in-memory pop only ran after a successful port
+    close, a transient close failure would leave the entry in the refresh
+    loop — re-put every cycle, never TTL-reaped, its pool's singleton index
+    pinned until hub restart.
+    """
+    await coord.open(_make_entry("job-z", worker_loc="loc-Z"))
+    port.close.side_effect = nats.errors.Error("transient")
+    port.refresh.reset_mock()
+
+    with pytest.raises(nats.errors.Error):
+        await coord.close("job-z")
+
+    assert "job-z" not in coord._jobs
+    assert "loc-Z" not in coord._by_loc
+    await coord.refresh_all()
+    await coord.on_heartbeat("loc-Z")
+    port.refresh.assert_not_called()

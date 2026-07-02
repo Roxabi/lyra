@@ -1,4 +1,12 @@
-FROM python:3.14.6-slim AS builder
+# Pinned to 3.12.x — requires-python = ">=3.12,<3.13" (pyproject.toml). On a
+# 3.13/3.14 base, `uv sync` below downloads a managed CPython 3.12 OUTSIDE /app
+# and points /app/.venv/bin/python at it; that symlink then dangles once /app is
+# COPYed into the base-* runtime stages (agent-runtime `uv pip install` fails:
+# "No virtual environment found for /app/.venv/bin/python" — staging-wide
+# docker-build outage 2026-07-02 via #2160). Bump only within 3.12.x, in lockstep
+# with requires-python. dependabot ignores python major/minor for this reason
+# (.github/dependabot.yml docker block).
+FROM python:3.12.10-slim AS builder
 
 # Install system deps (git needed for GitHub-sourced Python deps)
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*

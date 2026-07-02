@@ -54,3 +54,15 @@ updates:
     # semver-*-days: pip-only (see github-actions block above).
     cooldown:
       default-days: 3
+    ignore:
+      # The builder base image (Dockerfile line 1) MUST stay on python 3.12.x —
+      # requires-python = ">=3.12,<3.13". A 3.13/3.14 bump makes uv build the
+      # venv against a managed interpreter outside /app, so /app/.venv/bin/python
+      # dangles in the base-* runtime stages (docker-build red, staging-wide,
+      # 2026-07-02 via #2160). Allow only patch bumps within 3.12.x; base-*
+      # digest bumps (roxabi/base, base-svc) are a different dependency-name and
+      # stay enabled.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"

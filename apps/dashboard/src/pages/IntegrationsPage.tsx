@@ -246,10 +246,14 @@ export function IntegrationsPage() {
       >
         <div className="space-y-2">
           {githubInstall ? (
-            <Button variant="brand" asChild>
-              <a href={githubInstall.url} target="_blank" rel="noopener noreferrer">
-                {t("github.install")}
-              </a>
+            <Button
+              variant="brand"
+              as="a"
+              href={githubInstall.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t("github.install")}
             </Button>
           ) : githubInstallError ? (
             <p className="text-sm text-muted-foreground">{t("github.installUnavailable")}</p>

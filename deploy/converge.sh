@@ -44,7 +44,19 @@ _do_converge() {
             write_convergence_state "${_current}"
             exit 0
         fi
-        echo "==> code-only drift touched runtime paths — treating as structural."
+        # image-carried: the change ships exclusively inside the tracked images. Restarting now
+        # would bounce the fleet on the OLD image (publish.yml is still building, ~7 min);
+        # factory-post-autoupdate (*:2/5) pulls and converges when the digest lands — THAT
+        # restart is the one that deploys the code. The stamp records the new git_head with the
+        # old digests, so fields 4/5 re-arm the structural converge the moment the image is
+        # pulled. Kills the first of the "2 full-fleet restarts per code merge".
+        if _code_change_is_image_carried "${_last}" "${_current}"; then
+            op_log converge_skip drift=code-only reason=image_carried_paths
+            echo "Only image-carried code changed (src/, packages/, apps/dashboard/, brand/) — deferring to the post-autoupdate digest converge; recording stamp, no pre-image restart."
+            write_convergence_state "${_current}"
+            exit 0
+        fi
+        echo "==> code-only drift touched host-carried runtime paths — treating as structural."
         _drift_kind=structural
     fi
 

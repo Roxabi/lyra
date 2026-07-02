@@ -287,13 +287,43 @@ _classify_drift() {
     return 0
 }
 
+# Single source of truth for the non-runtime (inert) path allowlist — shared by
+# _code_change_is_inert and _code_change_is_image_carried. Extracting it here is what
+# enforces their lockstep (review #2144: parallel-path-drift — the list was authored
+# twice with only a comment binding the copies).
+#
+# `*.md`/`*.txt` are inert anywhere in the tree: no runtime config is a bind-mounted,
+# read-at-startup .md/.txt today (all mounted config is *.json/*.conf/*.yml/*.toml — grep
+# `Volume=` in deploy/quadlet/ before ever adding one), and any .md/.txt baked into the image
+# moves image digest fields 4/5, so factory-post-autoupdate's independent digest poll still
+# converges the fleet even when this git-diff path skips. Adversarially reviewed (0 holes).
+_path_is_inert() {
+    case "${1}" in
+        docs/*|tests/*|artifacts/*|.github/*) return 0 ;;
+        *.md|*.txt|LICENSE|CHANGELOG|CHANGELOG.md|.gitignore|.editorconfig|.pre-commit-config.yaml) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Both stamp git_heads must be real, resolvable commits BEFORE they are handed to
+# git diff — a corrupted stamp value must not be parseable as a flag/pathspec or
+# resolve to something unexpected (review #2144: stamp fields are trusted input).
+# Shared by both code-only classifiers (same lockstep rationale as _path_is_inert).
+_stamp_commits_resolvable() {
+    [ -n "${1}" ] && [ "${1}" != "none" ] || return 1
+    [ -n "${2}" ] && [ "${2}" != "none" ] || return 1
+    (cd "${FACTORY_DIR}" \
+        && git rev-parse --verify --quiet "${1}^{commit}" >/dev/null \
+        && git rev-parse --verify --quiet "${2}^{commit}" >/dev/null) || return 1
+}
+
 # Decide whether a 'code-only' drift (git HEAD advanced, no tracked artifact changed) is INERT —
 # i.e. the commit range touches only non-runtime files and needs no converge/restart.
 #
 #   _code_change_is_inert <last_fingerprint> <current_fingerprint>
 #
 # Returns 0 (inert → safe to skip) ONLY if EVERY file changed between the two stamps' git_head
-# (field 0) matches a conservative non-runtime allowlist (docs / tests / CI / artifacts / *.md).
+# (field 0) matches the conservative non-runtime allowlist (_path_is_inert).
 # Returns 1 (NOT inert → run a full converge) for any runtime-relevant path (src, packages, apps,
 # deploy, tools, config, Dockerfile, lockfiles, …) AND for any undecidable case (a git_head is
 # "none"/empty, or `git diff` fails because a commit is missing). This is a NEGATIVE allowlist:
@@ -304,26 +334,74 @@ _code_change_is_inert() {
     cur_git=$(cut -d: -f1 <<< "${2}")
 
     # Both commits must be real and resolvable — else fail-safe to a full converge.
-    [ -n "${last_git}" ] && [ "${last_git}" != "none" ] || return 1
-    [ -n "${cur_git}" ]  && [ "${cur_git}"  != "none" ] || return 1
+    _stamp_commits_resolvable "${last_git}" "${cur_git}" || return 1
 
     changed=$(cd "${FACTORY_DIR}" && git diff --name-only "${last_git}" "${cur_git}" 2>/dev/null) \
         || return 1
     # Empty diff = identical trees (e.g. a no-op/empty commit) → genuinely inert.
     [ -z "${changed}" ] && return 0
 
-    # `*.md`/`*.txt` are inert anywhere in the tree: no runtime config is a bind-mounted,
-    # read-at-startup .md/.txt today (all mounted config is *.json/*.conf/*.yml/*.toml — grep
-    # `Volume=` in deploy/quadlet/ before ever adding one), and any .md/.txt baked into the image
-    # moves image digest fields 4/5, so factory-post-autoupdate's independent digest poll still
-    # converges the fleet even when this git-diff path skips. Adversarially reviewed (0 holes).
+    while IFS= read -r p; do
+        [ -z "${p}" ] && continue
+        # a runtime-relevant path changed → NOT inert → full converge
+        _path_is_inert "${p}" || return 1
+    done <<< "${changed}"
+    return 0
+}
+
+# Decide whether a 'code-only' drift is IMAGE-CARRIED — i.e. every changed file is either
+# inert (same allowlist as _code_change_is_inert, kept in lockstep) or ships to the fleet
+# exclusively inside the tracked images (src/, packages/, apps/dashboard/, brand/ — baked
+# in by publish.yml, never bind-mounted from the checkout: every bind-mounted runtime
+# config lives under deploy/, which is deliberately NOT in this allowlist; the %h/projects
+# mounts in clipool/omp are live agent workspaces a restart cannot refresh further).
+# Grep `Volume=` in deploy/quadlet/ before ever bind-mounting one of these dirs — a mounted
+# src/packages/apps/brand path would break this classifier's core invariant.
+#
+#   _code_change_is_image_carried <last_fingerprint> <current_fingerprint>
+#
+# Returns 0 (image-carried → skip the pre-image restart) ONLY if EVERY changed path matches
+# the inert ∪ image-carried allowlist. The restart is deferred, not lost: publish.yml builds
+# the new image, then factory-post-autoupdate (*:2/5) detects the digest drift on fields 4/5,
+# pulls, and runs the structural converge that actually carries the new code — INCLUDING the
+# host steps (unit render, auth regen) that execute src/ code from the checkout at converge
+# time; their effects now land at image-arrival instead of merge time (bounded by the digest
+# loop). This skip REQUIRES post-autoupdate's unconditional change-gated converge: when
+# podman-auto-update (*:4/5) wins the digest race it pulls (remote==local afterwards) without
+# running any host step, and only the stale stamp fields 4/5 re-arm the converge. Restarting
+# before the image exists deploys nothing: the fleet bounces on the OLD image, then bounces
+# again when the image lands ("every code merge = 2 full-fleet restarts", audit 2026-07-01 §5.7).
+#
+# Returns 1 (NOT image-carried → full converge now) for any host-carried path (deploy/,
+# tools/, scripts/, Dockerfile, docker/, pyproject.toml, uv.lock, Makefile, …) AND for any
+# undecidable case. Same fail-safe direction as _code_change_is_inert: a mis-classification
+# can only over-restart. If the image build fails (red staging CI → publish skipped), the
+# fleet keeps the old image — the same end state today's pre-image restart produces, since
+# that restart carries no new code either.
+_code_change_is_image_carried() {
+    local last_git cur_git changed p
+    last_git=$(cut -d: -f1 <<< "${1}")
+    cur_git=$(cut -d: -f1 <<< "${2}")
+
+    # Both commits must be real and resolvable — else fail-safe to a full converge.
+    _stamp_commits_resolvable "${last_git}" "${cur_git}" || return 1
+
+    changed=$(cd "${FACTORY_DIR}" && git diff --name-only "${last_git}" "${cur_git}" 2>/dev/null) \
+        || return 1
+    # Empty diff = identical trees (e.g. a no-op/empty commit) → nothing to restart for.
+    [ -z "${changed}" ] && return 0
+
     while IFS= read -r p; do
         [ -z "${p}" ] && continue
         case "${p}" in
-            docs/*|tests/*|artifacts/*|.github/*) ;;
-            *.md|*.txt|LICENSE|CHANGELOG|CHANGELOG.md|.gitignore|.editorconfig|.pre-commit-config.yaml) ;;
-            *) return 1 ;;  # a runtime-relevant path changed → NOT inert → full converge
+            # image-carried: reaches the fleet only via factory:staging-svc / factory:staging.
+            # apps/dashboard/ (not apps/*): only the dashboard is baked into an image —
+            # apps/artifacts/ etc. ship in NO tracked image, so their digest re-arm never
+            # fires; anything else under apps/ falls through to structural (fail-safe).
+            src/*|packages/*|apps/dashboard/*|brand/*) continue ;;
         esac
+        # not image-carried → inert (shared allowlist) or host-carried → full converge now
+        _path_is_inert "${p}" || return 1
     done <<< "${changed}"
     return 0
 }

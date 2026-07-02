@@ -47,7 +47,20 @@ main() {
     done
 
     if [ "${#drifted[@]}" -eq 0 ]; then
-        echo "All tracked image digests unchanged — nothing to do."
+        echo "All tracked image digests unchanged — no pull needed."
+        # STILL run the change-gated converge: podman-auto-update (*:4/5) can observe a
+        # freshly-published digest BEFORE this timer does. It pulls and restarts labelled
+        # containers but runs NONE of converge's host steps (unit render, auth regen, stamp) —
+        # and once it has pulled, remote==local here, so a drift-gated converge would be
+        # suppressed FOREVER (until the next commit). The stamp's fields 4/5 still hold the
+        # pre-pull digests in that case → converge classifies structural and self-heals within
+        # one tick. Also covers a converge that crashed between podman pull and stamp write,
+        # and a tick whose converge lost the flock -n to a concurrent quadlet-sync converge.
+        # When nothing actually changed, converge no-ops on the stamp (drift=none, <1s).
+        # LOAD-BEARING PAIR: converge.sh's image-carried skip (_code_change_is_image_carried)
+        # defers restarts to THIS call — removing or re-gating it silently strands deferred code.
+        echo "==> Running make converge (change-gated)..."
+        make -C "${FACTORY_DIR}" converge
         _refresh_fleet_digests
         exit 0
     fi

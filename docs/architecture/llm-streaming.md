@@ -7,7 +7,7 @@ description: Current truth for the LLM/streaming pipeline — LlmEvent→StreamP
 
 > Status: LIVING — current truth for LLM/streaming pipeline decisions, wire crossing included.
 > Last updated: 2026-07-02.
-> Source ADRs: 028 (amended), 032 (amended), 036 (amended), 070, 072 (amended).
+> Source ADRs: 099 (typed pipeline — absorbs 028/032/070), 100 (wire protocol — absorbs 036/072).
 
 ## Scope
 
@@ -297,8 +297,10 @@ then verify with a `SCHEMA_VERSION_` grep over `src/factory/core/messaging/`.
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| 028 | Token-level streaming path shape | Amended — SDK path removed #666; EC-3 superseded by ADR-070 (tool-args surfacing); EC-1/2/4 remain in force |
-| 032 | LlmEvent → StreamProcessor → RenderEvent hexagonal pipeline | Amended — hexagonal contract normative; v1 wire shape superseded by ADR-072; extended by ADR-070 |
-| 036 | RenderEvent streaming chunk protocol over NATS | Amended — envelope invariants in force; v1 event taxonomy superseded by ADR-072; gap rule relaxed to warn + bounded timeout |
-| 070 | RenderEvent v2 — selective AG-UI modeling | Accepted |
-| 072 | Codec registry pattern (v2 RenderEvent dispatch) | Amended — supersedes ADR-032/036 v1 wire shape |
+| 099 | Typed LLM streaming pipeline — LlmEvent → StreamProcessor → RenderEvent (v1→v2) | Accepted — 2026-07-02; consolidation record, absorbs 028/032/070 |
+| 100 | RenderEvent NATS wire protocol — seq-framed envelope + codec registry | Accepted — 2026-07-02; consolidation record, absorbs 036/072 |
+| 028 | Token-level streaming path shape | Superseded by ADR-099 — archived (`adr/archive/`) |
+| 032 | LlmEvent → StreamProcessor → RenderEvent hexagonal pipeline | Superseded by ADR-099 — archived (`adr/archive/`) |
+| 036 | RenderEvent streaming chunk protocol over NATS | Superseded by ADR-100 — archived (`adr/archive/`) |
+| 070 | RenderEvent v2 — selective AG-UI modeling | Superseded by ADR-099 — archived (`adr/archive/`) |
+| 072 | Codec registry pattern (v2 RenderEvent dispatch) | Superseded by ADR-100 — archived (`adr/archive/`) |

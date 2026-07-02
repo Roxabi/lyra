@@ -19,7 +19,7 @@ This ADR is the canonical model for hexagonal/clean architecture across the Roxa
 - **ADR-048 — Introduce `lyra.infrastructure` layer for persistence** (founding precedent): the infrastructure layer concept it established is generalized in this ADR's 4-layer model. The specific rules for where SQLite/store adapters land are codified in `## Design` (infrastructure layer placement) below.
 - **ADR-060 — CLI protocol circular import resolution**: the P0 remediation it documented is captured in `## Migration path` below as the canonical "core port lives in core, infrastructure imports the port" pattern. The Mermaid diagrams of the broken vs fixed import shape are preserved in the archive entry for reference.
 
-ADR-061 (importlinter independence contract) remains live as it tracks ongoing enforcement work (some ports still resolve to floating module names rather than `lyra.core.ports.*` — see ADR-061's `## Update 2026-05-08` for the partial-execution status).
+ADR-061 (importlinter independence contract) is archived (2026-07-02) — its plan landed except one item: the `SessionToolsProtocol` extraction that would clear the last `ignore_imports` suppression, tracked as debt, not as a standing ADR. Live state: `workers-tooling.md` § importlinter.
 
 ## Context
 

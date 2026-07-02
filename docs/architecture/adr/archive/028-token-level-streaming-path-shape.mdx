@@ -2,11 +2,12 @@
 title: "ADR-028: Token-Level Streaming Path — Parallel Methods over Unified Path"
 description: Documents the decision to implement token-level CLI streaming as a separate parallel code path rather than modifying existing non-streaming methods, and specifies the edge-case contracts that the implementation must satisfy.
 superseded_by: "ADR-070 (partial — Edge-Case Contract 3 only)"
-status: amended
+status: superseded by ADR-099
 ---
 
-> **Current truth** → [`docs/architecture/llm-streaming.md`](../llm-streaming.md){#current-truth}
+> **Current truth** → [`docs/architecture/llm-streaming.md`](../../llm-streaming.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+> **Archived (consolidation wave 3, 2026-07-02)** — consolidated into ADR-099 (typed LLM streaming pipeline).
 
 
 > **Superseded by #666.** `AnthropicSdkDriver` and the `anthropic-sdk` backend have been removed; Lyra is CLI-only. Historical content below is preserved for context.

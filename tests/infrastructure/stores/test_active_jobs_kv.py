@@ -11,6 +11,7 @@ from nats.js.errors import (
     BucketNotFoundError,
     KeyNotFoundError,
     KeyWrongLastSequenceError,
+    NoKeysError,
 )
 
 from factory.core.ports.active_jobs import ActiveJobEntry, RegistryConflictError
@@ -57,6 +58,35 @@ def _kv_entry(value: bytes, revision: int = 1) -> MagicMock:
 # ---------------------------------------------------------------------------
 # KvActiveJobsStore — open()
 # ---------------------------------------------------------------------------
+
+
+class TestListAll:
+    async def test_empty_bucket_returns_empty_without_error_log(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Empty bucket: nats-py raises NoKeysError; list_all must treat it as
+        'no active jobs' (return []) WITHOUT the ERROR-log spam.
+
+        Value-equality alone is tautological — the generic
+        ``except nats.errors.Error`` branch also returns [] — so assert the
+        dedicated NoKeysError branch is taken by proving ``log.exception`` is
+        never called.
+        """
+        kv = AsyncMock()
+        kv.keys.side_effect = NoKeysError
+        js = AsyncMock()
+        js.key_value.return_value = kv
+        store = KvActiveJobsStore(js)
+        await store.connect()
+
+        fake_log = MagicMock()
+        monkeypatch.setattr(
+            "factory.infrastructure.stores.jobs.active_jobs_kv.log", fake_log
+        )
+        result = await store.list_all()
+
+        assert result == []
+        fake_log.exception.assert_not_called()
 
 
 class TestOpen:

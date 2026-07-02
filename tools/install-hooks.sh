@@ -24,9 +24,19 @@ if ! command -v pre-commit >/dev/null 2>&1; then
   exit 2
 fi
 
-hooks_dir="$(git config core.hooksPath || true)"
+# Resolve the hooks dir from the REPO-LOCAL scope only. On a machine where
+# core.hooksPath is set globally but not locally, the merged value would point
+# at the GLOBAL hooks dir — and writing this repo's dispatchers there would
+# fire its quality gates in EVERY repo on the machine. Never write outside the
+# repo: fall back to the common hooks dir and pin it with a local override
+# (the global chain-through below keeps the global hooks alive).
+hooks_dir="$(git config --local core.hooksPath || true)"
 if [[ -z "$hooks_dir" ]]; then
   hooks_dir="$(git rev-parse --path-format=absolute --git-common-dir)/hooks"
+  if [[ -n "$(git config --global core.hooksPath || true)" ]]; then
+    git config core.hooksPath "$hooks_dir"
+    echo "install-hooks: global core.hooksPath detected — pinned repo-local hooksPath to ${hooks_dir}"
+  fi
 fi
 mkdir -p "$hooks_dir"
 

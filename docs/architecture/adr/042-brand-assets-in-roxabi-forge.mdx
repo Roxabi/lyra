@@ -1,7 +1,7 @@
 ---
 title: "ADR-042: Brand Assets Belong in ~/.roxabi/forge, Not in Repos"
 description: Brand assets are removed from all project repos and live exclusively in ~/.roxabi/forge/{project}/brand/, synced via Google Drive. Supersedes ADR-034.
-status: accepted
+status: amended
 ---
 
 > **Out of lyra scope** — current truth lives in the `roxabi-forge` repo.
@@ -10,6 +10,17 @@ status: accepted
 ## Status
 
 Accepted — supersedes ADR-034
+
+Amended 2026-07-01 (consolidation v2): the "no `brand/` directory in any project repo" invariant is superseded — runtime design tokens and marks now live in-repo under `brand/` as the canonical model; the exploration-brand → forge half still stands.
+
+### Amendment (2026-07-01)
+
+The decision split in two over time; this amendment records which half survived.
+
+- **Still stands — exploration brand lives in forge.** The eviction of AI-exploration brand assets (brand books, `forge.yml`, avatar PNGs, galleries, prompts, generation scripts) was executed and holds: no `forge.yml`, `BRAND-BOOK.md`, `BRAND-IDENTITY.md`, or avatar assets remain in this repo. The Google Drive sync mechanism for `~/.roxabi/forge/` is unchanged.
+- **Superseded — the absolute "no `brand/` in any repo" invariant.** A git-tracked `brand/` directory (12 files) now exists in this repo and is **canonical**: design tokens (`brand/tokens/{colors,typography,spacing,motion,elevation,fonts,status}.css`), `brand/base.css`, `brand/styles.css`, and runtime SVG marks (`factory-mark-light.svg`, `factory-mark-dark.svg`, `factory-favicon.svg`). These are a build/runtime design-system SSoT consumed by the dashboard (Astryx theme); `packages/shared/src/brand.ts` is an explicit "TypeScript mirror of brand/tokens/*.css". Runtime design tokens are a category this 2026-03 ADR never contemplated (it predates the shadcn→Astryx migration) — the boundary is now *exploration brand → forge; runtime brand tokens/marks → in-repo `brand/`*.
+- **Historical framing.** The record is written for `lyra`; the repo is now `factory` (`roxabi-factory`). Project names and paths (`src/lyra/…`, `~/.roxabi/forge/lyra/…`) reflect the pre-rename state.
+- **Cross-repo follow-up** (aligning other repos and `~/projects/docs/brand-canon.md` with the new boundary) is out of factory scope.
 
 ## Context
 
@@ -46,7 +57,7 @@ This applies to all three projects that currently have a `brand/` directory: `ly
 | `{repo}/` | Code, `artifacts/` (frames/specs/plans/analyses), `docs/` (ADRs, architecture, user docs) |
 | `~/.roxabi/forge/{project}/brand/` | `forge.yml`, `BRAND-BOOK.md`, `BRAND-IDENTITY.md`, logo/mark SVGs, avatar PNGs, AI generation prompts (`.md`), one-time generation/conversion scripts (`.py`), galleries, concepts, manifests — everything brand-related |
 
-No `brand/` directory exists in any project repo after migration.
+No `brand/` directory exists in any project repo after migration. *(Superseded 2026-07-01: a git-tracked `brand/` directory of runtime design tokens and marks is now canonical in this repo — see Amendment.)*
 
 ### Brand-book loader simplification
 
@@ -61,7 +72,7 @@ The repo fallback paths are dropped entirely.
 
 ### Sync and versioning
 
-`~/.roxabi/forge/` is synced via `make forge sync` (Google Drive). Brand assets on both machines (`roxabitower`, `roxabituwer`) are kept in sync through this mechanism. Nothing in the production runtime path reads from `~/.roxabi/forge/` — it is a design-time resource only.
+`~/.roxabi/forge/` is synced via `make forge sync` (Google Drive). Brand assets on both machines (`roxabitower`, `roxabituwer`) are kept in sync through this mechanism. Nothing in the production runtime path reads from `~/.roxabi/forge/` — it is a design-time resource only. *(2026-07-01: still true of forge itself, but the implied "no brand asset is a runtime concern" no longer holds — runtime design tokens/marks live in-repo under `brand/`; see Amendment.)*
 
 ---
 

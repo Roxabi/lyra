@@ -1,7 +1,7 @@
 ---
 title: "ADR-049: Extract roxabi-contracts as shared schema package for cross-project NATS domains"
 description: Add a second uv workspace subpackage (packages/roxabi-contracts/) that ships subject registries, Pydantic envelope schemas, and test fixtures for every lyra-owned cross-project NATS domain. Publishers in lyra and subscribers in satellites import the same typed contracts, replacing ADR-only specifications and eliminating drift. Revised 2026-04-16 after architect + devops + security review.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/contracts.md`](../contracts.md){#current-truth}
@@ -11,6 +11,15 @@ status: accepted
 ## Status
 
 Accepted
+
+Amended 2026-07-01 (consolidation v2): test doubles and production guards relocated to `roxabi_nats.testing` (ADR-059 V6) and Guard 2's env var corrected to `FACTORY_ENV`; the core schema-package decision is unchanged.
+
+### Amendment (2026-07-01)
+
+Consolidation-v2 review. The core decision (contract-as-code shared schema package, drift-as-type-error, `extra="ignore"` forward-compat, security-bearing-field exclusion, synthetic-fixture provenance) is live and load-bearing. Two sub-decisions below are superseded:
+
+- **Test-double and guard ownership → ADR-059 V6.** `FakeTtsWorker`/`FakeSttWorker` and the three production guards now live in `roxabi_nats.testing.<domain>` (shared guards in `roxabi_nats/testing/_guards.py`). `roxabi_contracts/voice/testing.py` remains only as a backward-compat shim re-exporting from `roxabi_nats.testing.voice`. Consequently the transport-pulling path is `roxabi-nats[testing]`, not `roxabi-contracts[testing]` — the latter now ships only `scipy>=1.11` (voice fixture synthesis).
+- **Guard 2's environment variable is `FACTORY_ENV`**, not `LYRA_ENV` (lyra → factory rename). Occurrences in the body below are corrected in place.
 
 ## Context
 
@@ -118,7 +127,7 @@ roxabi-nats (transport, zero lyra knowledge)
                                          voiceCLI, imageCLI, roxabi-vault
 ```
 
-**Critical boundary:** `roxabi-contracts` runtime has zero transport dependency. A satellite that only needs schemas + fixtures installs `roxabi-contracts` without pulling `roxabi-nats` or `nats-py`. The `[testing]` extra is the only path that brings in transport — and only for test-double consumers.
+**Critical boundary:** `roxabi-contracts` runtime has zero transport dependency. A satellite that only needs schemas + fixtures installs `roxabi-contracts` without pulling `roxabi-nats` or `nats-py`. The `[testing]` extra is the only path that brings in transport — and only for test-double consumers. *(Superseded — ADR-059 V6: `roxabi-contracts[testing]` no longer pulls transport at all; test-double consumers install `roxabi-nats[testing]`. See §Amendment (2026-07-01).)*
 
 ### Versioning
 
@@ -152,13 +161,13 @@ Enforcement: `NatsAdapterBase._dispatch()` is the only caller of `deserialize()`
 
 ### Test-double pattern
 
-Test doubles live in `roxabi_contracts.<domain>.testing` and require the `[testing]` optional extra. Three mandatory safety guards prevent production contamination:
+Test doubles live in `roxabi_contracts.<domain>.testing` and require the `[testing]` optional extra. *(Superseded — ADR-059 V6 relocated test doubles and guards to `roxabi_nats.testing.<domain>`; `roxabi_contracts.<domain>.testing` is a backward-compat shim.)* Three mandatory safety guards prevent production contamination:
 
-1. **Separate extras.** `pyproject.toml` declares `[project.optional-dependencies].testing = ["nats-py>=2.6", "roxabi-nats"]`. Production installs (`uv sync` without `--extra testing`) do not pull transport deps. Importing `roxabi_contracts.voice.testing` in a prod venv fails at import time with `ModuleNotFoundError: nats`.
+1. **Separate extras.** *(Historical — the extra carrying transport is now `roxabi-nats[testing]`; `roxabi-contracts[testing]` ships only `scipy>=1.11`.)* `pyproject.toml` declares `[project.optional-dependencies].testing = ["nats-py>=2.6", "roxabi-nats"]`. Production installs (`uv sync` without `--extra testing`) do not pull transport deps. Importing `roxabi_contracts.voice.testing` in a prod venv fails at import time with `ModuleNotFoundError: nats`.
 
-2. **Environment assertion.** `FakeTtsWorker.__init__` raises `RuntimeError("FakeTtsWorker cannot run in production")` if `os.environ.get("LYRA_ENV") == "production"`. No override flag, no escape hatch — adversarial CI scenarios that need the fake worker must run with a non-production `LYRA_ENV` value (e.g., `LYRA_ENV=ci_adversarial`). Security-by-obscurity flags are explicitly rejected.
+2. **Environment assertion.** `FakeTtsWorker.__init__` raises `RuntimeError("FakeTtsWorker cannot run in production")` if `os.environ.get("FACTORY_ENV") == "production"`. No override flag, no escape hatch — adversarial CI scenarios that need the fake worker must run with a non-production `FACTORY_ENV` value (e.g., `FACTORY_ENV=ci_adversarial`). Security-by-obscurity flags are explicitly rejected.
 
-3. **Loopback-only NATS URL.** `FakeTtsWorker.connect()` refuses non-loopback NATS URLs (anything other than `nats://127.0.0.1:*` or `nats://localhost:*`). Raises `ValueError` on non-loopback. No override. This closes the accidental-prod-queue-group-shadowing class of bugs even when `LYRA_ENV` is misconfigured.
+3. **Loopback-only NATS URL.** `FakeTtsWorker.connect()` refuses non-loopback NATS URLs (anything other than `nats://127.0.0.1:*` or `nats://localhost:*`). Raises `ValueError` on non-loopback. No override. This closes the accidental-prod-queue-group-shadowing class of bugs even when `FACTORY_ENV` is misconfigured.
 
 The three guards are **independent and non-bypassable** — an attacker who flips one must also flip the others to shadow a production worker. The `[testing]` extra is the strongest of the three because it fails at import time, before any runtime code executes.
 
@@ -294,7 +303,7 @@ Phase 1 — bootstrap the package and port voice:
 1. Create `packages/roxabi-contracts/` skeleton + `envelope.py` + `voice/` submodule with `subjects.py`, `models.py` (all with `ConfigDict(extra="ignore")`), `fixtures.py` (synthetic data only — see §Fixture generation).
 2. Port `TtsRequest` / `TtsResponse` / `SttRequest` / `SttResponse` dataclasses from lyra + voiceCLI into typed Pydantic models. Reconcile any silent drift as part of the port.
 3. Extract `SUBJECTS` namespace from `src/lyra/nats/nats_tts_client.py` and voiceCLI's `tts_adapter.py`.
-4. Ship `testing.py` with `FakeTtsWorker` + the three production guard-rails (`[testing]` extra, `LYRA_ENV` assertion, loopback-only URL check).
+4. Ship `testing.py` with `FakeTtsWorker` + the three production guard-rails (`[testing]` extra, `FACTORY_ENV` assertion, loopback-only URL check).
 5. Update lyra `NatsTtsClient` / `NatsSttClient` to import from `roxabi_contracts.voice`. Migrate `CONTRACT_VERSION` from `roxabi_nats.adapter_base` to `roxabi_contracts.envelope` and re-export from `roxabi_nats` for one release as a compat shim.
 6. Add `packages/roxabi-contracts` to the root `pyproject.toml`:
    - `[tool.uv.workspace].members += ["packages/roxabi-contracts"]`

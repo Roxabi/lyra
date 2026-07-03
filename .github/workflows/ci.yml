@@ -23,10 +23,11 @@ env:
 concurrency:
   group: ci-${{ github.ref }}
   # Cancel only on feature branches; protected branches (main, staging) run to completion so every merge-commit SHA has a recorded status.
-  # Merge-queue refs (gh-readonly-queue/staging/*) evaluate as cancelable here —
-  # fine: each queue entry gets a unique ref (unique group), and a rebuilt entry
-  # gets a NEW ref, so cancel-in-progress never preempts a live entry's run.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/staging' }}
+  # merge_group runs are NEVER cancelled: GitHub advises against cancelling
+  # queue runs — a cancelled run fails the entry and silently dequeues the PR,
+  # and ref uniqueness doesn't cover a dequeue→re-enqueue that rebuilds an
+  # entry on the identical queue head (same ref → same group → preemption).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/staging' }}
 
 jobs:
   # 3-way split of the former monolithic `ci` job (~4m50 serial → ~2m45 wall):
@@ -255,6 +256,12 @@ jobs:
   # never wire a typing publisher; the disabled branch is unit-covered
   # (tests/core/test_pool_processor_exec.py, tests/adapters/*/test_typing_shims.py).
   integration:
+    # Queue entries don't need this: non-required, and staging-red-alert reads
+    # push runs only — a red here blocks nothing and alerts nobody, it's just
+    # duplicate compute (up to 5 concurrent queue builds).
+    # WARNING: drop this `if:` if the job ever becomes a required check — a
+    # skipped required check deadlocks the queue.
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -283,6 +290,12 @@ jobs:
     # Runs in parallel with ci/integration (no needs:).
     # Does NOT push. Uses CI-scoped GHA cache (factory-agent-ci / factory-svc-ci)
     # so it never pollutes the publish job's factory-agent / factory-svc scopes.
+    # Queue entries don't need this: non-required, and staging-red-alert reads
+    # push runs only — a red here blocks nothing and alerts nobody, it's just
+    # duplicate compute (up to 5 concurrent queue builds).
+    # WARNING: drop this `if:` if the job ever becomes a required check — a
+    # skipped required check deadlocks the queue.
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

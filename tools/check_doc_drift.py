@@ -93,9 +93,11 @@ def _collect_operational_docs(root: Path, seen: set[Path], out: list[Path]) -> N
 
     Narrative/onboarding/aspirational docs (QUICKSTART, GETTING-STARTED,
     HAPPY-PATHS, COMMANDS, MULTI-BOT, OBSERVABILITY, ROADMAP, vision,
-    code-quality-exceptions, debt-tracking,
     docs/history/**) are EXEMPT by omission — they cite illustrative or future
     code by design, so gating them would produce false positives.
+
+    `debt-tracking.md` IS scanned (operational truth — cites live gate scripts
+    and paths); its former exemption masked doc-rot (#2200).
     """
 
     def add(p: Path) -> None:
@@ -111,6 +113,7 @@ def _collect_operational_docs(root: Path, seen: set[Path], out: list[Path]) -> N
         "agent-management.md",
         "bot-management.md",
         "data-dirs.md",
+        "debt-tracking.md",
     ):
         add(docs / rel)
     for sub in ("ops", "runbooks", "playbooks"):

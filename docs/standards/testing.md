@@ -152,10 +152,10 @@ fake_keyring, fake_cred_store = make_fake_stores(monkeypatch)
 
 Use `_patch_nats_stubs(monkeypatch)` (from `conftest.py`) to prevent tests from touching a real NATS server. It patches `ensure_nats`, `acquire_lockfile`, `release_lockfile`, `NatsBus`, and `JetStreamAuditSink`.
 
-Always set `FACTORY_VAULT_DIR` to a temp dir in tests that touch the credential store:
+Always set `ROXABI_FACTORY_DIR` to a temp dir in tests that touch the credential store:
 
 ```python
-monkeypatch.setenv("FACTORY_VAULT_DIR", tempfile.mkdtemp())
+monkeypatch.setenv("ROXABI_FACTORY_DIR", tempfile.mkdtemp())
 ```
 
 ---
@@ -192,7 +192,7 @@ ALWAYS patch at the dependency's import site, not the source module.
 
 ALWAYS use `yield_once()` or `_drain()` instead of `asyncio.sleep(0)` in async tests.
 
-ALWAYS set `FACTORY_VAULT_DIR` to a temp dir in tests that instantiate credential stores.
+ALWAYS set `ROXABI_FACTORY_DIR` to a temp dir in tests that instantiate credential stores.
 
 NEVER mock the module under test — only mock its dependencies.
 

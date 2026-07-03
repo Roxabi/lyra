@@ -8,8 +8,8 @@ related: [035, 074, 091, 092, 094]
 amends: [091]
 ---
 
-> **Current truth** → this ADR + [`artifacts/goal/ingress-connector-tenant-contract-goal.md`](../../../artifacts/goal/ingress-connector-tenant-contract-goal.md) (implementation `/goal` support)
-> Plane ① taxonomy: [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx)
+> **Current truth** → this ADR + [`docs/architecture/observability.md`](../observability.md){#current-truth} § Ingress — connector registry + tenant scoping
+> Archived `/goal` implementation slices: [`artifacts/archive/2026-07/ingress-connector-tenant-contract-goal.md`](../../../artifacts/archive/2026-07/ingress-connector-tenant-contract-goal.md) (#2218 graduation) · Plane ① taxonomy: [`artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx`](../../../artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx)
 
 ## Status
 
@@ -332,7 +332,8 @@ in runbook. Isolation is **verify + registry**, not per-tenant network paths.
 
 ## See also
 
-- [`artifacts/goal/ingress-connector-tenant-contract-goal.md`](../../../artifacts/goal/ingress-connector-tenant-contract-goal.md) — `/goal` implementation slices
+- [`docs/architecture/observability.md`](../observability.md) — current truth: ingress connector registry + tenant scoping
+- [`artifacts/archive/2026-07/ingress-connector-tenant-contract-goal.md`](../../../artifacts/archive/2026-07/ingress-connector-tenant-contract-goal.md) — archived `/goal` implementation slices
 - [`src/factory/ingress/`](../../../src/factory/ingress/) — current implementation
 - [`deploy/secrets-policy.toml`](../../../deploy/secrets-policy.toml) — `secret-class.bot-token` precedent
 - [GitHub App webhooks](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/using-webhooks-with-github-apps)

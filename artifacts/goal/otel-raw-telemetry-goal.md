@@ -1,8 +1,8 @@
 # /goal — OTel raw telemetry (workers + satellites, sans Langfuse v1)
 
-> **Issue:** [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069) — `feat(obs): OTel raw telemetry — adapter hooks + collector JSONL + dashboard raw` (parent : [#1760](https://github.com/Roxabi/roxabi-factory/issues/1760) control-plane · [#1759](https://github.com/Roxabi/roxabi-factory/issues/1759) engines)  
-> **ADR cibles :** amendement [ADR-092](../../docs/architecture/adr/092-observability-architecture.mdx) · [ADR-094](../../docs/architecture/adr/094-control-plane-dashboard-consolidation.mdx) · nouveau **ADR-097** (otel-raw store)  
-> **Références :** [ADR-068](../../docs/architecture/adr/068-ecosystem-service-plane.mdx) · [ADR-073](../../docs/architecture/adr/073-axial-stage-of-pipeline-decomposition.mdx) · [ADR-084](../../docs/architecture/job-model.md) · [runbook otel-traces](../../docs/runbooks/otel-traces.md)  
+> **Issue:** [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069) — `feat(obs): OTel raw telemetry — adapter hooks + collector JSONL + dashboard raw` (parent : [#1760](https://github.com/Roxabi/roxabi-factory/issues/1760) control-plane · [#1759](https://github.com/Roxabi/roxabi-factory/issues/1759) engines)
+> **ADR cibles :** amendement [ADR-092](../../docs/architecture/adr/092-observability-architecture.mdx) · [ADR-094](../../docs/architecture/adr/094-control-plane-dashboard-consolidation.mdx) · nouveau **ADR-097** (otel-raw store)
+> **Références :** [ADR-068](../../docs/architecture/adr/068-ecosystem-service-plane.mdx) · [ADR-073](../../docs/architecture/adr/073-axial-stage-of-pipeline-decomposition.mdx) · [ADR-084](../../docs/architecture/job-model.md) · [runbook otel-traces](../../docs/runbooks/otel-traces.md)
 > **Statut global :** `phase_1_done` — Blocks 0–5 + 8 implémentés sur `feat/2069-otel-raw-telemetry` (2026-06-30) ; Blocks 6–7 satellites + Block 9 ingress différés
 
 ---
@@ -336,7 +336,7 @@ def telemetry_attributes(self, payload: dict, result: object | None) -> dict[str
 | `docs/architecture/adr/097-otel-raw-telemetry-store.mdx` | Context, decision 3 stores, collector JSONL, Langfuse deferred |
 | Amendement `docs/architecture/adr/092-observability-architecture.mdx` | Trace plane v1 = otel-raw ; Langfuse optional later |
 | Amendement `docs/architecture/adr/094-control-plane-dashboard-consolidation.mdx` | Engine `otel-raw` ; BFF raw viewer |
-| `artifacts/specs/otel-raw-store-spec.mdx` | JSONL schema, SQLite schema, retention, ADR-068 access pattern |
+| `artifacts/archive/2026-07/otel-raw-store-spec.mdx` | JSONL schema, SQLite schema, retention, ADR-068 access pattern |
 | `artifacts/specs/otel-correlation-ids-spec.mdx` | trace_id wire ↔ OTel ; job_id ↔ span ; clipool dual-layer |
 | `artifacts/specs/otel-span-attributes-spec.mdx` | Registry obligatoires/interdits ; skill=unknown |
 | `docs/OBSERVABILITY.md` | Réaligner Phase 1 (plus « Langfuse only ») |

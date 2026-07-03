@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite",
     "dev:live": "DASHBOARD_MOCK=0 vite",
-    "build": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit && vite build",
+    "build": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.test.json --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "lint": "cd ../.. && biome check apps/dashboard",
     "test": "vitest run",
     "astryx": "node node_modules/@astryxdesign/cli/bin/astryx.mjs",

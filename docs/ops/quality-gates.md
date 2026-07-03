@@ -17,7 +17,12 @@ For script behaviour and exit codes, see [`tools/CLAUDE.md`](../../tools/CLAUDE.
 | `.claude/stack.yml` | Declares gates (`quality_gates`), stages, scripts, file filters, execution order (`qg.run_order`) |
 | `scripts/qg` | Executes gates for a stage, profile, or single gate name |
 | `.pre-commit-config.yaml` | Stable shell: upstream hooks + `qg run --stage pre-commit` / `pre-push` |
-| `.github/workflows/ci.yml` | CI bootstrap (nats, uv, bun, yq) + `qg run --stage ci` + meta-tests, coverage, e2e |
+| `.github/workflows/ci.yml` | CI bootstrap (uv, bun, yq) + `qg run --stage ci` + meta-tests, coverage, e2e |
+
+**CI job layout (#2177):** the former monolithic `ci` job is split 3-way — `gates`
+(runs `qg run --stage ci`), `tests`, and `package-coverage` run in parallel
+(~4m50 serial → ~2m45 wall). An aggregate job keeps the id `ci` so the required-check
+context on `staging` is unchanged.
 
 `tools/qg.conf` remains generated runtime config for file-length scripts (drift-gated by `scripts/check-qg-conf-drift.sh`).
 
@@ -50,7 +55,15 @@ pre-commit run --hook-stage pre-push --all-files
 
 Gates list target stages in `quality_gates.<name>.stages`.
 
-Path-filtered gates (`files:` regex) skip when no changed file matches (commit/push hooks only).
+Path-filtered gates (`files:` regex) skip when no changed file matches. This is
+scoped to a diff range (`QG_DIFF_RANGE`):
+
+- **commit/push hooks** — the local staged/pushed diff.
+- **CI on a pull request (#2176)** — the merge-base diff (`origin/<base>...HEAD`),
+  so a gate whose inputs the PR does not touch is skipped.
+- **CI on push to `staging`/`main` and merge-queue entries** — `QG_DIFF_RANGE` is
+  empty, so `scripts/qg` **fails open** and runs **all** gates: protected-branch and
+  queue runs validate the full merge result, never a diff-scoped subset.
 
 ---
 

@@ -1,11 +1,11 @@
 # Quality-Debt Registry — INDEX
 
-<!-- Auto-populated by `make quality-debt-report`. Do not hand-edit row content;
-     update the underlying registry file (artifacts/debt/<slug>.md) instead. -->
+<!-- Hand-maintained convenience index. No tool populates this file; edit a row in
+     the same commit as the underlying registry file (artifacts/debt/<slug>.md),
+     which is the source of truth. -->
 
 | Slug | Status | Rules | Sites | Drain slice | Created |
 |------|--------|-------|-------|-------------|------|
-<!-- rows inserted here -->
 | adapter-dispatch-complexity | open | - C901 | - | P2b | 2026-05-12 |
 | adapter-magic-constants | open | - PLR2004 | - | P2b | 2026-05-12 |
 | boundary-broad-catch | open | - BLE001 | - | async-pipeline | 2026-05-13 |

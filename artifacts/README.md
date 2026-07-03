@@ -7,16 +7,16 @@ current-state**. Current architectural truth lives in `docs/architecture/`
 domain pages (Tier 2) and the generated Tier-1 snapshot; this tree records *how
 we got there*, one issue at a time.
 
-This file is the SSoT for what stays, what ages out, and how the archive wave
-runs. (The per-wave note in `archive/2026-06/README.md` predates it and is now
-just a wave log.)
+This file is the SSoT for what stays, what ages out, how the archive wave runs,
+and how a wave is **tombstoned** (purged from `HEAD`, recoverable via git tag —
+see § Tombstoned waves).
 
 ## Layout
 
 | Path | Contents | Lifecycle |
 |------|----------|-----------|
 | `frames/`, `analyses/`, `specs/`, `goal/`, `plans/` | `/dev` deltas — problem framing, technical analysis, solution specs, `/goal` contracts, execution plans | **Issue-linked, archivable** (below) |
-| `archive/YYYY-MM/` | Files moved out of the active tree by an archive wave | Permanent cold storage |
+| `archive/YYYY-MM/` | Files moved out of the active tree by an archive wave | Cold storage — a heavy wave may be **tombstoned** (purged from `HEAD`, recoverable via git tag; see § Tombstoned waves) |
 | `debt/` | Quality-debt registry (`INDEX.md` + per-pattern pages) | **Permanent** — tooled: `DEBT:` markers gated by `tools/check_debt_expiry.sh` |
 | `postmortems/` | Incident write-ups | **Permanent** |
 | `plans/TEMPLATE/` | Blank plan scaffold for new work | **Permanent** |
@@ -86,3 +86,23 @@ uv run python tools/archive_artifacts_wave.py --apply
 Graduating a "current truth" delta (migrate invariants → domain page, re-point
 the ADR banner, then archive) is the same move done by hand, because the banner
 re-point is a semantic edit the script cannot infer.
+
+## Tombstoned waves
+
+`archive/YYYY-MM/` is cold storage, but a wave heavy enough to dominate the repo
+(grep/`ccc` noise, clone weight) may be **tombstoned**: removed from `HEAD` while
+its full tree is preserved forever in git history under an annotated tag
+`artifacts-archive/YYYY-MM`. Tombstoning is the last step, only after **every
+live reference out of the archive has been migrated** (a tombstone must strand
+zero inbound links — the same acceptance bar as the wave itself).
+
+Recover any tombstoned file without un-tombstoning the wave:
+
+```bash
+git show artifacts-archive/YYYY-MM:artifacts/archive/YYYY-MM/<path>     # one file (tree-ish `:` form — `-- <path>` prints a diff, not the body)
+git restore --source artifacts-archive/YYYY-MM artifacts/archive/YYYY-MM # whole wave
+```
+
+| Wave | Tag | Files | Purged | Last live inbound ref migrated |
+|------|-----|-------|--------|--------------------------------|
+| `2026-06` | `artifacts-archive/2026-06` | 360 (~4.8 MB, ~44 % of repo markdown) | #2219 | `docs/runbooks/gh-key-rotation.md` → single-App decision inlined; audit Decision Log recoverable via the tag |

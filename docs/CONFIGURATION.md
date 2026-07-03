@@ -321,7 +321,7 @@ Bot tokens and webhook secrets are stored as **Podman secrets**, not in `~/.roxa
 | `factory bot secret install <platform> <bot_id> [--from-env TOK] [--webhook-from-env WHK]` | Create or replace a bot's token (and optional webhook secret) |
 | `factory bot secret rm <platform> <bot_id>` | Remove the bot's token + webhook secret |
 | `factory bot secret list` | List provisioned bot secrets (filtered by `factory-bot-` prefix) |
-| *(not a subcommand)* `python3 tools/migrate_bot_secrets_to_podman.py` | One-shot operator script — migrates pre-#1057 `bot_secrets` rows from `config.db` to Podman secrets; run once on M₁ then discard. See [§ Migrating from pre-#1057 `bot_secrets` rows](#migrating-from-pre-1057-bot_secrets-rows) |
+| *(not a subcommand)* `python3 tools/migrate_bot_secrets_to_podman.py` | One-shot operator script — migrates pre-#1057 `bot_secrets` rows from `config.db` to Podman secrets; run once on M₁ then discard. See [runbooks/bot-secrets-migration.md](runbooks/bot-secrets-migration.md) |
 
 `<bot_id>` must match `^[A-Za-z0-9_-]+$` (alphanumeric, hyphen, underscore — slash-free for safe Podman secret names and tmpfs mount targets).
 
@@ -348,14 +348,7 @@ After running `make quadlet-install`, restart the adapter to remount: `make tele
 
 ### Migrating from pre-#1057 `bot_secrets` rows
 
-Operators on M₁ with a pre-existing `~/.roxabi/factory/config.db` `bot_secrets` table run the one-shot migration script — it reads each row, decrypts via the existing Fernet keyring, and provisions a Podman secret per `(platform, bot_id)`. The script is self-contained (it does NOT depend on the deleted `CredentialStore` class) and idempotent:
-
-```bash
-python3 tools/migrate_bot_secrets_to_podman.py            # apply
-python3 tools/migrate_bot_secrets_to_podman.py --dry-run  # preview
-```
-
-After migration: run `make quadlet-install` to re-render the Quadlet with the newly-provisioned secrets, restart the adapters, and optionally drop the now-orphan `bot_secrets` table (`sqlite3 ~/.roxabi/factory/config.db 'DROP TABLE bot_secrets'`). The script prints the same post-migration checklist on success.
+→ Moved to the one-shot operator runbook: [runbooks/bot-secrets-migration.md](runbooks/bot-secrets-migration.md).
 
 ### Rationale
 
@@ -667,41 +660,7 @@ startup
 
 ## `make quadlet-install` — deploy-time verification
 
-`make quadlet-install` does more than copy files.  After copying all
-`.network`, `.volume`, and `.container` files to `~/.config/containers/systemd/`
-it runs `deploy/quadlet-install-verify.sh`, which:
-
-1. Runs `systemctl --user daemon-reload` — triggers the Quadlet generator to
-   produce fresh `.service` units from the copied files.
-2. Restarts (or starts) each container unit. The unit list is derived at runtime
-   from `deploy/quadlet.toml` (`quadlet_containers` in `deploy/lib/quadlet-units.sh`,
-   `mapfile` in `quadlet-install-verify.sh`) — it auto-updates as components are added,
-   so no fixed roster is hardcoded here.
-3. Waits up to 10 s per unit and checks `systemctl --user is-active`.
-4. If any unit is not `active`, dumps the last 20 lines of
-   `journalctl --user -u <unit>` and exits non-zero — the deploy fails loudly.
-
-This means a broken Quadlet file (e.g. an inline `#` comment on a `Volume=`
-line, which was the root cause of the 2026-05-06 incident) is caught immediately
-at deploy time rather than lying dormant until the next reboot.
-
-### Escape hatch — `NO_RESTART=1`
-
-```bash
-make quadlet-install NO_RESTART=1
-```
-
-Skips steps 1-4 (daemon-reload, restart, and verification).  Only the file
-copy runs.  Use this when:
-
-- Performing a manual recovery where one or more units are intentionally not
-  running (e.g. after an nkey rotation before new seeds are in place).
-- Deploying on a host that does not yet have the full secrets set up (initial
-  bootstrap before `~/.roxabi/factory/env/` files exist).
-
-After fixing the underlying issue, run a normal `make quadlet-install` (without
-`NO_RESTART=1`) to verify all units come up.
-
+→ Moved to the operator runbook: [runbooks/quadlet-install.md § Deploy-time verification](runbooks/quadlet-install.md#deploy-time-verification) (what `make quadlet-install` verifies, and the `NO_RESTART=1` escape hatch).
 
 ---
 

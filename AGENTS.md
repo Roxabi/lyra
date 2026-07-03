@@ -62,7 +62,7 @@ Content lives in `AGENTS.md` (Cursor + agents). `CLAUDE.md` is a thin shim (`@AG
 
 File/rename → update `AGENTS.md` + shim `CLAUDE.md` + registry immediately.
 
-→ `docs/claude-md-registry.md` — full P→scope table (31 : root + 30 sub). Update there on add/rename/delete.
+→ `docs/claude-md-registry.md` — full P→scope table (root + sub-package shims). Update there on add/rename/delete.
 
 Rules: add/delete/move → update `AGENTS.md` + `CLAUDE.md` shim + register | new subdir with non-obvious invariants → add both + register | "invariants, not inventory" (¬file counts, ¬method dumps — let `ls`/`grep` answer that)
 

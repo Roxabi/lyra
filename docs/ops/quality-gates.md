@@ -77,9 +77,10 @@ Before a **deploy PR**, `scripts/qg run --stage pre-push` or `make qg` is suffic
 
 Explicit steps in `.github/workflows/ci.yml` after the QG bundle:
 
+- `uv lock --check` in the `gates` job (pyproject.toml ↔ `uv.lock` desync tripwire; #2173)
 - Gate self-tests (`tests/tools/test_check_*.sh`, `tests/scripts/test_qg.sh`)
 - Dashboard Playwright e2e, package coverage thresholds
-- Jobs `integration`, `docker-build`
+- Jobs `integration`, `docker-build` (`docker-build` is a required check on `staging`)
 
 ACL scanners (`acl_matrix_retired`, `request_reply_flows`, `acl_grants`, `inbox_prefix`, `subject_literals`) are declared in `stack.yml` and run inside `qg run --stage ci`.
 

@@ -31,7 +31,7 @@ feature/fix branch → PR → staging → (promote) → main
 1. Create a branch from `staging` with a descriptive name: `feat/discord-voice`, `fix/pool-lock-timeout`
 2. Open a PR targeting `staging`
 3. Pass CI (lint, typecheck, tests)
-4. Merge — auto-merge is enabled once a PR carries the `reviewed` label (no PR review count is required on `staging`); see [docs/ops/pr-automation.md](docs/ops/pr-automation.md) for the full mechanism (label gate, Dependabot auto-labelling, rebase-on-push)
+4. Merge — auto-merge is enabled once a PR carries the `reviewed` label (no PR review count is required on `staging`); see [docs/ops/pr-automation.md](docs/ops/pr-automation.md) for the full mechanism (label gate, Renovate auto-labelling, merge queue)
 
 ## Commit conventions
 

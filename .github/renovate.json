@@ -10,6 +10,7 @@
   "schedule": ["before 6am on monday"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 10,
+  "minimumReleaseAge": "3 days",
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["before 6am on monday"]
@@ -19,23 +20,33 @@
       "description": "Group non-major Python bumps; uv.lock regen in the same PR",
       "matchManagers": ["pep621", "uv"],
       "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "python non-major",
-      "minimumReleaseAge": "3 days"
+      "groupName": "python non-major"
     },
     {
       "description": "Group major Python bumps",
       "matchManagers": ["pep621", "uv"],
       "matchUpdateTypes": ["major"],
       "groupName": "python majors",
-      "labels": ["dependencies", "major"],
-      "minimumReleaseAge": "3 days"
+      "labels": ["dependencies", "major"]
+    },
+    {
+      "description": "Group Bun/npm workspace bumps (dashboard monorepo)",
+      "matchManagers": ["bun"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "bun non-major"
+    },
+    {
+      "description": "Major Bun bumps",
+      "matchManagers": ["bun"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "bun majors",
+      "labels": ["dependencies", "major"]
     },
     {
       "description": "Group GitHub Actions bumps",
       "matchManagers": ["github-actions"],
       "groupName": "github-actions",
-      "labels": ["dependencies", "ci"],
-      "minimumReleaseAge": "3 days"
+      "labels": ["dependencies", "ci"]
     },
     {
       "description": "Builder python image: patch only (requires-python >=3.12,<3.13)",
@@ -48,8 +59,7 @@
       "description": "Group non-python Docker digest bumps",
       "matchManagers": ["dockerfile"],
       "excludePackageNames": ["python"],
-      "groupName": "docker digests",
-      "minimumReleaseAge": "3 days"
+      "groupName": "docker digests"
     }
   ]
 }

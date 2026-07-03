@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Conversational CLI plugin for refining a Lyra agent profile (persona, voice,
-passthroughs, model). Wraps `factory agent refine` — do NOT touch lyra source code,
+Conversational CLI plugin for refining a factory agent profile (persona, voice,
+passthroughs, model). Wraps `factory agent refine` — do NOT touch factory source code,
 `~/.roxabi/factory/auth.db` directly, or any file outside this plugin directory.
 
 ## Skill

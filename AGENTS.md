@@ -62,20 +62,19 @@ Content lives in `AGENTS.md` (Cursor + agents). `CLAUDE.md` is a thin shim (`@AG
 
 File/rename → update `AGENTS.md` + shim `CLAUDE.md` + registry immediately.
 
-→ `docs/claude-md-registry.md` — full P→scope table (root + sub-package shims). Update there on add/rename/delete.
+→ `docs/claude-md-registry.md` — full P→scope table (the SSoT; one row per shim). Update there on add/rename/delete.
 
 Rules: add/delete/move → update `AGENTS.md` + `CLAUDE.md` shim + register | new subdir with non-obvious invariants → add both + register | "invariants, not inventory" (¬file counts, ¬method dumps — let `ls`/`grep` answer that)
 
-## Production entry points (NATS 6-process)
+## Production entry points
 
-| Subcommand | CLI | Bootstrap |
-|---|---|---|
-| `hub` | `factory hub` | `_bootstrap_hub_standalone()` |
-| `adapter telegram` | `factory adapter telegram` | `_bootstrap_adapter_standalone()` |
-| `adapter discord` | `factory adapter discord` | `_bootstrap_adapter_standalone()` |
-| `adapter clipool` | `factory adapter clipool` | `_bootstrap_clipool_standalone()` |
-| `adapter omp` | `factory adapter omp` | `_bootstrap_omp_standalone()` |
-| `turn-writer` | `factory turn-writer` | `_bootstrap_turn_writer_standalone()` |
+Each prod NATS process is a `factory <subcommand>` whose composition root is a
+`_bootstrap_*_standalone()` in `src/factory/bootstrap/standalone/`. The authoritative
+set of deployed processes is the enabled `[component.*]` sections in
+`deploy/quadlet.toml`; enumerate the CLI surface with `factory --help` or
+`git grep -nE '@(adapter_app|hub_app)\.command|add_typer' src/factory/cli/main.py`
+(hub, `adapter {telegram,discord,web,clipool,omp}`, `turn-writer`, `ingress serve`,
+`blobstore serve`, socialmedia-adapter — invariants, not a hand-maintained count).
 
 Topics: `factory.inbound.<platform>.<bot_id>` | `factory.outbound.<platform>.<bot_id>`
 
@@ -83,9 +82,17 @@ Unified: `factory start` → hub + adapters in 1 process + embedded NATS
 
 ## Container deployment
 
-Prod: Podman Quadlet (systemd `--user`) on M₁ (`factory-hub` role). **16 active containers** per `deploy/quadlet.toml` (Langfuse ×6 + `factory-otel-collector` disabled): core (`factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-clipool`, `factory-omp`, `factory-socialmedia-adapter`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`, `factory-ingress`, `factory-cloudflared`) + observability (`factory-loki`, `factory-promtail`, `factory-otel`). Install: `deploy/install.sh` (idempotent).
+Prod: Podman Quadlet (systemd `--user`) on M₁ (`factory-hub` role). The deployed
+container set is the enabled `[component.*]` sections in `deploy/quadlet.toml` (SSoT;
+Langfuse + `factory-otel-collector` ship disabled) — see also
+`docs/architecture/CURRENT.generated.md § topology`. Install: `deploy/install.sh`
+(idempotent).
 
-Plus **3 llmCLI cloud-gateway units** vendored from Roxabi/llmCLI (LiteLLM proxy :18091 + xAI/Grok forwarder :18645 + Fireworks forwarder :18646) — deployment owned here (M₁ always-on cloud LLM gateway), image built + published by llmCLI CI and pinned by digest. Local GPU inference (llmcli-nats-worker, M₂) stays in Roxabi/llmCLI. See `deploy/AGENTS.md` § llmCLI cloud gateway.
+Plus the llmCLI cloud-gateway units vendored from Roxabi/llmCLI (LiteLLM proxy
+:18091 + xAI/Grok forwarder :18645 + Fireworks forwarder :18646 — ports are the
+contract) — deployment owned here (M₁ always-on cloud LLM gateway), image built +
+published by llmCLI CI and pinned by digest. Local GPU inference (llmcli-nats-worker,
+M₂) stays in Roxabi/llmCLI. See `deploy/AGENTS.md` § llmCLI cloud gateway.
 
 → `docs/runbooks/README.md` — ops runbooks (install, secrets, diagnostic)
-→ `~/projects/docs/container-deployment-standard.md` — 18 standards (S7 secret target, S8 naming, S12 RestartSec=10)
+→ `~/projects/docs/container-deployment-standard.md` — deployment standards (S7 secret target, S8 naming, S12 RestartSec=10)

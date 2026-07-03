@@ -2,7 +2,7 @@
 
 ## Identity
 
-`roxabi-blobs` is a **standalone Python package** — content-addressed `BlobStore` (Flat-FS + SQLite manifest) for the Roxabi plugin ecosystem. Lives in the Lyra monorepo for colocation with consumers but is versioned independently.
+`roxabi-blobs` is a **standalone Python package** — content-addressed `BlobStore` (Flat-FS + SQLite manifest) for the Roxabi plugin ecosystem. Lives in the factory monorepo for colocation with consumers but is versioned independently.
 
 → Architecture contract: `docs/architecture/adr/067-blobstore-abstraction-flat-fs-content-addressed.mdx`
 → V1 spec: `artifacts/specs/1063-roxabi-blobs-package-spec.mdx`
@@ -20,7 +20,7 @@ roxabi-blobs = {
 }
 ```
 
-Lyra itself consumes via `{ workspace = true }`.
+factory itself consumes via `{ workspace = true }`.
 
 ## Public API (stable contract)
 
@@ -53,11 +53,11 @@ async with FsBlobStore(root) as store:
 - Dedup: same bytes ingested N× → 1 file on FS, N `blob_refs` provenance rows.
 - `source` accepts any string — do NOT add an enum here (extensibility invariant).
 - Import: `from roxabi_blobs import ingest_bytes_to_blob_ref` or `from roxabi_blobs.ingest import ...`
-- Zero `lyra.*` imports — safe to consume from voiceCLI, imageCLI, etc.
+- Zero `factory.*` imports — safe to consume from voiceCLI, imageCLI, etc.
 
 ## HttpBlobStore (V8 — #1330)
 
-- `HttpBlobStore` is the HTTP client mirror of `FsBlobStore` — implements the same `BlobStore` Protocol against a remote `lyra blobstore serve` HTTP service.
+- `HttpBlobStore` is the HTTP client mirror of `FsBlobStore` — implements the same `BlobStore` Protocol against a remote `factory blobstore serve` HTTP service.
 - `HttpBlobStore.exists` semantics differ from `FsBlobStore.exists`: over HTTP the argument is interpreted as a `store_key` (wire path) OR a `content_hash` (server HEAD handler does both lookups); the synthesized `BlobRef` returned by `HttpBlobStore.exists` is a sentinel (size=0) sufficient for Protocol truthiness checks.
 - `HttpBlobStore.delete(blob_ref_id)` → `DELETE /blobs/{blob_ref_id}` — server-side polymorphic path arg resolves numeric keys as `blob_ref_id` directly.
 

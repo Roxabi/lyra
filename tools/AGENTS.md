@@ -28,8 +28,8 @@ Regex gate for operator-facing stale text that `check_doc_drift.py` misses: `mak
 | Scanned (operational truth — cite live symbols/paths) | Exempt (narrative/onboarding/aspirational — illustrative/future refs by design) |
 |---|---|
 | `docs/architecture/**` (non-`adr/`), `docs/ARCHITECTURE.md` | `docs/architecture/adr/**` (immutable records, ADR-080) |
-| `docs/standards/**` | `docs/HAPPY-PATHS.md`, `COMMANDS.md` |
-| `docs/CONFIGURATION.md`, `DEPLOYMENT.md`, `docs/QUICKSTART.md`, `GETTING-STARTED.md`, `MULTI-BOT.md` (onboarding, #2201) | `docs/OBSERVABILITY.md`, `ROADMAP.md`, `vision.md` |
+| `docs/standards/**` | `COMMANDS.md` |
+| `docs/CONFIGURATION.md`, `DEPLOYMENT.md`, `docs/QUICKSTART.md`, `GETTING-STARTED.md`, `MULTI-BOT.md` (onboarding, #2201) | `docs/OBSERVABILITY.md` |
 | `docs/agent-management.md`, `bot-management.md`, `data-dirs.md`, `debt-tracking.md` (#2200) | — |
 | `docs/ops/**`, `docs/runbooks/**`, `docs/playbooks/**` | `docs/history/**`, `artifacts/**` |
 | AGENTS.md network (root, `src/`, `packages/`, `plugins/`) | — |

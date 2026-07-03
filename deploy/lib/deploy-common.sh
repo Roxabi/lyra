@@ -9,6 +9,18 @@ set -euo pipefail
 # %h in systemd unit specifiers maps to $HOME in shell.
 export PATH="${HOME}/projects/roxabi-factory/.venv/bin:${HOME}/.local/bin:${PATH}"
 
+# ── uv lockfile guard ────────────────────────────────────────────────────────
+# Every deploy script sources this lib and runs against the LIVE prod checkout.
+# A bare `uv run`/`uv sync` there re-resolves and rewrites uv.lock whenever
+# pyproject.toml has drifted from the committed lock (e.g. a dependabot `pip`
+# bump merged without the lock regen), dirtying the tree and jamming
+# factory-quadlet-sync's ff-only pull (12h M1 deploy outage, 2026-07-02).
+# UV_FROZEN makes "never mutate the lock on the host" the deploy-path default,
+# so a new script can't reintroduce the churn by forgetting `--frozen`.
+# NB: UV_NO_SYNC does NOT prevent this — it skips the venv sync, not the lock
+# refresh; only UV_FROZEN/`--frozen` does.
+export UV_FROZEN=1
+
 # ── Environment guards ─────────────────────────────────────────────────────
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 # shellcheck source=operator-log.sh

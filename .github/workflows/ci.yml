@@ -49,6 +49,15 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
+      # Fail fast if pyproject.toml and uv.lock have drifted. A dependabot
+      # `pip`-ecosystem PR bumps a version specifier without regenerating the
+      # lock; every `uv sync --frozen` below then trusts the stale lock as-is
+      # and never catches the desync — which silently jams the M1 host deploy
+      # (see deploy/lib/deploy-common.sh; 12h outage 2026-07-02, hand-rescued
+      # ≥4× before). Root fix for the recurring lock desync.
+      - name: Verify uv.lock in sync with pyproject.toml
+        run: uv lock --check
+
       - name: Install bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -176,16 +185,34 @@ jobs:
       # --only-shell: the visual tests launch default-headless chromium, which
       # executes the headless-shell binary — the 175 MiB full Chrome download is
       # never exercised.
+      # --reruns is scoped to e2e (browser/screenshot timing flake) — NEVER add
+      # it to unit/coverage steps, where a retry would mask real bugs
+      # (exception: vitest dashboard unit retry — see apps/dashboard/vitest.config.ts).
+      # No --tracing flags: these tests drive sync_playwright() manually (no
+      # pytest-playwright plugin), so plugin tracing options don't apply.
       - name: Dashboard visual e2e (#1771)
         run: |
           uv run playwright install chromium --only-shell
-          uv run pytest tests/e2e/dashboard/ -v
+          uv run pytest tests/e2e/dashboard/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-e2e.xml
 
       # tests/integration runs in the dedicated integration job (against real
       # docker NATS) and tests/e2e in the step above — excluded here so each
-      # suite executes exactly once per run.
+      # suite executes exactly once per run. No --reruns here: unit/coverage
+      # failures must surface on first occurrence.
       - name: Coverage — factory
-        run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/e2e --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50
+        run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/e2e --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50 --junitxml=reports/pytest-unit.xml
+
+      # always(): junit XML is most valuable when a rerun turned the job green —
+      # flake-recurrence observability. run_attempt suffix: v4 artifact names
+      # are immutable per run, a "Re-run failed jobs" upload would 409.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tests-failure-artifacts-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 5
+          if-no-files-found: ignore
 
   # Workspace package suites. roxabi-nats tests spawn a real nats-server
   # subprocess and auto-skip without the binary — install it so the 70%
@@ -276,14 +303,32 @@ jobs:
       - name: Start Docker integration environment
         run: docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 60
 
+      # --reruns is scoped to integration (real docker NATS — network/timing
+      # flake) — NEVER add it to unit/coverage steps, where a retry would mask
+      # real bugs (exception: vitest dashboard unit retry — see
+      # apps/dashboard/vitest.config.ts). Caveat: future JetStream-using tests
+      # inherit rerun-pollution risk (fixed stream/durable names surviving
+      # attempt 1) — use unique names or clean up before relying on --reruns.
       - name: Run integration tests
         env:
           NATS_URL: nats://localhost:4222
-        run: uv run pytest tests/integration/ -v
+        run: uv run pytest tests/integration/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-integration.xml
 
       - name: Tear down Docker environment
         if: always()
         run: docker compose -f docker/docker-compose.test.yml down -v
+
+      # always(): junit XML is most valuable when a rerun turned the job green —
+      # flake-recurrence observability. run_attempt suffix: v4 artifact names
+      # are immutable per run, a "Re-run failed jobs" upload would 409.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: integration-failure-artifacts-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 5
+          if-no-files-found: ignore
 
   docker-build:
     # Build-only gate: verifies the Dockerfile compiles on every PR.
@@ -311,6 +356,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # factory-omp-base pin bumps merge before the GHCR tag publish completes
+      # (~2/month, 11 reds in 2min measured 2026-07-01). Wait for the pinned
+      # manifest instead of blind-retrying the whole bake: real Dockerfile
+      # errors fail fast on the single bake below; the race waits ≤3min.
+      - name: Wait for pinned factory-omp-base manifest
+        run: |
+          tag=$(grep -oP 'ghcr\.io/roxabi/factory-omp-base:[0-9][0-9.]*' Dockerfile | head -1)
+          [[ -n "$tag" ]] || { echo "no omp-base pin found — skipping"; exit 0; }
+          for i in $(seq 1 6); do
+            docker manifest inspect "$tag" >/dev/null 2>&1 && { echo "manifest present: $tag"; exit 0; }
+            echo "attempt $i/6: $tag not yet published — waiting 30s"
+            sleep 30
+          done
+          echo "::warning::$tag still unpublished after 3min — proceeding, bake will fail if truly missing"
 
       - name: Build (no push)
         uses: docker/bake-action@6614cfa25eff9a0b2b2697efb0b6159e7680d584 # v7.2.0

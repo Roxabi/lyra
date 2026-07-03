@@ -1,0 +1,61 @@
+---
+title: "docs(lot2): audit cohérence 34 ADRs actifs ↔ domain pages ↔ code + fix liens morts"
+issue: 2221
+status: approved
+tier: F-full
+date: 2026-07-03
+---
+
+## Problem
+
+Le 1er audit doc (`artifacts/analyses/2026-07-03-doc-audit-strategy.claude.md` §5) a vérifié la **couverture** des ADRs par les domain pages, pas l'**exactitude de leurs corps**. Les 34 ADRs actifs (`docs/architecture/adr/*.mdx`) n'ont jamais été échantillonnés claim-par-claim contre (a) la page qui les résume, (b) le code. Il est prouvé que des ADRs actifs contiennent des liens morts `artifacts/` et des délégations « current truth » incohérentes — le drift interne des 34 reste non mesuré.
+
+**Re-mesure au recheck (HEAD `59d62150b`, post-#2218 link-rewrite + tombstone 2026-06)** — liens `artifacts/` morts référencés hors `artifacts/` (résolution avec fallback `.md`/`.mdx`) :
+
+| Source | morts | détail |
+|---|---|---|
+| ADRs actifs | **5** | 071:48, 073:187, 075:135, 079:462, 087:17 |
+| ADRs archivés | **12** | dont refs vers `artifacts/archive/2026-07/*` inexistants |
+| Domain pages | **0** | — |
+| Autres docs/ | **7** | 6× `docs/debt-tracking.md` → `artifacts/quality-debt-report`, 1× `docs/runbooks/gh-key-rotation.md` → archive 2026-06 purgée |
+| deploy/ + scripts/ | **2** | `deploy/omp/README.md:122`, `scripts/smoke/image-request.py:9` |
+| **total** | **26** | le « 18 » de l'issue est pré-#2218 ; 083/091/096 cités résolvent désormais |
+
+**Why now :** lot 2 de l'epic #2193 ; l'échelle d'arbitrage vient d'être actée (2026-07-03) et les lots 1-2 frères ont fini de bouger les cibles — auditer avant que le drift ne reparte. **Observable impact :** un agent qui lit un ADR actif peut suivre un lien mort ou un claim périmé et en dériver une décision fausse (doc-rot mesuré ~67% sur l'ancien corpus).
+
+## Who
+
+- **Primary :** agents (sessions Claude) + Mickael utilisant `docs/architecture/` comme SSoT quotidien — un ADR actif inexact est pire qu'absent.
+- **Secondary :** epic #2193 (acceptance « pas d'écart doc ↔ ADRs ») ; futurs auteurs d'ADR (la matrice devient la baseline re-auditable).
+
+## Constraints
+
+- **Échelle d'arbitrage (actée 2026-07-03)** : comportement courant = **code** ; vérité quotidienne = **domain page** ; ADR = le **POURQUOI** — s'il contredit le présent : amender / banner de redirect, ¬réécrire l'histoire ; décision reversée → archiver après migration des invariants sole-home vers la page.
+- Doctrine ADR v2 (`conventions.ssot.md`) : pages self-contained ≤350 lignes, titre = contrat, tables « ADR archive » par page = l'index, ¬meta.json.
+- **13 fusions RÉFUTÉES** (wave3, `artifacts/analyses/adr-consolidation-2026-07*.claude.md`) — ne pas retenter ; cette passe juge l'exactitude des corps, pas la consolidation.
+- Méthode : workflow multi-agents, **lecture-seule d'abord** (audit + verify adversarial des écarts high), PRs ensuite.
+- Liens morts : retarger vers la cible déplacée ou le tombstone (`artifacts/archive/2026-06` purgé du HEAD, tag de recovery existant).
+- Gates : `doc_drift_bundle` sur LA branche (deletions non grandfathered) ; PRs `--base staging`, merge via label `reviewed`.
+
+## Out of Scope
+
+- Auditer les **corps** des 66 ADRs archivés — seuls leurs liens morts sont fixés.
+- Re-consolidation / fusions / renumérotations d'ADRs (waves 1-3 terminées).
+- Liens morts **internes** à `artifacts/` (couverts par la politique de rétention #2218).
+- Modifier le **code** : code ≠ ADR ⇒ on amende le doc (échelle d'arbitrage) ; toute anomalie code réelle découverte → issue séparée, pas dans ces PRs.
+- `docs/architecture/CURRENT.generated.md` (généré, gated).
+
+## Premise Validity
+
+**Success in 6 months :** n'importe quel ADR actif lu par un agent donne soit des claims exacts soit un banner de redirect explicite ; 0 lien mort `artifacts/` depuis un ADR actif ou une domain page ; la matrice 34×verdict publiée dans `artifacts/analyses/` sert de baseline pour re-échantillonner.
+
+**Failure in 6 months (falsifiable) :** à ≥6 mois (2027-01), un re-run du même scan trouve **>5 liens morts** `artifacts/` hors `artifacts/`, OU un re-échantillonnage de 10 ADRs actifs trouve **≥3 écarts high** code≠ADR sans banner — la passe manuelle ponctuelle ne tient pas ; pivoter vers un gate automatisé (link-check en CI) au lieu de re-payer des audits.
+
+**Simplest alternative :** fixer les 26 liens morts + bannériser les 7 ADRs déjà connus incohérents (071/075/079/083/087/091/096), sans auditer les 27 autres.
+**Why not simplest :** le recheck a déjà prouvé que la liste connue sous-estime (073 découvert hors liste ; 083/091/096 déjà résolus — la liste citée était à la fois incomplète ET périmée) ; l'acceptance de l'epic est « pas d'écart », pas « écarts connus corrigés » ; sans matrice complète, aucune baseline mesurable pour le critère de failure ci-dessus.
+
+## Complexity
+
+**Tier : F-full** — label `size:F-full` ; audit multi-domaines (34 ADRs × ~15 domain pages × code), méthode multi-agents avec verify adversarial, inconnues réelles (drift interne non mesuré → le volume d'écarts high est inconnu avant la passe).
+
+Signals : multiple domains ∨ unknowns ∨ label F-full — tous présents.

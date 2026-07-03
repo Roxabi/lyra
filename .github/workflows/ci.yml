@@ -8,6 +8,10 @@ on:
     branches: [main, staging]
   pull_request:
     branches: [main, staging]
+  # Merge queue entries run CI on temporary gh-readonly-queue/staging/* refs.
+  # The required "ci" context MUST report on merge_group or every queue entry
+  # times out (repo-wide merge deadlock).
+  merge_group: {}
   workflow_dispatch: {}  # dispatch resolves from default branch — per-branch re-triggers require the branch to contain a compatible ci.yml
 
 # Single declaration site: the installer step is duplicated in the tests and
@@ -19,6 +23,9 @@ env:
 concurrency:
   group: ci-${{ github.ref }}
   # Cancel only on feature branches; protected branches (main, staging) run to completion so every merge-commit SHA has a recorded status.
+  # Merge-queue refs (gh-readonly-queue/staging/*) evaluate as cancelable here —
+  # fine: each queue entry gets a unique ref (unique group), and a rebuilt entry
+  # gets a NEW ref, so cancel-in-progress never preempts a live entry's run.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/staging' }}
 
 jobs:
@@ -84,8 +91,9 @@ jobs:
         env:
           # PR-only: honor gates' files: filters against the merge-base diff
           # (origin/<base> exists thanks to fetch-depth: 0). Empty on push to
-          # staging/main, workflow_dispatch, or any future merge_group event →
-          # scripts/qg fails OPEN and runs ALL gates (previous behavior).
+          # staging/main, workflow_dispatch, and merge_group (queue entries) →
+          # scripts/qg fails OPEN and runs ALL gates — intentional: queue runs
+          # validate the full merge result, not a diff-scoped subset.
           QG_DIFF_RANGE: ${{ github.event_name == 'pull_request' && format('origin/{0}...HEAD', github.base_ref) || '' }}
         run: scripts/qg run --stage ci
 

@@ -1,0 +1,17 @@
+# onboarding-smoke.toml — attestation that the container-only onboarding path
+# (QUICKSTART.md → GETTING-STARTED.md → MULTI-BOT.md) was smoke-tested verbatim
+# on a virgin host (no ~/.roxabi/factory, no secrets) up to a bot that replies.
+#
+# The `onboarding_smoke_attest` gate (tools/check_onboarding_smoke_attest.sh)
+# recomputes docs_hash and fails when it drifts — forcing a re-run of the
+# one-shot smoke before these docs change. CI checks hash equality only; the
+# smoke itself is never replayed in CI (it needs Podman + real bot tokens).
+#
+# Recompute docs_hash after editing any of the three docs:
+#   bash tools/check_onboarding_smoke_attest.sh --print-hash
+
+docs_hash = "0e6ec0935e71310437c9bf56a56d76c499c6f08dd0684a63032301ac9c984f58"
+date = "2026-07-03"
+operator = "mickael@bouly.io"
+issue = 2201
+notes = "PLACEHOLDER — smoke non exécuté, à dérouler sur host vierge avant merge"

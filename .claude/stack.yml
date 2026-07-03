@@ -341,6 +341,18 @@ quality_gates:
     stages: [ci]
     description: committed roxabi built/ theme artifacts must match a fresh build of the source (#2089)
 
+  onboarding_smoke_attest:
+    enabled: true
+    script: bash tools/check_onboarding_smoke_attest.sh
+    stages: [pre-push, ci]
+    # Only the 3 onboarding docs + the attestation change the hash. CI verifies
+    # hash equality only (pattern: architecture_snapshot) — the one-shot smoke
+    # (Podman + bot secrets + a bot that replies on a virgin host) is never
+    # replayed here. Keep this filter in sync with the DOCS list in
+    # tools/check_onboarding_smoke_attest.sh.
+    files: ^(docs/(QUICKSTART|GETTING-STARTED|MULTI-BOT)\.md|tools/attestations/onboarding-smoke\.toml)$
+    description: onboarding docs changed → re-run the one-shot smoke and refresh the hash-bound attestation (#2201)
+
 qg:
   run_order:
     pre-commit:
@@ -365,6 +377,7 @@ qg:
       - no_runtime_toml_bots
       - license
       - architecture_snapshot
+      - onboarding_smoke_attest
       - qg_conf_drift
       - acl_specs_drift
       - acl_authconf_drift
@@ -401,6 +414,7 @@ qg:
       - lint
       - typecheck
       - license
+      - onboarding_smoke_attest
       - codes_sync
       - acl_specs_drift
       - acl_authconf_drift

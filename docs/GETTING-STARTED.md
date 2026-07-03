@@ -15,32 +15,21 @@ Complete guide to set up Machine 1 (Ubuntu Server 26.04 LTS) as the factory hub 
 
 ## Choose your install path
 
-Three ways to run lyra — pick the one that matches your goal.
+Pick the path that matches your goal.
 
 | Tier | Goal | Setup |
 |------|------|-------|
-| **1. Library** | Import `lyra` in your own code | `uv add "lyra @ git+https://github.com/Roxabi/roxabi-factory.git@staging"` — nothing else |
-| **2. Standalone** | Run lyra on one machine (dev or personal use) | See **Tier 2** below — 5 commands, no containers, no separate NATS server |
-| **3. Full production** | 24/7 hub with adapters, auto-deploy, monitoring | Continue to **Step 1** below — this guide covers Machine 1 hub setup |
+| **1. Library** | Import `factory` in your own code | `uv add "factory @ git+https://github.com/Roxabi/roxabi-factory.git@staging"` — nothing else |
+| **2. Local dev (one machine)** | Run factory as containers on your machine | Follow [QUICKSTART.md](QUICKSTART.md) — same Podman/Quadlet path as production |
+| **3. Full production host** | 24/7 hub with adapters, auto-deploy, monitoring | Continue to **Step 1** below — this guide provisions the Machine 1 hub |
 
 ---
 
-## Tier 2 — Standalone (unified mode)
-
-For single-machine dev or personal use. `factory start` runs hub + adapters in one process and auto-starts an embedded nats-server when `NATS_URL` is unset.
-
-```bash
-git clone git@github.com:Roxabi/roxabi-factory.git ~/projects/roxabi-factory
-cd ~/projects/roxabi-factory && uv sync
-cp config.toml.example config.toml   # edit owner_users with your IDs
-factory agent init                      # seed agents DB from bundled TOML
-factory bot secret install telegram lyra   # store token encrypted
-factory start                           # hub + telegram + discord in one process
-```
-
-No containers. No systemd. No `make converge`. Stop with `Ctrl+C`.
-
-Move to Tier 3 (split processes, auto-deploy timer, health monitoring, embedded NATS replaced by a system service) only when you actually need 24/7 uptime. Tier 3 is what this guide covers from **Step 1** onward.
+> **Local dev on one machine?** Follow [QUICKSTART.md](QUICKSTART.md) — it walks
+> the same container path (Podman secrets + Quadlet units) on a single host.
+> factory runs **only as containers**; there is no standalone single-process
+> mode. The rest of this guide provisions a dedicated 24/7 hub host (Machine 1)
+> from scratch.
 
 ---
 
@@ -289,11 +278,11 @@ Follow the prompts to authenticate. factory uses Claude Code as its LLM backend 
 
 ---
 
-## Step 10 — NATS setup (production only)
+## Step 10 — NATS setup
 
-For **single-machine development**, no NATS setup is required. `factory start` auto-starts an embedded nats-server when `NATS_URL` is not set.
-
-For **production** (Quadlet containers on `roxabi.network`):
+factory always talks to a containerized NATS server (`factory-nats` on
+`roxabi.network`) — there is no embedded or standalone mode. Generate the nkeys
+and auth.conf, then create the Podman secrets:
 
 ```bash
 cd ~/projects/roxabi-factory
@@ -390,7 +379,7 @@ make factory errors      # journalctl for factory-hub (errors only)
 **Discord:** @mention your bot in a channel: `@YourBot hello!`
 
 What happens under the hood:
-1. The adapter (standalone process) normalizes your message into an `InboundMessage`
+1. The adapter (its own container) normalizes your message into an `InboundMessage`
 2. It publishes to NATS (`factory.inbound.<platform>.<bot_id>`)
 3. The Hub picks it up via its `NatsBus` subscription and resolves the routing
 4. The Hub publishes the turn to NATS (`factory.jobs.claude`); the `factory-clipool` worker receives it and spawns the `claude` subprocess, streaming replies back via NATS (`factory.clipool.heartbeat`)

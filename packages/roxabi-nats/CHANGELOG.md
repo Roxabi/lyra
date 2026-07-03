@@ -4,39 +4,64 @@ All notable changes to the `roxabi-nats` package are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0](https://github.com/Roxabi/lyra/compare/roxabi-nats/v0.1.0...roxabi-nats/v0.2.0) (2026-04-17)
-
-
-### Features
-
-* **voice:** load-aware routing for multi-GPU STT/TTS workers ([#732](https://github.com/Roxabi/lyra/issues/732)) ([b928bb0](https://github.com/Roxabi/lyra/commit/b928bb0685ba78d04e2a4a62760d39d507e67ab9))
-
 ## [Unreleased]
+
+`pyproject.toml` is at `0.4.2`, but the matching `roxabi-nats/v0.4.2` tag has
+**not** been cut — an external `uv` pin referencing `roxabi-nats/v0.4.2` will
+fail to resolve until the tag is pushed. Cutting the tag is a release action on
+`staging` — see [Pin doctrine](../../docs/architecture/contracts.md#pin-doctrine-external-consumers).
+
+### Deprecated (still shipped)
+
+- `roxabi_nats.adapter_base.CONTRACT_VERSION` and top-level
+  `roxabi_nats.CONTRACT_VERSION` remain compat re-exports (lazy
+  `DeprecationWarning`); the canonical home is `roxabi_contracts.envelope`.
+  Removal was originally scheduled for `v0.3.0` (ADR-045 / ADR-049) but was
+  **never executed** — the re-exports still ship as of `0.4.2`. Removal is
+  deferred and unscheduled; whichever release finally cuts it MUST carry a
+  `BREAKING CHANGE:` trailer.
+
+
+## [0.4.2] (2026-06-03) — tag pending
 
 ### Changed
 
-- `CONTRACT_VERSION` canonical home moved to `roxabi_contracts.envelope`
-  (ADR-049 §Neutral consequence). `roxabi_nats.adapter_base.CONTRACT_VERSION`
-  and the top-level `roxabi_nats.CONTRACT_VERSION` are now compat re-exports
-  that emit a `DeprecationWarning` at module import time.
+- Part of the `lyra.* → factory.*` NATS wire-namespace rename ([#1670](https://github.com/Roxabi/roxabi-factory/issues/1670)): readiness-announce subject strings updated to the `factory.*` namespace.
 
-### Deprecated
 
-- `from roxabi_nats.adapter_base import CONTRACT_VERSION`
-- `from roxabi_nats import CONTRACT_VERSION`
+## [0.4.1] (2026-05-20)
 
-  Import from `roxabi_contracts.envelope` instead. Both compat re-exports are
-  scheduled for removal at `v0.3.0` (see below).
+### Features
 
-### Planned removal at v0.3.0 (BREAKING CHANGE)
+- Add a `wait_ready` opt-out for worker-class adapters so heartbeat-driven workers can skip the startup readiness gate ([#1147](https://github.com/Roxabi/roxabi-factory/issues/1147)).
 
-- The two `CONTRACT_VERSION` compat re-exports above will be removed. Consumers
-  must migrate to `from roxabi_contracts.envelope import CONTRACT_VERSION`.
-- The `v0.3.0` release commit will carry a `BREAKING CHANGE:` trailer so
-  release-please surfaces it in the changelog and Renovate opens a major-bump
-  PR across satellites.
+
+## [0.4.0] (2026-05-19)
+
+### Breaking
+
+- Rename `NatsDriverBase._stream_gen` → `_dict_stream_gen` ([#1254](https://github.com/Roxabi/roxabi-factory/issues/1254) / [#1258](https://github.com/Roxabi/roxabi-factory/issues/1258)). Private `_`-prefixed rename; per the versioning policy this does not force a major bump, but external callers reaching into the private name must update.
+
+
+## [0.3.0] (2026-04-27) — no tag cut
+
+### Changed
+
+- CliPool extracted into a dedicated NATS container (ADR-054) ([#946](https://github.com/Roxabi/roxabi-factory/issues/946)); driver-side plumbing moved with it. The `roxabi-nats/v0.3.0` tag was never pushed (the released tag chain is `v0.2.1 → v0.4.0 → v0.4.1`), and the `CONTRACT_VERSION` compat-re-export removal that earlier notes scheduled "at v0.3.0" did **not** land here — see [Unreleased].
+
+
+## [0.2.1](https://github.com/Roxabi/lyra/compare/roxabi-nats/v0.2.0...roxabi-nats/v0.2.1) (2026-04-22)
+
+### Bug Fixes
+
+- **nats:** thread `inbox_prefix` through `NatsAdapterBase` for voiceCLI satellites ([ead4fec](https://github.com/Roxabi/lyra/commit/ead4fec12246d387adcded91b6a4a8adb1efe311)).
+
 
 ## [0.2.0] — 2026-04-17
+
+### Features
+
+- **voice:** load-aware routing for multi-GPU STT/TTS workers ([#732](https://github.com/Roxabi/lyra/issues/732)) ([b928bb0](https://github.com/Roxabi/lyra/commit/b928bb0685ba78d04e2a4a62760d39d507e67ab9)).
 
 ### Breaking
 

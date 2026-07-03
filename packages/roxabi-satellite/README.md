@@ -27,6 +27,14 @@ roxabi-satellite = {
 }
 ```
 
+> **Why `branch`, not `tag`, here?** `roxabi-nats` and `roxabi-contracts` MUST
+> be pinned by tag — but `roxabi-satellite` is the sanctioned exception. It is
+> pre-tag plumbing (no `roxabi-satellite/*` tags yet), and depending on it
+> pulls the whole SDK from one staging commit, so you get a coherent
+> `contracts`+`nats`+`blobs` triple with no partial-upgrade risk. Full
+> rationale: [Pin doctrine](../../docs/architecture/contracts.md#pin-doctrine-external-consumers).
+> Never branch-pin `roxabi-nats`/`roxabi-contracts` directly.
+
 ```toml
 [project.optional-dependencies]
 nats = ["roxabi-satellite", "nats-py>=2.6,<3", "nkeys>=0.1"]

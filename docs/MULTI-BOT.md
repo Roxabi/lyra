@@ -15,38 +15,23 @@ Typical use case: `lyra_default` (Claude Sonnet, developer-facing) and `aryl_def
 
 ---
 
-## config.toml: single-bot vs multi-bot
+## config.toml: what it holds (and what it does not)
 
-### Single-bot (legacy, still works)
+`config.toml` `[[telegram.bots]]` / `[[discord.bots]]` entries are **seed-only**:
+they declare which bots exist and their adapter settings. `factory bot init`
+imports them into **BotStore** (`~/.roxabi/factory/config.db`), which is the
+runtime roster. Tokens are **never** in `config.toml` — they are Podman secrets.
 
-```toml
-[auth.telegram]
-default = "blocked"
-owner_users = [7377831990]
+> **Note:** Tokens are delivered via per-bot Podman secrets mounted at
+> `/run/secrets/bot_token-<bot_id>` — provision them with
+> `factory bot secret install <platform> <bot_id>` (see `docs/CONFIGURATION.md`
+> § Bot credentials). There is no `token` field and no token env var in
+> `config.toml`.
 
-[telegram]
-token = "env:TELEGRAM_TOKEN"
-bot_username = "env:TELEGRAM_BOT_USERNAME"
-webhook_secret = "env:TELEGRAM_WEBHOOK_SECRET"
-agent = "lyra_default"
+### Single-bot
 
-[auth.discord]
-default = "blocked"
-owner_users = [389408866774810625]
-
-[discord]
-token = "env:DISCORD_TOKEN"
-auto_thread = true
-agent = "lyra_default"
-```
-
-The flat `[telegram]` and `[discord]` sections use `bot_id = "main"` internally.
-
-### Multi-bot
-
-Replace the flat sections with `[[telegram.bots]]` and `[[discord.bots]]` arrays. Each entry takes a `bot_id` that must match a corresponding `[[auth.telegram_bots]]` or `[[auth.discord_bots]]` entry.
-
-> **Note:** In production multi-bot deployments, tokens are delivered via per-bot Podman secrets mounted at `/run/secrets/bot_token-<bot_id>` — provision them with `factory bot secret install <platform> <bot_id>` (see the `## Bot credentials` section in `docs/CONFIGURATION.md`). The `token` fields below illustrate the legacy single-bot `env:` path only.
+One `[[telegram.bots]]` (and/or one `[[discord.bots]]`) entry, each with a
+matching auth entry:
 
 ```toml
 [admin]
@@ -54,27 +39,52 @@ user_ids = ["tg:user:7377831990", "dc:user:389408866774810625"]
 
 [[telegram.bots]]
 bot_id = "lyra"
-token = "env:TELEGRAM_TOKEN"
-bot_username = "env:TELEGRAM_BOT_USERNAME"
-webhook_secret = "env:TELEGRAM_WEBHOOK_SECRET"
+agent = "lyra_default"
+
+[[auth.telegram_bots]]
+bot_id = "lyra"
+default = "blocked"
+owner_users = [7377831990]
+
+[[discord.bots]]
+bot_id = "lyra"
+auto_thread = true
+agent = "lyra_default"
+
+[[auth.discord_bots]]
+bot_id = "lyra"
+default = "blocked"
+owner_users = [389408866774810625]
+```
+
+### Multi-bot
+
+Add one `[[telegram.bots]]` / `[[discord.bots]]` block per bot, each with a
+`bot_id` that matches its `[[auth.telegram_bots]]` / `[[auth.discord_bots]]`
+entry. Set `webhook_enabled = true` for webhook-mode bots (renders a
+`bot_webhook-<bot_id>` secret directive):
+
+```toml
+[admin]
+user_ids = ["tg:user:7377831990", "dc:user:389408866774810625"]
+
+[[telegram.bots]]
+bot_id = "lyra"
 agent = "lyra_default"
 
 [[telegram.bots]]
 bot_id = "aryl"
-token = "env:ARYL_TELEGRAM_TOKEN"
 bot_username = "RoxabiArylbot"
 agent = "aryl_default"
-# webhook_secret = "env:ARYL_TELEGRAM_WEBHOOK_SECRET"  # required for webhook mode
+# webhook_enabled = true   # set for webhook mode (adds a bot_webhook-<bot_id> secret)
 
 [[discord.bots]]
 bot_id = "lyra"
-token = "env:DISCORD_TOKEN"
 auto_thread = true
 agent = "lyra_default"
 
 [[discord.bots]]
 bot_id = "aryl"
-token = "env:ARYL_DISCORD_TOKEN"
 auto_thread = true
 agent = "aryl_default"
 
@@ -99,7 +109,9 @@ default = "blocked"
 owner_users = [389408866774810625]
 ```
 
-Every `bot_id` string is arbitrary but must be unique per platform and consistent across the `bots` and `auth_bots` arrays.
+Every `bot_id` string is arbitrary but must be unique per platform and consistent
+across the `bots` and `auth_bots` arrays. After editing, run `factory bot init`
+to seed BotStore, then `factory bot secret install <platform> <bot_id>` per bot.
 
 ---
 
@@ -249,36 +261,26 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
    - Telegram: use `@BotFather` → `/newbot` → copy the token
    - Discord: Discord Developer Portal → New Application → Bot → Reset Token → enable Message Content Intent
 
-2. **Create the agent TOML** (if using a new persona)
-   - Copy `src/factory/agents/lyra_default.toml` to `src/factory/agents/<name>.toml`
-   - Edit `name`, `memory_namespace`, `model`, and `[prompt]`
+2. **Create the agent** (if using a new persona)
+   - Run `factory agent create` (wizard → writes `~/.roxabi/factory/agents/<name>.toml`), or hand-write a TOML there
+   - Set `name`, `memory_namespace`, `model`, and `[prompt]`
    - Do not enable `smart_routing` (`enabled = false` or omit the section)
+   - Run `factory agent init` to import it into the DB
 
-3. **Add environment variables** to `.env`
-   ```bash
-   ARYL_TELEGRAM_TOKEN=123456789:ABCdef...
-   ARYL_DISCORD_TOKEN=MTIz...
-   ```
-
-4. **Add a `[[telegram.bots]]` entry** in `config.toml`
+3. **Add a `[[telegram.bots]]` / `[[discord.bots]]` entry** in `config.toml`
    ```toml
    [[telegram.bots]]
    bot_id = "aryl"
-   token = "env:ARYL_TELEGRAM_TOKEN"
    bot_username = "RoxabiArylbot"
    agent = "aryl_default"
-   ```
 
-5. **Add a `[[discord.bots]]` entry** in `config.toml`
-   ```toml
    [[discord.bots]]
    bot_id = "aryl"
-   token = "env:ARYL_DISCORD_TOKEN"
    auto_thread = true
    agent = "aryl_default"
    ```
 
-6. **Add auth entries** in `config.toml` — one per platform
+4. **Add auth entries** in `config.toml` — one per platform
    ```toml
    [[auth.telegram_bots]]
    bot_id = "aryl"
@@ -291,12 +293,31 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
    owner_users = [389408866774810625]
    ```
 
-7. **Verify the bot_id is consistent** — the `bot_id` string must match exactly across the `bots` entry, the `auth_bots` entry, and will appear in logs and webhook URLs.
-
-8. **Restart factory**
+5. **Seed BotStore** — import the new entries from `config.toml`
    ```bash
-   make factory reload
+   factory bot init          # idempotent; skips existing bots
    ```
+
+6. **Install the bot tokens as Podman secrets** — one per platform
+   ```bash
+   factory bot secret install telegram aryl   # prompts for the token
+   factory bot secret install discord  aryl
+   ```
+   `deploy/install.sh` renders the matching `Secret=factory-bot-<platform>-aryl`
+   directive into the adapter `.container` from BotStore. Per-bot token secrets
+   are **not** listed in `deploy/quadlet.toml` `required_secrets` (that key holds
+   the fixed infra secrets — nkeys, blobstore); they are rendered from BotStore
+   via the `{{bot_secrets}}` template. See `docs/runbooks/bot-onboarding.md`.
+
+7. **Verify the bot_id is consistent** — the `bot_id` string must match exactly across the `bots` entry, the `auth_bots` entry, the Podman secret name, and will appear in logs and webhook URLs.
+
+8. **Re-render the Quadlet and restart the adapters**
+   ```bash
+   deploy/install.sh                                     # re-render Secret= from BotStore
+   systemctl --user restart factory-telegram factory-discord
+   ```
+   A `Secret=` change needs a container **restart** — `daemon-reload` alone does
+   not refresh the tmpfs-mounted secret.
 
 9. **Test** — send a message to the new bot on each platform. Check `make factory logs` for the routing key (`platform=telegram bot_id=aryl scope_id=chat:...`).
 

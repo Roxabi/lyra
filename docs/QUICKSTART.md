@@ -1,6 +1,10 @@
 # Quickstart
 
-Get Lyra running and send your first message in about 5 minutes.
+Get factory running as containers and send your first message.
+
+factory runs **only as Podman/Quadlet containers** — the same path in dev and in
+production. There is no standalone "run it in one process" onboarding mode; the
+documented path below is the production path on a single machine.
 
 ## Prerequisites
 
@@ -8,173 +12,170 @@ Get Lyra running and send your first message in about 5 minutes.
 |-------------|---------|-------|
 | Python | 3.12+ | `python --version` |
 | [uv](https://docs.astral.sh/uv/) | latest | `pip install uv` |
+| Podman | rootless | `podman --version` — ships natively on Ubuntu 24.04+/Pop!_OS |
 | [Claude Code CLI](https://claude.ai/download) | latest | Default LLM backend — requires a Claude subscription |
+| Node.js | 22.13+ | Needed by the Claude Code CLI and `bun install` in dev-setup |
 | Telegram bot token | — | Create one via [@BotFather](https://t.me/BotFather) |
 | Discord bot token | — | Create one via [Discord Developer Portal](https://discord.com/developers) |
 
-> You only need the channels you plan to use. Skip Telegram or Discord vars if you're not using that channel — the adapter will fail to start, but the other one will still run.
+> You only need the channels you plan to use. A platform with no
+> `[[telegram.bots]]` / `[[discord.bots]]` entry in `config.toml` is silently
+> skipped — provision only the bots you want.
 
-## 1. Install
+## 1. Clone and set up the dev environment
 
 ```bash
 git clone https://github.com/Roxabi/roxabi-factory
 cd roxabi-factory
-uv sync
-
-# Activate the virtual environment to get the `factory` CLI on your PATH
-source .venv/bin/activate
-# Alternative: add .venv/bin to your PATH permanently in ~/.bashrc
+tools/dev-setup.sh          # uv sync + bun install + git hooks (SSoT: .claude/stack.yml commands.dev_setup)
 ```
 
-## 2. Configure environment
+CLI commands below are shown as `uv run factory …`. To drop the `uv run` prefix,
+activate the venv (`source .venv/bin/activate`) or add `.venv/bin` to your PATH.
 
-Create a `.env` file at the project root:
+## 2. Create a bot on the platform
+
+**Telegram:**
+1. Open Telegram, search `@BotFather`, send `/newbot`, follow the prompts.
+2. Copy the token (format `123456789:ABCdef...`).
+
+**Discord:**
+1. [discord.com/developers/applications](https://discord.com/developers/applications) → New Application.
+2. Bot tab → Reset Token → copy the token.
+3. Enable **Message Content Intent** (required to read messages).
+4. OAuth2 → URL Generator → scope `bot` + permission `Send Messages` → invite the bot to your server.
+
+## 3. Configure `config.toml`
+
+`config.toml` holds *which bots exist* and their adapter settings — **never
+tokens**. Copy the example and edit it:
 
 ```bash
-# Telegram (required if using Telegram adapter)
-TELEGRAM_TOKEN=123456789:ABCdef...        # from BotFather → /newbot
-TELEGRAM_WEBHOOK_SECRET=any-random-string  # used to verify webhook calls; polling mode ignores this
-TELEGRAM_BOT_USERNAME=your_bot_username    # optional, defaults to "lyra_bot"
-
-# Discord (required if using Discord adapter)
-DISCORD_TOKEN=MTIz...                      # from Discord Developer Portal → Bot → Token
+cp config.toml.example config.toml
 ```
 
-### Telegram: create a bot
-
-1. Open Telegram, search `@BotFather`
-2. Send `/newbot` and follow the prompts
-3. Copy the token (format: `123456789:ABCdef...`) into `TELEGRAM_TOKEN`
-4. Set `TELEGRAM_BOT_USERNAME` to the username you chose (without `@`)
-
-### Discord: create a bot
-
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → New Application
-2. Bot tab → Reset Token → copy into `DISCORD_TOKEN`
-3. Bot tab → enable **Message Content Intent** (required to read messages)
-4. OAuth2 → URL Generator → scope `bot` + permission `Send Messages` → invite the bot to your server
-
-## 3. Configure the agent (optional)
-
-Agents are managed via **AgentStore** (SQLite at `~/.roxabi/factory/config.db`). TOML files in `src/factory/agents/` (system defaults) and `~/.roxabi/factory/agents/` (user overrides) are seed sources — import them into the DB on first setup:
-
-```bash
-# First-time: seed DB from TOML files
-factory agent init
-
-# List all agents in DB
-factory agent list
-
-# Edit an agent interactively (changes take effect on restart)
-factory agent edit lyra_default
-
-# Validate an agent
-factory agent validate lyra_default
-```
-
-Agent seeds are TOML files — no Python needed:
+Set your admin IDs and one `bot_id` per bot:
 
 ```toml
-[agent]
-name = "lyra_default"
-memory_namespace = "lyra"
-permissions = []
+[admin]
+# Telegram ID: message @userinfobot   Discord ID: Developer Mode → Copy User ID
+user_ids = ["tg:user:123456789", "dc:user:123456789012345678"]
 
-[model]
-backend = "claude-cli"          # "claude-cli" | "nats"
-model = "claude-sonnet-4-6"
-max_turns = 10
-tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
-
-[prompt]
-system = """You are Lyra, a personal AI assistant..."""
-```
-
-**User-level overrides**: put your customised TOML at `~/.roxabi/factory/agents/<name>.toml` — it takes precedence over the system default at `init` time.
-
-**Second agent**: duplicate any `.toml` under a new name, run `factory agent init`, then add a `[[telegram.bots]]` or `[[discord.bots]]` entry in `config.toml` pointing `agent = "<name>"`. No Python changes needed.
-
-## 4. Run
-
-```bash
-factory start
-```
-
-Expected output:
-
-```
-2026-01-01 12:00:00 INFO factory.__main__: Lyra started — Telegram + Discord adapters running.
-```
-
-Lyra is now:
-- Polling Telegram for new messages (aiogram long-polling)
-- Connected to Discord via gateway WebSocket
-
-Send a message to your Telegram bot or Discord bot — you should get a reply within a few seconds.
-
-### Telegram-only or Discord-only
-
-Just configure only the platforms you need in `config.toml`. A platform with no `[[telegram.bots]]` / `[[discord.bots]]` entries is silently skipped:
-
-```toml
-# Telegram only — omit [[discord.bots]] entirely
 [[telegram.bots]]
-bot_id = "lyra"
-token = "env:TELEGRAM_TOKEN"
-bot_username = "env:TELEGRAM_BOT_USERNAME"
-webhook_secret = "env:TELEGRAM_WEBHOOK_SECRET"
-agent = "lyra_default"
+bot_id = "lyra"          # must match the id you pass to `factory bot secret install`
+# agent = "lyra_default" # fallback if the DB has no bot→agent mapping yet
 
-[[auth.telegram_bots]]
+[[discord.bots]]
 bot_id = "lyra"
-default = "blocked"
-owner_users = [YOUR_TELEGRAM_ID]
 ```
 
-No flags needed — presence in `config.toml` is the switch.
+There is **no `token` field** and **no token env file** — tokens are delivered as
+Podman secrets in step 5.
 
-## 5. Run tests
+## 4. Seed the agent and bot stores
+
+Agents and bots live in SQLite (`~/.roxabi/factory/config.db`). TOML files under
+`src/factory/agents/` (defaults) and `~/.roxabi/factory/agents/` (overrides) are
+seed sources; `config.toml` is the bot seed source. Import both into the DB:
 
 ```bash
-uv run pytest
+uv run factory agent init    # seed AgentStore from bundled agent TOML
+uv run factory bot init      # seed BotStore from config.toml [[telegram.bots]]/[[discord.bots]]
 ```
 
-All tests are in `tests/` and run with `pytest-asyncio`. No external services required — adapters are mocked.
+`factory bot init` is idempotent (skips existing rows; `--force` overwrites). It
+is also re-run by `deploy/install.sh` in step 6, so you never hand-edit BotStore.
 
-## 6. Lint and typecheck
+## 5. Install the bot token as a Podman secret
+
+Tokens are stored as Podman `type=mount` secrets, mounted into the adapter
+container at `/run/secrets/bot_token-<bot_id>` — never in `config.toml`:
 
 ```bash
-uv run ruff check .      # lint
-uv run ruff format .     # format
-uv run pyright           # type check
+uv run factory bot secret install telegram lyra   # prompts for the token (hidden input)
+uv run factory bot secret install discord  lyra
 ```
+
+Non-interactive alternative — read from an env var:
+
+```bash
+TELEGRAM_TOKEN=123456789:ABCdef... uv run factory bot secret install telegram lyra --from-env TELEGRAM_TOKEN
+```
+
+This creates the Podman secret `factory-bot-telegram-lyra`. `deploy/install.sh`
+renders the matching `Secret=` directive into `factory-telegram.container` from
+BotStore — see `docs/CONFIGURATION.md` § Bot credentials.
+
+## 6. Generate NATS identities and install the Quadlet units
+
+```bash
+make nats-setup        # render nkey seeds + auth.conf under ~/.roxabi/factory/nkeys/
+deploy/install.sh      # idempotent: install Quadlet units + Podman secrets, run `factory bot init`, daemon-reload
+```
+
+`deploy/install.sh` installs but **does not start** the units (it defers to you).
+It prints the exact `systemctl --user start …` line to run next.
+
+## 7. Enable linger and start the containers
+
+```bash
+loginctl enable-linger "$USER"   # let systemd --user run without a login session
+
+systemctl --user start \
+  factory-nats factory-hub factory-telegram factory-discord \
+  factory-clipool factory-gh-helper factory-turn-writer factory-blobstore
+```
+
+## 8. Authenticate the Claude CLI
+
+The default agent uses the `claude-cli` backend (spawns the `claude` subprocess).
+Authenticate once:
+
+```bash
+claude
+```
+
+## 9. Verify and send your first message
+
+```bash
+systemctl --user status 'factory-*.service'   # units should be active
+make factory logs                             # journalctl for factory-hub
+```
+
+Send a message to your Telegram bot (DM) or Discord bot (`@YourBot hello!`) — you
+should get a reply within a few seconds.
 
 ## Troubleshooting
 
-**`Missing required env var: TELEGRAM_TOKEN`**
-The `.env` file was not found or the variable is empty. Make sure `.env` is in the project root and has no leading/trailing spaces around the `=`.
+**`no such secret "factory-bot-telegram-lyra"`**
+The adapter container failed to start because the token secret is missing on this
+host. Podman secrets are host-local — run `factory bot secret install <platform>
+<bot_id>` on every host that runs the adapter, then `deploy/install.sh` and
+restart the unit.
 
 **Discord bot doesn't respond**
-Check that **Message Content Intent** is enabled in the Discord Developer Portal under Bot settings. Without it, the bot receives events but cannot read message content.
+Enable **Message Content Intent** in the Discord Developer Portal → Bot settings.
+Without it the bot receives events but cannot read message content.
 
 **Claude CLI errors**
-The default agent uses `claude-cli` backend, which shells out to the `claude` CLI. Make sure you're logged in: run `claude` once to authenticate. Lyra requires a Claude subscription for the `claude-cli` backend. For multi-provider access (Ollama, llama.cpp, Fireworks, OpenAI, …), use the `nats` backend → llmCLI worker. Requires a configured, authenticated NATS server — see GETTING-STARTED.md for setup.
+The `claude-cli` backend shells out to the `claude` CLI — run `claude` once to
+authenticate (requires a Claude subscription). For multi-provider access
+(Ollama, llama.cpp, Fireworks, OpenAI, …) use the `nats` backend → llmCLI worker.
 
-**Queue full warning**
-If the hub logs `Processing your request…`, the bounded queue (100) is full. This is expected under burst load — messages are queued and processed in order.
+**A bot is silently absent at startup**
+Each bot needs a matching `[[auth.telegram_bots]]` / `[[auth.discord_bots]]`
+entry in `config.toml`. A bot with no auth entry is skipped — see
+[MULTI-BOT.md](MULTI-BOT.md).
 
-## Running Multiple Bots
+## Running multiple bots
 
-Lyra supports running multiple bots (each with its own persona and model) — all sharing the hub and adapter processes. The short version:
-
-1. Create an agent TOML in `src/factory/agents/<name>.toml` for the new persona. Copy `lyra_default.toml` and edit `[agent].name`, `[model].model`, and `[prompt]`. Then run `factory agent init` to import it into the DB.
-2. Add `[[telegram.bots]]` and/or `[[discord.bots]]` entries to `config.toml`, each with a unique `bot_id` and `agent = "<name>"`.
-3. Add matching `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` entries and the new bot tokens to `.env`.
-
-See [MULTI-BOT.md](MULTI-BOT.md) for the full configuration reference, auth options, Discord thread ownership details, and a complete step-by-step checklist.
+To add a second bot (its own persona, model, and auth), see
+[MULTI-BOT.md](MULTI-BOT.md) for the full configuration reference and the
+step-by-step checklist (`bot init` + `bot secret install` per bot).
 
 ## Next steps
 
-- [Architecture](ARCHITECTURE.md) — understand the hub, bindings, pools, and memory model
-- [Vision](vision.md) — design principles and what Lyra is not
+- [Architecture](ARCHITECTURE.md) — hub, bindings, pools, and memory model
+- [Configuration](CONFIGURATION.md) — config files, load order, and bot credentials
+- [Getting Started](GETTING-STARTED.md) — provisioning a dedicated hub host from scratch
 - [ADRs](architecture/adr/) — key decisions and their rationale

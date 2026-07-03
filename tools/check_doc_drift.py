@@ -91,13 +91,14 @@ def _collect_operational_docs(root: Path, seen: set[Path], out: list[Path]) -> N
     """Append operational-truth docs (#1538) — docs that describe the REAL
     running system and cite live symbols/paths, so they are drift-gated.
 
-    Narrative/onboarding/aspirational docs (QUICKSTART, GETTING-STARTED,
-    HAPPY-PATHS, COMMANDS, MULTI-BOT, OBSERVABILITY, ROADMAP, vision,
-    docs/history/**) are EXEMPT by omission — they cite illustrative or future
-    code by design, so gating them would produce false positives.
+    Narrative/aspirational docs (HAPPY-PATHS, COMMANDS, OBSERVABILITY, ROADMAP,
+    vision, docs/history/**) are EXEMPT by omission — they cite illustrative or
+    future code by design, so gating them would produce false positives.
 
-    `debt-tracking.md` IS scanned (operational truth — cites live gate scripts
-    and paths); its former exemption masked doc-rot (#2200).
+    QUICKSTART/GETTING-STARTED/MULTI-BOT (container-only onboarding, #2201) and
+    debt-tracking.md (#2200) ARE scanned — their prior exemption is exactly what
+    masked the dead pre-#1057 credential flow and debt-tracking doc-rot, so they
+    are now first-class scan targets.
     """
 
     def add(p: Path) -> None:
@@ -110,6 +111,9 @@ def _collect_operational_docs(root: Path, seen: set[Path], out: list[Path]) -> N
         "CONFIGURATION.md",
         "DEPLOYMENT.md",
         "QUADLET-DEPLOYMENT.md",
+        "QUICKSTART.md",
+        "GETTING-STARTED.md",
+        "MULTI-BOT.md",
         "agent-management.md",
         "bot-management.md",
         "data-dirs.md",

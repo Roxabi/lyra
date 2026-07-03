@@ -1,0 +1,35 @@
+# Feed Renovate patch/minor PRs into the existing reviewed-label machinery in
+# auto-merge.yml. Mirrors dependabot-automerge.yml — majors wait for humans.
+#
+# SAFE: pull_request_target, no checkout, label-only.
+name: Renovate Auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  reviewed-label:
+    name: Label renovate non-major reviewed
+    if: github.event.pull_request.user.login == 'renovate[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mint app token (roxabi-ci)
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.ROXABI_CI_APP_ID }}
+          private-key: ${{ secrets.ROXABI_CI_APP_PRIVATE_KEY }}
+
+      - name: Add reviewed label (non-major only)
+        if: >-
+          !contains(github.event.pull_request.labels.*.name, 'major')
+        run: gh pr edit "$PR_URL" --add-label reviewed
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}

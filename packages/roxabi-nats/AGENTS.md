@@ -2,9 +2,9 @@
 
 ## Identity
 
-`roxabi-nats` is a **standalone Python package** — not a Lyra module. It is the
+`roxabi-nats` is a **standalone Python package** — not a factory module. It is the
 shared NATS transport SDK for the Roxabi plugin ecosystem (voiceCLI, imageCLI,
-roxabi-vault, and future services). It lives in the Lyra monorepo for colocation
+roxabi-vault, and future services). It lives in the factory monorepo for colocation
 with the wire contract (ADR-044 (absorbed into ADR-049)/049) but is versioned independently.
 
 → Architecture contract: `docs/architecture/adr/045-roxabi-nats-sdk-uv-workspace-extraction.mdx`
@@ -22,7 +22,7 @@ roxabi-nats = {
 }
 ```
 
-Lyra itself consumes it via `{ workspace = true }`. Tag pinning is **required**
+factory itself consumes it via `{ workspace = true }`. Tag pinning is **required**
 for external consumers (branch pinning only in plugin-dev branches).
 
 ## Split with roxabi-contracts
@@ -41,7 +41,7 @@ Defined by `__all__` in `src/roxabi_nats/__init__.py`. Run `grep __all__ src/rox
 
 `_`-prefixed submodules (`_serialize`, `_sanitize`, `_validate`, `_version_check`,
 `_tts_constants`, `_resolver`) are **internal**. External consumers MUST NOT import
-them. Lyra (as workspace host) may import them directly — that asymmetry is
+them. factory (as workspace host) may import them directly — that asymmetry is
 intentional and documented in ADR-045.
 
 Testing doubles (`roxabi_nats.testing.*`) are available under the `[testing]`
@@ -53,7 +53,7 @@ Package semver (`roxabi-nats/vX.Y.Z` tag) is **independent** from `CONTRACT_VERS
 (wire-protocol identifier). A `contract_version` bump requires a **major** package
 bump and a new contract ADR. `_`-prefixed submodule changes never force a major bump.
 
-Python floor: `>=3.12` (no upper bound — broader than Lyra's `>=3.12,<3.13` to
+Python floor: `>=3.12` (no upper bound — broader than factory's `>=3.12,<3.13` to
 avoid being a bottleneck when satellites upgrade interpreters).
 
 ## Tests
@@ -70,7 +70,7 @@ release tag.
 
 ## Boundaries
 
-¬import from `lyra.*` (no hub domain dependency). ¬define `lyra.*` NATS subjects
+¬import from `factory.*` (no hub domain dependency). ¬define `factory.*` NATS subjects
 (those belong to contract ADRs). ¬add hub-coupled modules (Cohort B stays in
 `src/factory/nats/`). New additions must pass the Cohort A test: zero `factory.core`
 imports.

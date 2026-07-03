@@ -2,7 +2,7 @@
 
 ## Role
 
-This is THE boundary layer between the lyra runtime and anything external: OS
+This is THE boundary layer between the factory runtime and anything external: OS
 daemons, CLI tools, and HTTP-backed services. Any code that shells out, spawns a
 subprocess, or calls an external HTTP API belongs here — nowhere else.
 

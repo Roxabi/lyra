@@ -2,7 +2,7 @@
 
 Use when **`~/.roxabi/factory/nkeys/*.seed` are lost or compromised** and you must wipe and regenerate all NATS identities from `deploy/nats/acl-matrix.json`.
 
-For rotating a single nkey without wiping the directory, see [secrets-rotation.md](secrets-rotation.md). For suspected compromise of one identity, see [nkey-rotation.md](../ops/nkey-rotation.md).
+For rotating a single nkey without wiping the directory, see [secrets-rotation.md](secrets-rotation.md). For suspected compromise of one identity, see [nkey-rotation.md](nkey-rotation.md).
 
 ## What this resets
 

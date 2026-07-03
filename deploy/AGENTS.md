@@ -9,7 +9,7 @@ Subdirs: `quadlet/` | `nats/` | `scripts/` | `lib/` | `factory-gh/` | `systemd/`
 + Quadlet generators + systemd user units**.
 
 factory is the **reference implementation** for the Roxabi Quadlet pattern.
-Cross-repo adoption checklist → `docs/ops/container-publishing.md § Cross-repo adoption`.
+Cross-repo adoption checklist → `docs/runbooks/container-publishing.md § Cross-repo adoption`.
 
 ---
 
@@ -36,7 +36,7 @@ NATS version: pinned by digest in `factory-nats.container` — ¬autoupdate, bum
 
 ## Image lifecycle (CI → GHCR → Quadlet)
 
-Full pattern → `docs/ops/container-publishing.md`
+Full pattern → `docs/runbooks/container-publishing.md`
 
 | Phase | Image tag | `AutoUpdate=` |
 |---|---|---|
@@ -263,7 +263,7 @@ Rules:
 **Carve-out (ADR-092 Langfuse deps):** `factory-langfuse-{postgres,redis,clickhouse,minio}` omit the trio — upstream entrypoints `setpriv`/chmod data dirs before dropping to service users.
 `UserNS=keep-id:uid=1500,gid=1500` for factory units (container UID 1500)
 Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentials.
-Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL permission changes require container restart (not HUP) to refresh (#1390). See [`docs/ops/nats-authconf-update.md`](../docs/ops/nats-authconf-update.md).
+Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL permission changes require container restart (not HUP) to refresh (#1390). See [`docs/runbooks/nats-authconf-update.md`](../docs/runbooks/nats-authconf-update.md).
 **Carve-out (ADR-085):** `auth.conf` (the public ACL bundle — `U…` nkeys + permission blocks, no private seeds) is delivered as an **inline bind mount**, not a `type=mount` secret. This allows live SIGHUP reload for pure identity-add operations without client restarts. Private NKey seed files (e.g. `factory-nats-hub.seed`) remain `type=mount` per ADR-054 D5.
 ¬inline `#` comments after `Volume=` values — Quadlet passes them to Podman as mount options.
 
@@ -327,6 +327,6 @@ so the hooksPath becomes process-immutable.
 
 ## Cross-references
 
-- `docs/ops/container-publishing.md` — full CI → GHCR → Quadlet pattern + auto-update
+- `docs/runbooks/container-publishing.md` — full CI → GHCR → Quadlet pattern + auto-update
 - `docs/ARCHITECTURE.md` — hub-spoke topology
 - ADR-055 (supersedes archived ADR-054) — UserNS + secret delivery decisions

@@ -37,7 +37,7 @@ feature/fix branch → PR → staging → (promote) → main
 1. Create a branch from `staging` with a descriptive name: `feat/discord-voice`, `fix/pool-lock-timeout`
 2. Open a PR targeting `staging`
 3. Pass CI (lint, typecheck, tests)
-4. Merge — auto-merge is enabled once a PR carries the `reviewed` label (no PR review count is required on `staging`); see [docs/ops/pr-automation.md](docs/ops/pr-automation.md) for the full mechanism (label gate, Renovate auto-labelling, merge queue)
+4. Merge — auto-merge is enabled once a PR carries the `reviewed` label (no PR review count is required on `staging`); see [docs/runbooks/pr-automation.md](docs/runbooks/pr-automation.md) for the full mechanism (label gate, Renovate auto-labelling, merge queue)
 
 ## Commit conventions
 
@@ -89,7 +89,7 @@ component-API gotchas (`Stack`, `Card`, `Dialog`, `Toast`) worth knowing before 
 Git hooks run quality gates locally:
 
 - **commit** — ruff, pyright, biome (`lint-js` when FE paths change), file/folder size, import layers, …
-- **pre-push** — dashboard vitest (when FE paths change), trufflehog, ACL drift, deploy integrity (`secrets_drift`, `quadlet_manifest_install`, `volumes_table`, `secrets_source`), debt expiry, architecture snapshot, … (full list: `docs/ops/quality-gates.md`)
+- **pre-push** — dashboard vitest (when FE paths change), trufflehog, ACL drift, deploy integrity (`secrets_drift`, `quadlet_manifest_install`, `volumes_table`, `secrets_source`), debt expiry, architecture snapshot, … (full list: `docs/runbooks/quality-gates.md`)
 
 Install both hook types once:
 
@@ -132,7 +132,7 @@ Both are dev tooling — not product code. The split is **who invokes them**:
 - ACL **render** pipeline stays in `scripts/` (`render_acl_*.py`); drift wrappers `check-acl-*-drift.sh` in `scripts/`.
 - **Orchestration only** (run order, stage filters, `yq` parsing) → bash in `scripts/` (`qg`, `check-*-drift.sh`).
 
-See `scripts/AGENTS.md`, `tools/AGENTS.md`, and `docs/ops/quality-gates.md`.
+See `scripts/AGENTS.md`, `tools/AGENTS.md`, and `docs/runbooks/quality-gates.md`.
 
 ## Adding a channel adapter
 

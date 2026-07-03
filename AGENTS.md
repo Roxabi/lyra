@@ -42,7 +42,7 @@ Review checklist (applies when `dev-core:axial-adr-review` is present):
 | `docs/CONFIGURATION.md` | Config files, load order |
 | `docs/agent-management.md` | Agent seed flow + CLI |
 | `docs/bot-management.md` | Bot seed flow + CLI |
-| `docs/ops/container-publishing.md` | CI → GHCR → Quadlet pattern |
+| `docs/runbooks/container-publishing.md` | CI → GHCR → Quadlet pattern |
 | `deploy/quadlet/factory-nats.container` | NATS Quadlet unit — `type=mount` secret anchor (restart-not-HUP for ACL changes) |
 | `packages/roxabi-nats/` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/` | NATS contract schemas (ADR-049) |

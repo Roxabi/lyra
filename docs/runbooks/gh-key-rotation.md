@@ -165,5 +165,5 @@ Record the rotation in your operations journal:
 - [Spec #1078](../../artifacts/specs/1078-github-app-identity-spec.mdx) — slice V5 (UC6 key rotation), AC ops-#2 (≤10 s downtime)
 - [`deploy/scripts/rotate-gh-key.sh`](../../deploy/scripts/rotate-gh-key.sh) — the rotation script
 - [`deploy/provision.sh`](../../deploy/provision.sh) — section "Lyra GitHub App PEM (Podman secret)" for first-time bootstrap
-- [`docs/ops/clipool-git.md`](clipool-git.md) — clipool git behavior reference (SSH rewrite, identity, safe.directory)
-- [`docs/ops/nkey-rotation.md`](nkey-rotation.md) — sibling runbook for NATS nkey rotation
+- [`docs/runbooks/clipool-uid-model.md`](clipool-uid-model.md) — clipool git behavior + UID trust model (SSH rewrite, identity, `safe.directory`)
+- [`docs/runbooks/nkey-rotation.md`](nkey-rotation.md) — sibling runbook for NATS nkey rotation

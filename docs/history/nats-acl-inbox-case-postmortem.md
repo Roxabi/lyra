@@ -291,8 +291,8 @@ invisible-grant bugs. Fix 3 is the guardrail that catches the next one.
 | Synthetic round-trip health probe | — | skipped |
 | Fix `gen-nkeys.sh` missing `clipool-worker` in key-gen block | — | done |
 | Remove retired identities from `acl-matrix.json` | — | done |
-| Write NATS secret rotation runbook | — | done — `docs/ops/nats-authconf-update.md` |
-| Write post-deploy smoke test + canary rollout procedure | — | done — `docs/ops/deploy-smoke-canary.md` |
+| Write NATS secret rotation runbook | — | done — `docs/runbooks/nats-authconf-update.md` |
+| Write post-deploy smoke test + canary rollout procedure | — | done — `docs/runbooks/deploy-smoke-canary.md` |
 | Post-incident verification: zero `permissions violation` for 24h | — | open |
 
 ---

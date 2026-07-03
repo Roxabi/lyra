@@ -46,7 +46,7 @@ Entries are generated automatically by `/promote` and committed to staging befor
 > `lyra-hub`, `lyra-telegram`, and `lyra-discord` container images must be released and
 > deployed together. `lyra-clipool` is intentionally **excluded** — it is on the LLM-driver
 > path and is not a `RenderEvent` receiver, so it does not participate in the schema
-> handshake. See `docs/ops/container-publishing.md` — Schema-floor releases.
+> handshake. See `docs/runbooks/container-publishing.md` — Schema-floor releases.
 > Closes #1192, #1177. Tracks #1205.
 
 ### Fixed

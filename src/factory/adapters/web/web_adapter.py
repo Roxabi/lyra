@@ -7,7 +7,7 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import uuid4
 
 from factory.adapters.shared._base_outbound import OutboundAdapterBase
@@ -37,6 +37,12 @@ WEB_SCOPE_PREFIX = "agent:"
 
 class WebAdapter(OutboundAdapterBase):
     """Browser smoke adapter — no external SDK, SSE for outbound."""
+
+    # Web smoke has no audio egress: render_audio is a no-op and normalize_audio
+    # rejects inbound audio. False keeps start_audio_consumer from binding the
+    # outbound-audio KV, which the lean web ACL (ADR-079 §c) denies — an
+    # ERROR-logged permission violation on every restart before this gate.
+    supports_audio: ClassVar[bool] = False
 
     def __init__(
         self,

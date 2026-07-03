@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 from uuid import uuid4
 
 from factory.core.messaging.tool_display_config import ToolDisplayConfig
@@ -53,6 +53,14 @@ class OutboundAdapterBase(ABC):
     inheritance (discord.Client first), and discord.Client.__init__ must receive
     control without interference from this base.
     """
+
+    #: Whether this adapter renders outbound audio. True (telegram, discord) →
+    #: bootstrap wires a durable JetStream audio consumer. A new adapter that has
+    #: no audio egress MUST set this False so start_audio_consumer skips the
+    #: outbound-audio KV bind entirely — otherwise the bind trips a lean channel
+    #: ACL (ADR-079 §c) and ERROR-logs a permission violation on every restart
+    #: before falling back to the same NullAudioConsumer sentinel.
+    supports_audio: ClassVar[bool] = True
 
     @abstractmethod
     async def send(

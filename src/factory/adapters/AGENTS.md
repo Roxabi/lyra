@@ -53,6 +53,12 @@ formatter/typing-indicator implementations under `outbound/`.
 `OutboundAdapterBase` has no `__init__` intentionally. Do NOT add one — it breaks
 cooperative MRO with `discord.Client`.
 
+`supports_audio: ClassVar[bool]` (default `True`) declares whether the adapter has
+audio egress. A new adapter with no audio (like `WebAdapter`, whose `render_audio`
+is a no-op) MUST set it `False`: bootstrap then skips the durable JetStream
+audio-consumer bind, which a lean channel ACL (ADR-079 §c) would otherwise reject
+with a per-restart `ERROR` before falling back to `NullAudioConsumer`.
+
 `configure_tool_display(config: ToolDisplayConfig | None)` is the **single permitted
 per-instance write point** for `tool_display_config` (stored as
 `self._tool_display_config`). It is a **post-construction setter** — bootstrap calls

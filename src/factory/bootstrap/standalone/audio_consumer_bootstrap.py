@@ -1,8 +1,13 @@
 """Bootstrap helper for the durable JetStream outbound-audio consumer.
 
-Called once per (platform, bot_id) pair from bootstrap_telegram_standalone /
-bootstrap_discord_standalone (via standalone_telegram.py / standalone_discord.py)
-after the adapter's astart() and typing-listener start() succeed.
+Called once per (platform, bot_id) pair from the shared adapter wiring
+(wire_bot_common → telegram / discord / web standalone) and the unified bootstrap
+(wiring_helpers), after the adapter's astart() and typing-listener start() succeed.
+
+Audio-incapable adapters (``adapter.supports_audio is False``, e.g. the web smoke
+adapter) short-circuit to NullAudioConsumer WITHOUT binding JetStream — the KV
+bind below would otherwise trip a lean channel ACL (ADR-079 §c) and ERROR-log a
+permission violation on every restart before falling back to the same sentinel.
 
 Ordering contract (post-S3 / ADR-079 sole-provisioner):
     # Stream FACTORY_OUTBOUND_AUDIO and KV factory_outbound_audio_sent are provisioned
@@ -68,16 +73,31 @@ async def start_audio_consumer(
 
     Args:
         js:       JetStreamContext bound to the live NATS connection.
-        platform: Platform string ("telegram" or "discord").
+        platform: Platform string ("telegram", "discord", or "web").
         bot_id:   Bot identifier string (e.g. "main").
         adapter:  Platform adapter instance; must expose ``render_audio`` and
-                  ``send`` bound methods matching AudioSendFn / TextSendFn.
+                  ``send`` bound methods matching AudioSendFn / TextSendFn, and
+                  may expose ``supports_audio: bool`` (defaults True) — when
+                  False, returns NullAudioConsumer without touching JetStream.
 
     Returns:
         A started ``JetStreamAudioConsumer`` on success, or ``NullAudioConsumer``
         on failure.  The caller MUST call ``await consumer.stop()`` in teardown
         in either case — both types satisfy the async stop() contract.
     """
+    if not getattr(adapter, "supports_audio", True):
+        # Adapter opts out of audio (e.g. web smoke) — return the no-op sentinel
+        # without binding JetStream. Skipping the KV bind avoids the lean channel
+        # ACL permission violation that would otherwise be ERROR-logged on every
+        # restart (ADR-079 §c) before falling back to this same sentinel.
+        log.debug(
+            "audio_consumer_bootstrap: adapter opts out of audio"
+            " (platform=%s bot_id=%s) — NullAudioConsumer, JetStream not bound",
+            platform,
+            bot_id,
+        )
+        return NullAudioConsumer()
+
     try:
         # Hub provisions stream + KV before announce_hub_ready (ADR-079).
         # Adapters are bind-only: key_value() binds the existing bucket.

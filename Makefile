@@ -313,7 +313,7 @@ nats-regen-authconf:          ## re-render auth.conf from acl-matrix.json, resta
 	@test -s "$(FACTORY_NKEYS_DIR)/auth.conf" \
 		|| { echo "ERROR: $(FACTORY_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
 	@# auth.conf only — seed rotation is a different runbook (nkey-rotation.md).
-	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
+	@# Restart, not HUP — see docs/runbooks/nats-authconf-update.md.
 	@systemctl --user restart factory-nats
 	@systemctl --user is-active --wait factory-nats \
 		|| { echo "ERROR: factory-nats failed to reach active state"; exit 1; }

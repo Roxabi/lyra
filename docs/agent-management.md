@@ -167,7 +167,7 @@ Long-form persona lives in **blobstore** as `soul.md` (markdown, five `##` secti
 | `soul_meta_json` | Envelope: `display_name`, `tagline`, memory provision — **not** section text |
 | `persona_json` | Legacy inline JSON — fallback until migration validated |
 
-Composition is hub-only (`core/persona.py` → `compose_soul_document()`). Harnesses receive opaque `system_prompt: str`. Soul edits do not update active sessions until `/reset` or a new pool — see [persona-soul-operator.md](runbooks/persona-soul-operator.md).
+Composition is hub-only (`core/persona.py` → `compose_soul_document()`). Harnesses receive opaque `system_prompt: str`. Soul edits do not update active sessions until `/reset` or a new pool — see [persona-soul.md](runbooks/persona-soul.md).
 
 **Dashboard:** `/agents` → edit harness, model, voice, soul (BFF → hub NATS RPC). **CLI:** `scripts/backfill_soul_documents.py` for one-shot migration from `persona_json`.
 

@@ -17,7 +17,7 @@ All units attach to `roxabi.network` (systemd `--user`, linger enabled).
 | `factory-ingress` | `ghcr.io/roxabi/factory:staging-svc` | External webhooks → `factory.event.*` (ADR-096; port 8780 tailnet) |
 | `factory-omp` | `ghcr.io/roxabi/factory:staging` | OmpWorker NATS backend |
 
-Image tag split (`staging` vs `staging-svc`) → [ops/container-publishing.md](../ops/container-publishing.md).
+Image tag split (`staging` vs `staging-svc`) → [container-publishing.md](container-publishing.md).
 
 ## First-time setup
 

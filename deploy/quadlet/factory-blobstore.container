@@ -48,7 +48,7 @@ Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/ru
 # Podman as mount-option strings (issue #1083).
 Volume=%h/.roxabi/factory/blobstore:/home/factory/.roxabi/factory/blobstore:z
 # config.toml — required by the staging-svc image variant (svc-runtime entrypoint
-# reads config at startup; see docs/ops/container-publishing.md §svc-runtime).
+# reads config at startup; see docs/runbooks/container-publishing.md §svc-runtime).
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 # Bind port to the Tailscale IPv4 of M₁ so the service is reachable from the Tailnet
 # but NOT from the LAN. Resolved at provision time via `tailscale ip -4 | head -1`.

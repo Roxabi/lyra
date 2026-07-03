@@ -119,7 +119,7 @@ def _collect_operational_docs(root: Path, seen: set[Path], out: list[Path]) -> N
         "debt-tracking.md",
     ):
         add(docs / rel)
-    for sub in ("ops", "runbooks", "playbooks"):
+    for sub in ("runbooks", "playbooks"):
         d = docs / sub
         if not d.is_dir():
             continue

@@ -1,11 +1,47 @@
-# Clipool UID Trust Model
+# Clipool — Git Behavior & UID Trust Model
 
-Read this when you hit a git ownership error inside `factory-clipool`, or when auditing
-why `safe.directory` wildcards no longer appear in `git.config.tmpl`.
+Operator reference for how `git` behaves inside the `factory-clipool` container, and
+why `safe.directory` wildcards no longer appear in `git.config.tmpl`. Read this when you
+hit a git ownership error inside `factory-clipool`, or when adding remotes / auditing
+identity. For rotation procedures see [gh-key-rotation.md](gh-key-rotation.md).
 
 ---
 
-## Trust grant
+## SSH → HTTPS URL rewrite
+
+`deploy/factory-gh/git.config.tmpl` is loaded as `GIT_CONFIG_GLOBAL` inside `factory-clipool`. It contains:
+
+```ini
+[url "https://github.com/"]
+  insteadOf = git@github.com:
+  insteadOf = ssh://git@github.com/
+```
+
+These rules silently rewrite SSH-form GitHub remote URLs to HTTPS at command time. This is intentional: the container runs with `ReadOnly=true` and no `~/.ssh` mount, so SSH-form remotes would fail with "Host key verification failed".
+
+**Operator guidance.** When adding new git remotes inside the container, always use HTTPS form (`https://github.com/<org>/<repo>.git`). SSH-form URLs will still work (they are rewritten transparently), but the rewrite may surprise operators who expect SSH authentication.
+
+---
+
+## Authentication
+
+Git uses HTTPS + a credential helper (`/opt/factory-gh/git-credential-factory-gh`) which fetches a fresh GitHub App installation token from the `factory-gh-helper` sidecar over a Unix socket. Tokens have a 1 h TTL and are refreshed proactively. See [gh-key-rotation.md](gh-key-rotation.md) for rotating the App PEM.
+
+---
+
+## Identity
+
+Commits made from inside the container are attributed to:
+
+```
+lyra[bot] <lyra-bot@users.noreply.github.com>
+```
+
+Set image-baked in `git.config.tmpl`. Per-agent attribution is tracked as a follow-up (issue #1150).
+
+---
+
+## Trust grant (UID model)
 
 `deploy/quadlet/factory-gh.pod` carries `UserNS=keep-id:uid=1500,gid=1500`. This remaps
 the host operator (uid 1000, `mickael`) to container uid 1500 (`lyra`). Bind-mounted
@@ -61,9 +97,11 @@ Upstream tracking: https://github.com/containers/podman/issues/24918
 
 ## References
 
-- `deploy/quadlet/factory-gh.pod` — line `UserNS=keep-id:uid=1500,gid=1500`
-- `deploy/factory-gh/git.config.tmpl` — post-T2 state: no `[safe]` block
+- [`deploy/factory-gh/git.config.tmpl`](../../deploy/factory-gh/git.config.tmpl) — config loaded as `GIT_CONFIG_GLOBAL`; post-T2 state: no `[safe]` block
+- [`deploy/quadlet/factory-clipool.container`](../../deploy/quadlet/factory-clipool.container) — env wiring (`GIT_CONFIG_GLOBAL`, mounts)
+- [`deploy/quadlet/factory-gh.pod`](../../deploy/quadlet/factory-gh.pod) — line `UserNS=keep-id:uid=1500,gid=1500`
 - `src/factory/bootstrap/infra/git_ownership_probe.py` — startup ownership probe
+- [gh-key-rotation.md](gh-key-rotation.md) — App PEM rotation runbook
 - `artifacts/specs/1149-safe-directory-idmap-spec.mdx` — full rationale, Podman #24918
   empirical validation, and threat model
 - ADR-055 (`docs/architecture/adr/055-quadlet-ecosystem-conventions.mdx`) — absorbed ADR-054

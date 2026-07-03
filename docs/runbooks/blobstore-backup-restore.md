@@ -32,7 +32,7 @@ sqlite3 ~/.roxabi/factory/config.db \
 # Each ref must resolve via blobstore CLI or hub soul.get
 ```
 
-See also: [persona-soul-migration.md](persona-soul-migration.md), [persona-soul-rollback.md](persona-soul-rollback.md).
+See also: [persona-soul.md § Migration](persona-soul.md#migration), [persona-soul.md § Rollback](persona-soul.md#rollback).
 
 ## Restore invariant
 

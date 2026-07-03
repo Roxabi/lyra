@@ -145,4 +145,4 @@ In both cases, still run the smoke test after deploy.
 
 - [nats-authconf-update.md](nats-authconf-update.md) — ACL update + NATS reload
 - [nkey-rotation.md](nkey-rotation.md) — credential rotation
-- [nats-acl-inbox-case-postmortem.md](nats-acl-inbox-case-postmortem.md) — incident that motivated this runbook
+- [nats-acl-inbox-case-postmortem.md](../history/nats-acl-inbox-case-postmortem.md) — incident that motivated this runbook

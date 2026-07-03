@@ -52,7 +52,7 @@ systemctl --user is-active podman-auto-update.timer
 podman auto-update --dry-run
 ```
 
-See [ops/container-publishing.md](ops/container-publishing.md#auto-update-flow) for the full pipeline.
+See [runbooks/container-publishing.md](runbooks/container-publishing.md#auto-update-flow) for the full pipeline.
 
 ### Manual fallback — build + push
 

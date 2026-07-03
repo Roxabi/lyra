@@ -9,11 +9,11 @@ Canonical source: `roxabi-plugins/plugins/dev-core/tools/` — ¬edit project-si
 
 **Languages:** gate shell entrypoints are bash; parsing-heavy gates may use Python. Orchestration (`scripts/qg`) is bash + yq only.
 
-**Deploy gates in `tools/`:** `check_secrets_drift.sh`, `check_quadlet_manifest_install.sh`, `check_volumes_table.sh`, `check_secrets_source.sh` — pre-push, ci, and `profiles.local` (see `docs/ops/quality-gates.md` § Deploy gates). `check_quadlet_component_source.sh` is **ci-only**.
+**Deploy gates in `tools/`:** `check_secrets_drift.sh`, `check_quadlet_manifest_install.sh`, `check_volumes_table.sh`, `check_secrets_source.sh` — pre-push, ci, and `profiles.local` (see `docs/runbooks/quality-gates.md` § Deploy gates). `check_quadlet_component_source.sh` is **ci-only**.
 
 ## Wiring
 
-Gates are declared in `.claude/stack.yml` (`quality_gates` + `qg.run_order`) and executed by `scripts/qg` (bash) — no generated pre-commit/CI wiring. Index: `docs/ops/quality-gates.md`.
+Gates are declared in `.claude/stack.yml` (`quality_gates` + `qg.run_order`) and executed by `scripts/qg` (bash) — no generated pre-commit/CI wiring. Index: `docs/runbooks/quality-gates.md`.
 
 `tools/qg.conf` is generated from `stack.yml` file-length settings; drift-gated by `scripts/check-qg-conf-drift.sh`. Fix via `/release-setup --force`.
 
@@ -33,7 +33,7 @@ New tombstone → add a `Rule`, **but only for a string verified dead against th
 | `docs/standards/**` | `COMMANDS.md` |
 | `docs/CONFIGURATION.md`, `DEPLOYMENT.md`, `docs/QUICKSTART.md`, `GETTING-STARTED.md`, `MULTI-BOT.md` (onboarding, #2201) | `docs/OBSERVABILITY.md` |
 | `docs/agent-management.md`, `bot-management.md`, `data-dirs.md`, `debt-tracking.md` (#2200) | — |
-| `docs/ops/**`, `docs/runbooks/**`, `docs/playbooks/**` | `docs/history/**`, `artifacts/**` |
+| `docs/runbooks/**`, `docs/playbooks/**` | `docs/history/**`, `artifacts/**` |
 | AGENTS.md network (root, `src/`, `packages/`, `plugins/`) | — |
 
 Add a doc to the gate → list it (or its dir) in `_collect_scan_files()`; regenerate via `--update-baseline` (new dead refs join the #1536 burn-down).

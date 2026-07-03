@@ -22,7 +22,7 @@
 Rule: new **quality gate** → implementation in `tools/`, declaration in `stack.yml`.
 New **ACL/deploy scanner** → `scripts/` (bash entry + Python if needed).
 
-See `docs/ops/quality-gates.md` and `CONTRIBUTING.md` § Language & layout.
+See `docs/runbooks/quality-gates.md` and `CONTRIBUTING.md` § Language & layout.
 
 ---
 

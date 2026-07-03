@@ -3,7 +3,7 @@
 ## Role
 
 `roxabi-contracts` is the **single source of truth** for all cross-service NATS
-message schemas in the Roxabi ecosystem. Lyra publishers and satellite
+message schemas in the Roxabi ecosystem. factory publishers and satellite
 subscribers (voiceCLI, imageCLI, roxabi-vault, future services) import the same
 typed Pydantic v2 models — drift between producer and consumer becomes a
 type-check error, not a silent wire mismatch.
@@ -34,7 +34,7 @@ bypass the 1 MB byte-size gate in the transport layer.
 
 ## Versioning and breaking-change rules
 
-Tag scheme: `roxabi-contracts/v{major}.{minor}.{patch}` (independent of lyra
+Tag scheme: `roxabi-contracts/v{major}.{minor}.{patch}` (independent of factory
 and roxabi-nats versions).
 
 **Additive-only** (minor bump): add optional fields, add new domain submodules,
@@ -61,7 +61,7 @@ requires `[testing]` extra).
 
 ## Consumer expectations
 
-**Lyra hub/adapters** (`src/factory/nats/`) — workspace dependency, uses
+**factory hub/adapters** (`src/factory/nats/`) — workspace dependency, uses
 `[testing]` extra in dev/CI.
 
 **Satellite services** (voiceCLI, imageCLI, roxabi-vault, future) — pin by git

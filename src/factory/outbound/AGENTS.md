@@ -73,7 +73,7 @@ The architectural-decision record for the stage-axis pivot is deferred to Phase 
 
 ## Enforcement: bus-bound str(exc) gate
 
-`tools/check_str_exc_bus_bound.sh` (quality gate, pre-commit) covers `src/factory/outbound/`
-as one of its five bus-bound scan roots. It blocks `str(exc)` / `f"{exc}"` / `repr(exc)` from
+`tools/check_str_exc_bus_bound.sh` (quality gate, `stages: [ci]` per `.claude/stack.yml`)
+covers `src/factory/outbound/` as one of its six bus-bound scan roots (`SCAN_ROOTS`). It blocks `str(exc)` / `f"{exc}"` / `repr(exc)` from
 flowing into `SanitizedError` construction or NATS-bus-bound message fields. Escape hatch:
 `# str-exc-ok: <reason>` on the offending line. Debt from #1279 retired by #1835.

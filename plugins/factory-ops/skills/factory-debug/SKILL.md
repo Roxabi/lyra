@@ -14,7 +14,7 @@ Production runs **Podman Quadlet** (rootless, systemd --user units).
 
 Let:
   H      := DEPLOY_HOST (from `~/projects/roxabi-factory/.env`)
-  units  := {factory-hub, factory-telegram, factory-discord, factory-nats}
+  units  := enabled factory-* service units — SSoT `deploy/quadlet.toml` (¬hardcode; derived in Phase 1)
   Σ      := severity (🔴 down | 🟡 degraded | 🟢 healthy)
   pat    := known error patterns (see §Known Patterns)
 
@@ -39,11 +39,14 @@ Let:
 cd ~/projects/roxabi-factory && make remote status
 ```
 
-Also inspect containers + nats directly:
+Also inspect containers + nats directly. Derive the live unit set from the deploy
+manifest — never hardcode it (prod runs the full `[component.*]` roster, not a fixed 4):
 
 ```bash
+# Enabled factory-* units from the SSoT (skips disabled=true, e.g. Langfuse/otel-collector).
+UNITS=$(python3 -c 'import tomllib,pathlib; d=tomllib.loads(pathlib.Path("deploy/quadlet.toml").read_text()); print(" ".join(sorted(v["container"].removesuffix(".container") for v in d["component"].values() if not v.get("disabled") and v["container"].startswith("factory-"))))')
 ssh $H "podman ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}' | grep -E 'factory-|nats'"
-ssh $H "systemctl --user status factory-hub factory-telegram factory-discord factory-nats --no-pager"
+ssh $H "systemctl --user status $UNITS --no-pager"
 ```
 
 ∀ unit ∈ units: record state (active/running + uptime | failed | inactive).
@@ -136,8 +139,10 @@ Present fix options from the table below and wait for user reply.
 | Clear failed state | `ssh $H "systemctl --user reset-failed factory-hub"` | Unit stuck in `failed` after start-limit-hit |
 | Check DB locks | `ssh $H "podman exec factory-hub fuser /home/factory/.roxabi/factory/*.db"` | Persistent DB locked errors |
 | Reinstall Quadlet units | `make quadlet-install` then `ssh $H "systemctl --user daemon-reload"` | Unit file drift |
-| Full deploy | `make deploy` | Code fix needed on production |
-| Rebuild + push image | `make build && make push && make remote reload` | Image-level fix needed |
+| Converge to declared state | `ssh $H "cd ~/projects/roxabi-factory && make converge"` — or wait ≤5 min for the `factory-quadlet-sync` / `factory-post-autoupdate` timers | Unit / config / ACL drift from `staging`; re-reconcile the running system to the declared state |
+| Ship a code/image fix | Land via `/dev` → merge to `staging`. CI (`publish.yml`) builds + pushes `ghcr.io/roxabi/factory:staging`; `podman-auto-update` + `factory-post-autoupdate` pull by **digest** and converge automatically (~5 min) | Code- or image-level fix needed on production |
+
+> `make deploy` / `make build && make push` are **not** remediation paths: `make deploy` is retired (#1930 — prints ERROR, exit 1) and local `build`/`push` bypass the CI → GHCR → digest pipeline. `make converge` runs **on M₁** (the production host), never from the dev machine.
 
 After user picks a fix, execute it and re-run Phase 1 + Phase 2 to confirm recovery.
 Verify `dead_backend_hits` is 0 after restart.

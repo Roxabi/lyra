@@ -9,9 +9,19 @@ Shared Pydantic schemas for Lyra cross-project NATS contracts. Per-domain submod
 roxabi-contracts = {
   git = "https://github.com/Roxabi/roxabi-factory.git",
   subdirectory = "packages/roxabi-contracts",
-  tag = "roxabi-contracts/v0.1.0"
+  tag = "roxabi-contracts/vX.Y.Z"  # pick a real tag — see below
 }
 ```
+
+Resolve the latest released tag (never hardcode one that may not exist):
+
+```bash
+git ls-remote --tags https://github.com/Roxabi/roxabi-factory.git 'roxabi-contracts/*'
+# or, in a local clone:
+git tag -l 'roxabi-contracts/*' | sort -V | tail -1
+```
+
+Pin by **tag**, not branch — see [Pin doctrine](../../docs/architecture/contracts.md#pin-doctrine-external-consumers).
 
 ## Satellite pin freshness (Renovate)
 
@@ -48,11 +58,9 @@ Renovate reads the `tag = "..."` pin in `[tool.uv.sources]`, observes a newer ta
 
 ## Public API contract
 
-The stable external contract is defined by `__all__` in `roxabi_contracts/__init__.py`. v0.1.0 ships:
+The stable external contract is the set of names in `__all__` in `roxabi_contracts/__init__.py` — the source is the SSoT, so this README does not freeze a copy (run `grep __all__ src/roxabi_contracts/__init__.py`). `ContractEnvelope` is the base Pydantic model every per-domain schema subclasses.
 
-- `ContractEnvelope` — base Pydantic model for all per-domain contract schemas
-
-Future domain submodules (voice, image, memory, llm) arrive in subsequent tags. See ADR-049 §Versioning for SemVer rules.
+Per-domain submodules (voice, jobs, image, memory, llm, …) each expose their own `SUBJECTS` + models and land as new submodules under a minor version bump. See ADR-049 §Versioning for SemVer rules.
 
 ## Voice domain
 

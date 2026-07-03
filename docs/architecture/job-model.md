@@ -243,6 +243,11 @@ override only the formatter.
 Runtime control is no longer all-future: the dashboard drives **steer** and **cancel**
 end-to-end for running jobs (#1773; cancel was the last piece — PR #2123, 2026-07-01).
 
+> **Target-only (not deployed):** steer/cancel are wired end-to-end but do not yet reach
+> live drivers — the active-jobs registry keys entries on a `uuid4` job id (`pool_processor.py`)
+> that differs from the wire job id workers publish under, so control-plane messages miss
+> every running flow. Fix chain: #2142 → #2130 → #2147 → #1797 → #1799.
+
 ```
 dashboard (jobs page) → BFF → hub RPC (factory.dashboard.jobs.steer / .cancel)
     → hub publishes on factory.job.<id>.steer → worker steer bridge → in-flight run

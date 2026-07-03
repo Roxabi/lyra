@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.0] (2026-06-29)
+
+### Features
+
+* **contracts/fleet:** add `fleet` domain submodule — container/fleet observability models + `factory.fleet.*` subjects for the dashboard `/fleet` view (roxabi-obs) ([aa2e79e](https://github.com/Roxabi/roxabi-factory/commit/aa2e79e72)). Additive minor: new submodule, no change to existing domains.
+* **contracts/dashboard:** extend the `dashboard` domain submodule (models + one new subject) for fleet observability wiring.
+
+
+## [0.12.0] (2026-06-28)
+
+### Features
+
+* **contracts/voice:** add `VoiceLifecycleRequest` / `VoiceLifecycleResponse` and the `factory.voice.*.lifecycle.>` subject subtree for worker lifecycle control ([0cb9126](https://github.com/Roxabi/roxabi-factory/commit/0cb912641)). Additive minor; ACL specs regenerated for the new subjects.
+
+
 ## [0.11.0] (2026-06-11)
 
 ### Features

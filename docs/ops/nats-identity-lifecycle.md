@@ -134,12 +134,12 @@ git add deploy/nats/acl-matrix.json artifacts/specs/706-per-role-nkeys-acls-spec
 git commit -m "chore(nats): retire <name> identity"
 ```
 
-**7. Reload NATS.**
+**7. Restart NATS.**
+
+Retiring an identity removes its permission block from `auth.conf`. A SIGHUP reload can serve stale subject-auth decisions after a permission-block change (#1390) — restart, do not reload:
 
 ```bash
-sudo systemctl reload nats
-# or, if systemd is not managing NATS directly:
-nats-server --signal reload
+systemctl --user restart factory-nats
 ```
 
 **8. Verify the retired identity is rejected.**
@@ -153,7 +153,7 @@ journalctl --user -u factory-telegram --since "2 min ago" | grep -i "auth\|error
 
 **9. Seed file decision.**
 
-The seed file at `~/.roxabi/factory/nkeys/<name>.seed` remains on disk. NATS rejects the credential regardless once `auth.conf` is reloaded. Once you have confirmed the identity is fully offline and no rollback is needed, you may shred the file:
+The seed file at `~/.roxabi/factory/nkeys/<name>.seed` remains on disk. NATS rejects the credential regardless once `factory-nats` has restarted. Once you have confirmed the identity is fully offline and no rollback is needed, you may shred the file:
 
 ```bash
 shred -u ~/.roxabi/factory/nkeys/<name>.seed

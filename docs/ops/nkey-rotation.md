@@ -2,39 +2,48 @@
 
 ## Scope
 
-This runbook applies **only when a specific nkey seed is suspected compromised** — meaning the seed file's raw content may have been observed by an unauthorized party (exfiltrated from disk, leaked in logs, captured in a backup, etc.). If you are here because auth.conf is out of date, a new identity is missing, or permissions blocks are wrong, stop: those cases are handled non-destructively by `gen-nkeys.sh --regen-authconf` as described in [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx).
+This runbook applies **only when a specific nkey seed is suspected compromised** — meaning the seed file's raw private content may have been observed by an unauthorized party (exfiltrated from disk, leaked in logs, captured in a backup, etc.). It replaces the seed(s) with fresh key material.
+
+If you are here because `auth.conf` is out of date, an ACL grant is wrong, or a new identity is missing, **stop** — those are non-destructive routine changes handled by:
+
+- [nats-authconf-update.md](nats-authconf-update.md) — ACL/permission changes (`make nats-regen-authconf`)
+- [nats-identity-lifecycle.md](nats-identity-lifecycle.md) — adding (`make nats-add-identity`) or retiring an identity
 
 **If you are not responding to a suspected compromise, you do not want this runbook.**
 
-Rotation replaces the seed file (private key material) for one or more identities. The affected processes will authenticate with new credentials after restart. All other identities keep their existing seeds untouched.
+Rotation replaces the seed file (private key material) for one or more identities. The affected processes authenticate with new credentials after their consuming unit restarts. All other identities keep their existing seeds untouched.
 
 ---
 
-## Identity → Systemd Unit Map
+## Architecture (what a rotation actually touches)
 
-> Production runs Podman Quadlet units (as of #611). The restart commands in Step 5 use
-> `systemctl --user` accordingly. NATS runs as `factory-nats.service` (Quadlet container).
+- **Seeds** live in `~/.roxabi/factory/nkeys/*.seed` on Machine 1 (operator-owned, `0600`), one file per active identity in [`acl-matrix.json`](../../deploy/nats/acl-matrix.json). That JSON is the SSoT for the identity set — do **not** hard-code a count here; read it live.
+- **`auth.conf`** (the public ACL bundle: one `users {}` block per active identity, holding only *public* keys) is rendered from the seeds to `~/.roxabi/factory/nkeys/auth.conf` and delivered to the `factory-nats` container as an **inline bind mount** (`ADR-085`), not a Podman secret. nats-server re-reads it on SIGHUP reload or on restart.
+- **Private seeds** reach each *consuming* unit as a per-identity Podman secret `factory-nats-<identity>` (`type=mount`, `ADR-054`). A client only sees a new seed after its unit restarts.
+- No TLS is in play. Clients (including LAN clients such as `voice-client` on M₂) connect over `nats://…:4222` with NKey auth — there are no certs to check.
 
-| Identity (seed file) | Systemd unit | Log command |
-|---|---|---|
-| `hub.seed` | `factory-hub.service` | `journalctl --user -u factory-hub` |
-| `telegram-adapter.seed` | `factory-telegram.service` | `journalctl --user -u factory-telegram` |
-| `discord-adapter.seed` | `factory-discord.service` | `journalctl --user -u factory-discord` |
-| `clipool-worker.seed` | `factory-clipool.service` | `journalctl --user -u factory-clipool` |
-| `voice-tts.seed` | `voicecli-tts.service` (voiceCLI project) | `journalctl --user -u voicecli-tts` |
-| `voice-stt.seed` | `voicecli-stt.service` (voiceCLI project) | `journalctl --user -u voicecli-stt` |
+### Which unit consumes an identity
 
-All seeds live in `~/.roxabi/factory/nkeys/` on Machine 1. The merged `auth.conf` is stored as Podman secret `factory-nats-auth`.
+The seed for identity `<name>` is mounted into exactly one unit via the Podman secret `factory-nats-<name>`. Find the consuming unit and its log stream:
+
+```bash
+# On Machine 1 — which unit mounts this identity's seed?
+grep -l "factory-nats-<name>" ~/projects/roxabi-factory/deploy/quadlet/*.container
+# e.g. hub → deploy/quadlet/factory-hub.container → factory-hub.service
+journalctl --user -u factory-hub
+```
+
+The `owner` field of each identity in `acl-matrix.json` says which project owns it: `factory` identities run as `factory-*` units on M₁; `voicecli` identities (`voice-tts`, `voice-stt`, `voice-client`) belong to the voiceCLI project and run as `voicecli-*` units on their host.
 
 ---
 
 ## 1. Pre-flight
 
 **1.1 Confirm the compromise signal.**
-Document what you observed: which seed, when, and how it was exposed. Do not proceed based on vague suspicion alone — rotation is disruptive. The evidence should be concrete (e.g., seed file visible in a public log, backup accessible to wrong party, file exfiltrated).
+Document what you observed: which seed, when, and how it was exposed. Do not proceed on vague suspicion — rotation is disruptive. The evidence should be concrete (e.g., seed file visible in a public log, backup accessible to the wrong party, file exfiltrated).
 
 **1.2 Identify which identity (or identities) to rotate.**
-List the affected seed filenames. Example: `telegram-adapter.seed`. If hub is compromised, treat all identities as potentially compromised and rotate all.
+List the affected seed filenames — e.g. `telegram-adapter.seed`. **If `hub` is compromised, treat all identities as potentially compromised and rotate every seed** (Path B below).
 
 **1.3 Confirm SSH access to Machine 1.**
 
@@ -42,294 +51,247 @@ List the affected seed filenames. Example: `telegram-adapter.seed`. If hub is co
 ssh mickael@192.168.1.16
 ```
 
-**1.3a If voicecli workers are in scope (`voice-tts.seed` or `voice-stt.seed`), confirm TLS cert is in place.**
-voicecli workers connect via `tls://127.0.0.1:4222` and require `/etc/nats/certs/ca.crt`. If this file is absent, the workers will fail to connect after restart regardless of nkey rotation status.
-
-```bash
-# On Machine 1:
-ls -la /etc/nats/certs/ca.crt
-```
-
-Resolve any missing cert before proceeding. voicecli connection errors during verification (Step 6.2) may indicate a TLS issue rather than an nkey issue.
-
 **1.4 Confirm a baseline before starting.**
 
-Use `factory ops verify` to confirm the baseline ACL state (ADR-046 invariant 5):
+`factory ops verify` connects as each identity and checks its live publish ACL (ADR-046 invariant 5):
 
 ```bash
 # On Machine 1:
 factory ops verify
 ```
 
-If you prefer to inspect raw identity counts, the legacy manual equivalent is still available:
+To inspect the current rendered `auth.conf` (rootless — reads the operator-owned copy):
 
 ```bash
 # On Machine 1:
-sudo ./deploy/nats/gen-nkeys.sh --show
-# Verify seed count matches expected 10 identities.
+factory-acl genkeys --show
+# The count of `users {}` blocks equals the active identities in acl-matrix.json.
 
 systemctl --user status 'factory-*.service'
 # All units should be active (running) before you begin.
 ```
 
-If any unit is already in a failed state unrelated to this rotation, investigate and resolve before continuing. A degraded baseline makes the verification step ambiguous.
+If any unit is already in a failed state unrelated to this rotation, resolve it first — a degraded baseline makes verification ambiguous.
 
 ---
 
-## 2. Backup the Compromised Seed
+## Path A — rotate one (or a few) identities
 
-For each identity being rotated, back up its seed before deletion. Use a timestamp suffix so multiple rotations are distinguishable.
+Use this when specific non-`hub` identities are compromised. Repeat the per-identity steps for each affected identity; substitute its name for `<name>`.
+
+**A.1 Back up the compromised seed** (forensic reference — never re-used to authenticate):
 
 ```bash
 # On Machine 1 — run once per identity being rotated.
-# Replace IDENTITY with the identity name (e.g. telegram-adapter).
-
 IDENTITY=telegram-adapter
 TS=$(date +%Y%m%d-%H%M%S)
 cp ~/.roxabi/factory/nkeys/${IDENTITY}.seed ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${TS}
 chmod 0600 ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${TS}
 ```
 
-The backup preserves the compromised material for forensic reference. It is never re-used to authenticate.
+**A.2 Delete the compromised seed, then regenerate it.**
 
----
-
-## 3. Delete the Seed and Regenerate auth.conf
-
-Delete the seed file for each compromised identity, then run `--regen-authconf`. Per ADR-046 Invariant 3, the script auto-creates a new seed for any identity whose file is absent and renders a fresh auth.conf from all 10 identities.
+Deleting the seed first is required: `make nats-add-identity` (which wraps `factory-acl genkeys --add-identity`) only generates fresh key material when the seed file is **absent** — if the seed is present it re-renders `auth.conf` but keeps the existing key.
 
 ```bash
-# On Machine 1 — requires sudo.
-
-# 3.1 Delete the compromised seed(s).
-rm ~/.roxabi/factory/nkeys/${IDENTITY}.seed
-# Repeat rm for each additional compromised identity.
-
-# 3.2 Re-render auth.conf with the new public key(s).
 cd ~/projects/roxabi-factory
-factory-acl genkeys --regen-authconf
+rm ~/.roxabi/factory/nkeys/${IDENTITY}.seed
+make nats-add-identity NAME=${IDENTITY}
 ```
 
-Expected output includes:
-- `[+] Created missing seed: <identity>` for each deleted seed
-- `[+] Derived pubkey from existing seed: <identity>` for unchanged identities
-- `[+] Backed up auth.conf → /etc/nats/nkeys/auth.conf.bak.<timestamp>`
-- `[+] auth.conf re-rendered from 10 existing seeds.`
-- `[+] Next: sudo systemctl reload factory-nats.service`
+`make nats-add-identity` (single rootless verb, no `sudo`):
+- generates a fresh seed for the now-absent identity (`STATE=added`),
+- re-renders `auth.conf` from **all** active seeds — the other identities keep their keys,
+- recreates the Podman secret `factory-nats-${IDENTITY}` from the new seed,
+- `systemctl --user reload factory-nats` — nats-server re-reads `auth.conf`; the old public key is gone, so the compromised connection is dropped on the next auth check.
 
-If `nats-server` is on PATH and `/etc/nats/nats.conf` exists, the script validates the new config via `nats-server -t` before writing. A validation failure restores the backup automatically.
+Expected output: `factory-acl: STATE=added` followed by `reloaded factory-nats (SIGHUP)`.
 
----
-
-## 4. Update NATS secret and restart
+**A.3 Restart the consuming unit** so it loads the new seed from its refreshed secret. Identify the unit per _"Which unit consumes an identity"_ above:
 
 ```bash
-# Recreate Podman secret with new auth.conf
-make quadlet-secrets-install
-
-# Restart NATS container to pick up new secret
-systemctl --user restart factory-nats.service
-```
-
-Record the restart timestamp — you will need it for the verification step:
-
-```bash
-RELOAD_TS=$(date -Iseconds)
-echo "Restart timestamp: ${RELOAD_TS}"
-```
-
-The container restart evicts all existing connections. All clients will reconnect with new credentials automatically.
-
----
-
-## 5. Rolling Restart Order
-
-Restart affected units in this order: workers first, adapters second, hub last. Workers and adapters first — they are reconnect-tolerant (circuit breaker in roxabi-nats) and can queue at NATS while the hub is briefly down. Hub last — it is the sole consumer of inbound queues; restarting it last minimises the window where inbound messages could fill NATS queues with no consumer.
-
-Only restart units that use a rotated identity. If only `telegram-adapter` was rotated, restart only `factory-telegram`. If `hub` was rotated, restart all units.
-
-**5.1 voicecli workers** (if `voice-tts.seed` or `voice-stt.seed` was rotated — voiceCLI project):
-
-```bash
-# voiceCLI Quadlet units (run from ~/projects/voiceCLI)
-systemctl --user restart voicecli-tts.service
-systemctl --user restart voicecli-stt.service
-```
-
-**5.2 imagecli gen worker** (if `image-worker.seed` was rotated — future Quadlet unit):
-
-```bash
-systemctl --user restart imagecli-gen.service
-```
-
-**5.3 factory adapters** (if any adapter seed was rotated):
-
-```bash
+RELOAD_TS=$(date -Iseconds)   # capture for verification (Step: Verification)
 systemctl --user restart factory-telegram.service
-systemctl --user restart factory-discord.service
+systemctl --user status factory-telegram.service   # confirm active (running)
 ```
 
-**5.4 factory hub** (if `hub.seed` was rotated):
+Go to **Verification**.
+
+---
+
+## Path B — hub compromised: rotate every seed
+
+`hub` sits at the centre of every request/reply flow; a compromised `hub` seed means all traffic is exposed. Rotate the whole set.
+
+**B.1 Back up the entire nkeys directory:**
 
 ```bash
+TS=$(date +%Y%m%d-%H%M%S)
+cp -a ~/.roxabi/factory/nkeys ~/.roxabi/factory/nkeys.bak-${TS}
+```
+
+**B.2 Regenerate all seeds and re-render `auth.conf`:**
+
+```bash
+cd ~/projects/roxabi-factory
+factory-acl genkeys        # default full-provision: fresh seed for every active identity
+```
+
+> If any identity has `deploy.type=external` (currently `voice-client` → M₂), this exits `2` and prints an `scp` manifest on stderr — the seeds are written locally but must be copied to the remote host before the fleet is consistent. Copy them, then re-run with `--ack-external-distribution`. See [nats-authconf-update.md](nats-authconf-update.md) § External seed distribution.
+
+**B.3 Refresh every Podman seed secret** from the new seed files:
+
+```bash
+make quadlet-secrets-install
+```
+
+**B.4 Restart NATS** to load the new `auth.conf` and evict all existing connections:
+
+```bash
+RELOAD_TS=$(date -Iseconds)   # capture for verification
+systemctl --user restart factory-nats.service
+systemctl --user is-active --wait factory-nats.service
+```
+
+**B.5 Rolling restart of every client** — order below (Rolling restart order). Go to **Verification** after.
+
+---
+
+## Rolling restart order
+
+When more than one client must restart (Path B, or Path A touching several identities), restart in this order: **workers first, adapters second, hub last.** Workers and adapters are reconnect-tolerant (circuit breaker in roxabi-nats) and can queue at NATS while the hub is briefly down; the hub is the sole consumer of inbound queues, so restarting it last minimises the window where inbound messages have no consumer.
+
+Restart only units whose identity was rotated. Confirm each reaches `active (running)` before the next.
+
+```bash
+# workers (factory + voiceCLI project units, on their host)
+systemctl --user restart factory-clipool.service
+systemctl --user restart voicecli-tts.service voicecli-stt.service   # voiceCLI project
+
+# adapters
+systemctl --user restart factory-telegram.service factory-discord.service
+
+# hub last
 systemctl --user restart factory-hub.service
-```
 
-After each restart, wait for the unit to reach `active (running)` state before restarting the next one:
-
-```bash
 systemctl --user status 'factory-*.service'
-# Confirm the restarted unit shows active (running) before continuing.
 ```
 
 ---
 
-## 6. Verification
+## Verification
 
-Run `factory ops verify` for a quick ACL matrix check (ADR-046 invariant 5) before and after rotation.
-
-**6.1 Check for NATS auth errors** using the reload timestamp captured in Step 4:
+**V.1 Check for NATS auth errors** since the restart timestamp captured above:
 
 ```bash
 tools/check-nats-acls.sh --since "${RELOAD_TS}" --window 90 | tee ~/nkey-rotation-evidence.txt
 ```
 
-Expected output on success: `OK: no Permissions Violation in factory-nats.service over 90s window`
+Expected on success: `OK: no Permissions Violation in factory-nats.service over 90s window`. If violations are detected, the script prints the offending lines and exits 1 — go to **Rollback** immediately.
 
-If violations are detected, the script prints the offending lines and exits 1. Jump to **Rollback** immediately.
-
-**6.2 Check each restarted unit log for a successful NATS connection.**
-
-All container stdout/stderr goes to journald. Check with `journalctl --user`:
+**V.2 Confirm the rotated identity authenticates** against the live server:
 
 ```bash
-# Hub
-journalctl --user -u factory-hub --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
-
-# Telegram adapter
-journalctl --user -u factory-telegram --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
-
-# Discord adapter
-journalctl --user -u factory-discord --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
-
-# voicecli workers (if rotated)
-# Note: voicecli connects via tls://127.0.0.1:4222 — connection errors here may
-# indicate a TLS issue (/etc/nats/certs/ca.crt) rather than an nkey issue.
-journalctl --user -u voicecli-tts --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
-journalctl --user -u voicecli-stt --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
+factory ops verify --only ${IDENTITY}     # or run bare `factory ops verify` for all
 ```
 
-**6.3 Confirm unit states:**
+**V.3 Check each restarted unit's log for a clean NATS connection:**
+
+```bash
+journalctl --user -u factory-hub      --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
+journalctl --user -u factory-telegram --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
+journalctl --user -u factory-discord  --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
+```
+
+**V.4 Confirm unit states:**
 
 ```bash
 systemctl --user status 'factory-*.service'
 ```
 
-All units should show `active (running)`. Any unit in `failed` state immediately after restart indicates an auth failure — see Rollback.
+Any unit in `failed` state immediately after restart indicates an auth failure — see **Rollback**.
 
-**6.4 Send a test message end-to-end:**
-Send a message through Telegram or Discord to the bot and confirm a response arrives. This exercises the full hub → adapter round-trip with the new credentials.
+**V.5 Send a test message end-to-end** through Telegram or Discord and confirm a reply arrives. This exercises the full hub → adapter round-trip with the new credentials.
 
-**6.5 Verify the new seed is in place and perms are correct:**
+**V.6 Verify the new seed and permissions:**
 
 ```bash
 ls -la ~/.roxabi/factory/nkeys/ | grep "${IDENTITY}"
-# Should show 0600 permissions, owner mickael, no backup file as active seed.
+# Should show 0600 permissions, owner mickael, with no .bak-* file acting as the active seed.
 ```
 
 ---
 
-## 7. Rollback
+## Rollback
 
-**When to trigger:** any program in FATAL or BACKOFF state after restart, `check-nats-acls.sh` exits 1, auth errors visible in logs, or end-to-end test fails.
+**When to trigger:** any unit in `failed`/backoff after restart, `check-nats-acls.sh` exits 1, auth errors in logs, or the end-to-end test fails.
 
-Rollback restores the pre-rotation seed and auth.conf so the old credentials work again. This undoes the rotation — the compromised seed is re-activated temporarily. Treat rollback as an incident escalation path, not a routine step.
+Rollback restores the pre-rotation seed and re-renders `auth.conf` from it, so the old credentials work again. This **re-activates the compromised seed** — treat it as an incident escalation path, not a routine step.
 
-**7.1 Identify the backup files:**
+> **WARNING:** The compromised seed becomes live again the moment `factory-nats` restarts in R.3. Before proceeding: (a) record the time and reason for rollback in your incident log; (b) treat this as temporary — a second rotation must follow within 24 h once the cause of the first failure is understood.
+
+**R.1 Identify the backups:**
 
 ```bash
-ls ~/.roxabi/factory/nkeys/*.bak-*
-# Note the timestamp suffix from Step 2.
-
-ls /etc/nats/nkeys/auth.conf.bak.*
-# Note the backup created by --regen-authconf in Step 3.
+ls ~/.roxabi/factory/nkeys/*.bak-*        # Path A per-seed backup (Step A.1)
+ls -d ~/.roxabi/factory/nkeys.bak-*       # Path B whole-dir backup (Step B.1)
 ```
 
-> **WARNING:** The compromised seed becomes live again the moment `systemctl reload` runs in Step 7.3. Before proceeding: (a) record the current time and reason for rollback in your incident log; (b) treat this rollback as a temporary measure only — a second rotation attempt must follow within 24 h once the root cause of the rotation failure is resolved.
-
-**7.2 Restore the compromised seed:**
+**R.2 Restore the seed(s):**
 
 ```bash
-# Replace BAK_TS with the actual timestamp from your Step 2 output (format: YYYYMMDD-HHMMSS).
-BAK_TS=YYYYMMDD-HHMMSS  # ← replace with timestamp from Step 2 output
-
+# Path A — single identity. Replace BAK_TS with the suffix from Step A.1 (YYYYMMDD-HHMMSS).
+BAK_TS=YYYYMMDD-HHMMSS
 cp ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${BAK_TS} ~/.roxabi/factory/nkeys/${IDENTITY}.seed
 chmod 0600 ~/.roxabi/factory/nkeys/${IDENTITY}.seed
+
+# Path B — full restore. Replace TS with the suffix from Step B.1.
+# cp -a ~/.roxabi/factory/nkeys.bak-${TS}/. ~/.roxabi/factory/nkeys/
 ```
 
-**7.3 Restore auth.conf and restart NATS:**
+**R.3 Re-render `auth.conf` from the restored seeds, refresh secrets, restart NATS:**
 
 ```bash
-# Replace CONF_BAK with the actual backup filename from Step 3 output (format: YYYYMMDD-HHMMSS).
-CONF_BAK=~/.roxabi/factory/nkeys/auth.conf.bak.YYYYMMDD-HHMMSS  # ← replace with timestamp from Step 3 output
-
-cp "${CONF_BAK}" ~/.roxabi/factory/nkeys/auth.conf
-make quadlet-secrets-install   # recreate Podman secret
+cd ~/projects/roxabi-factory
+factory-acl genkeys --regen-authconf     # re-derives auth.conf from the seeds now on disk
+make quadlet-secrets-install             # refresh the Podman seed secret(s)
 systemctl --user restart factory-nats.service
+systemctl --user is-active --wait factory-nats.service
 ```
 
-**7.4 Reverse-order restart** (workers first, hub last — same order as Step 5).
+**R.4 Restart the affected client(s)** in the same order as **Rolling restart order**, confirming each reaches `active (running)`.
 
-Restart one unit at a time and confirm each reaches `active (running)` before continuing.
-
-```bash
-systemctl --user restart voicecli-tts.service
-systemctl --user restart voicecli-stt.service
-systemctl --user status voicecli-tts.service voicecli-stt.service
-
-systemctl --user restart factory-telegram.service
-systemctl --user restart factory-discord.service
-systemctl --user status factory-telegram.service factory-discord.service
-
-systemctl --user restart factory-hub.service
-systemctl --user status factory-hub.service
-```
-
-**7.5 Re-run verification** (Step 6) to confirm the rollback restored service. Then escalate: the rotation failed, the compromised seed is live again, and the compromise signal must be reassessed before the next attempt.
+**R.5 Re-run Verification** to confirm rollback restored service, then escalate: the rotation failed, the compromised seed is live again, and the compromise signal must be reassessed before the next attempt.
 
 ---
 
-## 8. Backup Cleanup
+## Backup cleanup
 
-After verification passes (Step 6), dispose of the seed backup. Compromised key material should not persist indefinitely in the live-seed directory — an idle backup file is still a leak vector if the directory is later exposed.
-
-**Option A — delete:**
+After Verification passes, dispose of the seed backups — compromised key material must not linger in the live-seed directory, where it is a leak vector if the directory is later exposed.
 
 ```bash
+# delete
 rm ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${TS}
-```
+rm -rf ~/.roxabi/factory/nkeys.bak-${TS}
 
-**Option B — move to forensics archive:**
-
-```bash
+# — or — move to a forensics archive for incident investigation
 mkdir -p ~/.roxabi/factory/forensics
 mv ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${TS} ~/.roxabi/factory/forensics/
 ```
 
-Use Option B if you need to preserve the seed for incident investigation. In either case, confirm no `.bak-*` file remains in `~/.roxabi/factory/nkeys/`:
+Confirm no `.bak-*` seed remains in the live directory:
 
 ```bash
 ls ~/.roxabi/factory/nkeys/*.bak-* 2>/dev/null && echo "WARNING: backup files still present"
 ```
 
-> **TODO:** consider automating backup cleanup via a retention hook in gen-nkeys.sh.
-
 ---
 
-## 9. Cross-References
+## Cross-references
 
-- [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — declarative provisioning invariants, `--regen-authconf` semantics, `factory ops verify` (Invariant 5)
-- [#561](https://github.com/Roxabi/roxabi-factory/issues/561) — parent epic (NATS nkey provisioning)
-- [#714](https://github.com/Roxabi/roxabi-factory/issues/714) — per-role ACL rework
-- [`deploy/nats/gen-nkeys.sh`](../../deploy/nats/gen-nkeys.sh) — seed generation and auth.conf rendering
-- [`tools/check-nats-acls.sh`](../../tools/check-nats-acls.sh) — ACL violation detector used in Step 6.1
+- [`deploy/nats/acl-matrix.json`](../../deploy/nats/acl-matrix.json) — identity registry (SSoT for the active set)
+- [nats-authconf-update.md](nats-authconf-update.md) — routine ACL/permission changes; external seed distribution
+- [nats-identity-lifecycle.md](nats-identity-lifecycle.md) — adding / retiring identities (`make nats-add-identity`)
+- [`tools/check-nats-acls.sh`](../../tools/check-nats-acls.sh) — ACL violation detector used in Verification
+- [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — declarative provisioning invariants, `--regen-authconf` semantics, `factory ops verify`
+- [ADR-085](../architecture/adr/archive/085-public-aclbundle-bindmount-sighup.mdx) — `auth.conf` as inline bind mount + SIGHUP reload (why it is no longer a Podman secret)

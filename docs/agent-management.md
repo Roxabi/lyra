@@ -64,7 +64,7 @@ Precedence (later overrides earlier):
 1. `src/factory/agents/` — bundled system defaults
 2. `~/.roxabi/factory/agents/` — user-level overrides (machine-specific, gitignored)
 
-Override via `FACTORY_VAULT_DIR` env var: `$FACTORY_VAULT_DIR/agents/`.
+Override via `ROXABI_FACTORY_DIR` env var: `$ROXABI_FACTORY_DIR/agents/`.
 
 ## CLI Commands
 

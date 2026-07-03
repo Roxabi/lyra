@@ -1,5 +1,10 @@
 # Contributing
 
+This guide covers the contributor dev loop (clone → change → PR). For the full
+production install (bootable USB, Ubuntu Server, config.toml, bot tokens, NATS
+setup, Quadlet auto-start) see **[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)** —
+it is not duplicated here.
+
 ## Dev environment setup
 
 ```bash
@@ -11,7 +16,8 @@ make dev-setup   # uv + bun + yq + git hooks (stack.yml → commands.dev_setup)
 # 2. Configure environment
 cp .env.example .env
 # Fill in DEPLOY_HOST / DEPLOY_DIR if using make remote or make push (see docs/DEPLOYMENT.md §8)
-# Bot tokens: factory bot add — not in .env (see docs/GETTING-STARTED.md)
+# Bot tokens are Podman secrets, not .env: seed config.toml then `factory bot init`,
+# and `factory bot secret install <platform> <bot_id>` (see docs/GETTING-STARTED.md §8, docs/bot-management.md)
 
 # 3. Run the test suite to verify your setup
 uv run pytest
@@ -130,64 +136,23 @@ See `scripts/AGENTS.md`, `tools/AGENTS.md`, and `docs/ops/quality-gates.md`.
 
 ## Adding a channel adapter
 
-A channel adapter normalizes messages from one platform into `InboundMessage` objects and sends `OutboundMessage` objects back via the platform API.
+A channel adapter normalizes messages from one platform into `InboundMessage` objects and
+sends `OutboundMessage` objects back via the platform API. The shape (which base class to
+inherit, what to override, how the hub registers the adapter over NATS) is exact and moves
+fast — read it from the source rather than from a snapshot here:
 
-**1. Add a `Platform` variant** in `src/factory/core/message.py`:
-
-```python
-class Platform(str, Enum):
-    TELEGRAM = "telegram"
-    DISCORD  = "discord"
-    SIGNAL   = "signal"        # new
-```
-
-**2. Create `src/factory/adapters/signal.py`** inheriting `OutboundAdapterBase`:
-
-```python
-from factory.adapters._base_outbound import OutboundAdapterBase
-from factory.adapters._shared_streaming import PlatformCallbacks
-
-class SignalAdapter(OutboundAdapterBase):
-    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
-        ...
-
-    def _make_emitter(
-        self,
-        original_msg: InboundMessage,
-        outbound: OutboundMessage | None,
-    ) -> OutboundEmitter:
-        ...
-
-    def _start_typing(self, scope_id): ...
-    def _cancel_typing(self, scope_id): ...
-```
-
-`send_streaming()` is provided by `OutboundAdapterBase` — do not override it. Platform-specific streaming behaviour belongs in `_make_emitter()`.
-
-See `src/factory/adapters/_shared.py` for shared normalization helpers and render functions (audio, attachments).
-
-**3. Implement `_normalize()`** to parse raw platform payloads into `InboundMessage` objects, and any platform-specific render methods (`render_audio`, `render_attachment`, etc.) as needed.
-
-**4. Register it in `src/factory/bootstrap/hub_standalone.py`** (and `adapter_standalone.py` for the adapter side):
-
-Add the platform's inbound/outbound NATS subjects to `_bootstrap_hub_standalone()` and wire
-a new `_bootstrap_adapter_standalone()` branch for the new platform. The hub registers the
-adapter via `hub.register_adapter(Platform.SIGNAL, bot_id, proxy)` where `proxy` is a
-`NatsChannelProxy` routing to `factory.outbound.signal.<bot_id>`.
-
-```python
-# In hub_standalone.py — register NATS proxy for the new adapter
-from factory.nats.nats_channel_proxy import NatsChannelProxy
-proxy = NatsChannelProxy(nc, f"factory.outbound.signal.{bot_id}")
-hub.register_adapter(Platform.SIGNAL, bot_id, proxy)
-hub.register_binding(Platform.SIGNAL, bot_id, "*", "lyra", ...)
-```
-
-**5. Add tests** in `tests/adapters/test_signal.py` — mock the external SDK, test `_normalize()` and `send()`.
+- **Base contract** — `src/factory/adapters/shared/_base_outbound.py` (`OutboundAdapterBase`):
+  `send_streaming()` is provided; subclasses implement `send()`, `_make_emitter()`,
+  `_start_typing()`, `_cancel_typing()`. Shared normalization / render helpers live alongside
+  it in `src/factory/adapters/shared/`.
+- **A recent adapter to copy** — any platform package under `src/factory/adapters/<platform>/`
+  (e.g. `telegram/`, `web/`) shows the full slice: `_normalize()`, platform render methods,
+  the `Platform` enum variant in `src/factory/core/messaging/message.py`, hub/adapter
+  registration in `src/factory/bootstrap/`, and matching tests under `tests/adapters/`.
 
 ## Adding an agent
 
-An agent is a stateless singleton defined by a TOML seed file and stored in the AgentStore (SQLite at `~/.roxabi/factory/auth.db`).
+An agent is a stateless singleton defined by a TOML seed file and stored in the AgentStore (SQLite at `~/.roxabi/factory/config.db` — the config SSoT; `auth.db` holds grants and identity only). Full CLI verbs: `docs/agent-management.md`.
 
 **1. Create a TOML seed** in `src/factory/agents/my_agent.toml`:
 
@@ -374,14 +339,19 @@ Use the dev-core skill to create one:
 
 Or copy an existing ADR file and follow the structure: **Status → Context → Options Considered → Decision → Consequences**.
 
-After creating the ADR file, add its slug to `docs/architecture/adr/meta.json`.
+There is no hand-maintained ADR index to update — the consolidation (2026-07-02, ADR-086) dropped
+it. Discovery is instead: (1) a **decision-stating title** — the filename slug and frontmatter
+`title:` must state what was decided, so a reader with no index never needs to open the file; and
+(2) a one-line entry (status + summary) in the relevant domain page's **"ADR archive"** table. Add
+a redirect banner from the ADR to its domain page. The living current-state hub is
+`docs/ARCHITECTURE.md`; see `docs/architecture/adr/086-documentation-architecture.mdx` for the doctrine.
 
 ## Project structure
 
 ```
 src/factory/
   core/           — hub, pool, agent, message (no external I/O)
-  adapters/       — one file per channel (Telegram, Discord, ...)
+  adapters/       — one package per channel (telegram/, discord/, web/, ...)
   agents/         — agent implementations + TOML configs
 tests/
   core/           — unit tests for core primitives

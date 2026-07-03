@@ -18,7 +18,7 @@ Instruction content lives in `AGENTS.md`. Each `CLAUDE.md` is a thin shim (`@AGE
 | `src/factory/agent_cmd/CLAUDE.md` | `src/factory/agent_cmd/AGENTS.md` | agent + bot CLI commands — applicative layer above core |
 | `src/factory/llm/CLAUDE.md` | `src/factory/llm/AGENTS.md` | LLM drivers |
 | `src/factory/monitoring/CLAUDE.md` | `src/factory/monitoring/AGENTS.md` | standalone health-check subsystem (`python -m factory.monitoring`) |
-| `src/factory/obs/CLAUDE.md` | `src/factory/obs/AGENTS.md` | observability scaffolding (OTel/Langfuse) — ¬wired, see #1235 |
+| `src/factory/obs/CLAUDE.md` | `src/factory/obs/AGENTS.md` | observability — live OTel tracing (`hub_tracer`/`otel_wiring`/`otlp_export`, wired into runtime, ADR-091/#2069) + forward-facing `ObservabilityProvider` Langfuse abstraction (`base`/`noop`, #1235) |
 | `src/factory/outbound/CLAUDE.md` | `src/factory/outbound/AGENTS.md` | outbound stage composition (formatter/throttle/error_handler/emitter, #1279) |
 | `src/factory/streaming/CLAUDE.md` | `src/factory/streaming/AGENTS.md` | stage-axis streaming primitives (parser Protocol, state_machine, event_emitter) — composed by CliStreamingParser + StreamProcessor (#1282) |
 | `src/factory/transport/CLAUDE.md` | `src/factory/transport/AGENTS.md` | NATS transport + WorkerPoolClient (3-layer primitives, #1278) |
@@ -35,7 +35,6 @@ Instruction content lives in `AGENTS.md`. Each `CLAUDE.md` is a thin shim (`@AGE
 | `packages/roxabi-obs/CLAUDE.md` | `packages/roxabi-obs/AGENTS.md` | fleet plane ③ reporter — periodic ContainerReport publish |
 | `packages/roxabi-satellite/CLAUDE.md` | `packages/roxabi-satellite/AGENTS.md` | shared NATS satellite plumbing for GPU worker CLIs |
 | `plugins/factory-ops/CLAUDE.md` | `plugins/factory-ops/AGENTS.md` | ops plugin (debug, remote inspection) |
-| `plugins/factory-send/CLAUDE.md` | `plugins/factory-send/AGENTS.md` | message-send plugin (HTTP → Telegram/Discord) |
 | `plugins/refine-agent/CLAUDE.md` | `plugins/refine-agent/AGENTS.md` | agent-profile refine plugin |
 | `tools/CLAUDE.md` | `tools/AGENTS.md` | quality gates + analysis scripts |
 | `scripts/CLAUDE.md` | `scripts/AGENTS.md` | platform orchestration (bash) + domain operational tooling — scripts/ vs tools/ boundary |

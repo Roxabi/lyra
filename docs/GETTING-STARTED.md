@@ -206,7 +206,7 @@ cd ~/projects/roxabi-factory && python3 deploy/setup.py
 7. Seed agents into the DB (`factory agent init`)
 8. Seed bots into BotStore (`factory bot init`)
 9. Install Claude Code plugins:
-   - **Mandatory:** `web-intel`, `agent-browser`, `factory-send`, `refine-agent`
+   - **Mandatory:** `web-intel`, `agent-browser`, `refine-agent`
    - **Conditional:** `voice-cli` (auto-installed if voiceCLI was installed)
    - **Optional (prompted):** `dev-core`, `visual-explainer`, `compress`
 10. Enable linger + start Quadlet containers

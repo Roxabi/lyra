@@ -40,3 +40,6 @@ artifacts/quality-debt-drain-queue.json
 
 # CocoIndex Code (ccc)
 /.cocoindex_code/
+
+# CI junit reports (pytest --junitxml=reports/…, uploaded as artifacts)
+reports/

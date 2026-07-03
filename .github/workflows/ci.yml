@@ -168,7 +168,8 @@ jobs:
       # executes the headless-shell binary — the 175 MiB full Chrome download is
       # never exercised.
       # --reruns is scoped to e2e (browser/screenshot timing flake) — NEVER add
-      # it to unit/coverage steps, where a retry would mask real bugs.
+      # it to unit/coverage steps, where a retry would mask real bugs
+      # (exception: vitest dashboard unit retry — see apps/dashboard/vitest.config.ts).
       # No --tracing flags: these tests drive sync_playwright() manually (no
       # pytest-playwright plugin), so plugin tracing options don't apply.
       - name: Dashboard visual e2e (#1771)
@@ -183,11 +184,14 @@ jobs:
       - name: Coverage — factory
         run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/e2e --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50 --junitxml=reports/pytest-unit.xml
 
-      - name: Upload failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      # always(): junit XML is most valuable when a rerun turned the job green —
+      # flake-recurrence observability. run_attempt suffix: v4 artifact names
+      # are immutable per run, a "Re-run failed jobs" upload would 409.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: tests-failure-artifacts
+          name: tests-failure-artifacts-${{ github.run_attempt }}
           path: reports/
           retention-days: 5
           if-no-files-found: ignore
@@ -277,7 +281,10 @@ jobs:
 
       # --reruns is scoped to integration (real docker NATS — network/timing
       # flake) — NEVER add it to unit/coverage steps, where a retry would mask
-      # real bugs.
+      # real bugs (exception: vitest dashboard unit retry — see
+      # apps/dashboard/vitest.config.ts). Caveat: future JetStream-using tests
+      # inherit rerun-pollution risk (fixed stream/durable names surviving
+      # attempt 1) — use unique names or clean up before relying on --reruns.
       - name: Run integration tests
         env:
           NATS_URL: nats://localhost:4222
@@ -287,11 +294,14 @@ jobs:
         if: always()
         run: docker compose -f docker/docker-compose.test.yml down -v
 
-      - name: Upload failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      # always(): junit XML is most valuable when a rerun turned the job green —
+      # flake-recurrence observability. run_attempt suffix: v4 artifact names
+      # are immutable per run, a "Re-run failed jobs" upload would 409.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: integration-failure-artifacts
+          name: integration-failure-artifacts-${{ github.run_attempt }}
           path: reports/
           retention-days: 5
           if-no-files-found: ignore
@@ -317,33 +327,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Publish-ordering race: a factory-omp-base:X pin bump can merge before
-      # omp-base.yml publishes the GHCR tag — every docker-build in that window
-      # fails "not found" (~2×/month; 11 reds in 2 min measured 2026-07-01).
-      # Bounded single retry: first attempt is continue-on-error, then wait 90s
-      # (≈ observed tag-publish lag) and re-run the identical bake. The job
-      # fails only if the retry also fails.
+      # factory-omp-base pin bumps merge before the GHCR tag publish completes
+      # (~2/month, 11 reds in 2min measured 2026-07-01). Wait for the pinned
+      # manifest instead of blind-retrying the whole bake: real Dockerfile
+      # errors fail fast on the single bake below; the race waits ≤3min.
+      - name: Wait for pinned factory-omp-base manifest
+        run: |
+          tag=$(grep -oP 'ghcr\.io/roxabi/factory-omp-base:[0-9][0-9.]*' Dockerfile | head -1)
+          [[ -n "$tag" ]] || { echo "no omp-base pin found — skipping"; exit 0; }
+          for i in $(seq 1 6); do
+            docker manifest inspect "$tag" >/dev/null 2>&1 && { echo "manifest present: $tag"; exit 0; }
+            echo "attempt $i/6: $tag not yet published — waiting 30s"
+            sleep 30
+          done
+          echo "::warning::$tag still unpublished after 3min — proceeding, bake will fail if truly missing"
+
       - name: Build (no push)
-        id: bake1
-        continue-on-error: true
-        uses: docker/bake-action@6614cfa25eff9a0b2b2697efb0b6159e7680d584 # v7.2.0
-        with:
-          files: docker-bake.hcl
-          push: false
-          set: |
-            *.cache-from=type=gha,scope=factory-agent-ci
-            *.cache-to=type=gha,mode=min,scope=factory-agent-ci
-            svc-runtime.cache-from=type=gha,scope=factory-svc-ci
-            svc-runtime.cache-to=type=gha,mode=min,scope=factory-svc-ci
-
-      - name: Wait for base-image tag publish
-        if: steps.bake1.outcome == 'failure'
-        run: sleep 90
-
-      # Identical invocation (same files/push/cache set) — only the retry's
-      # outcome decides the job result.
-      - name: Build (no push) — retry
-        if: steps.bake1.outcome == 'failure'
         uses: docker/bake-action@6614cfa25eff9a0b2b2697efb0b6159e7680d584 # v7.2.0
         with:
           files: docker-bake.hcl

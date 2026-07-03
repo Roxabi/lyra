@@ -335,12 +335,9 @@ jobs:
     # Runs in parallel with ci/integration (no needs:).
     # Does NOT push. Uses CI-scoped GHA cache (factory-agent-ci / factory-svc-ci)
     # so it never pollutes the publish job's factory-agent / factory-svc scopes.
-    # Queue entries don't need this: non-required, and staging-red-alert reads
-    # push runs only — a red here blocks nothing and alerts nobody, it's just
-    # duplicate compute (up to 5 concurrent queue builds).
-    # WARNING: drop this `if:` if the job ever becomes a required check — a
-    # skipped required check deadlocks the queue.
-    if: github.event_name != 'merge_group'
+    # docker-build is a REQUIRED check (added post python:3.14 incident, where an
+    # advisory red merged and broke staging publish) — it MUST run on merge_group:
+    # a skipped required check deadlocks every queue entry (30-min timeout each).
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

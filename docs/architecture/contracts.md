@@ -86,8 +86,9 @@ Notable recent moves:
 The runtime dependency set is Pydantic only — `nats-py` never enters via this package, not even
 through its `[testing]` extra (transport-dependent testing moved to `roxabi-nats[testing]`).
 External consumers pin both SDK packages by git tag (`roxabi-nats/vX.Y.Z`) with a grouped
-Renovate rule so transport and schemas upgrade in lockstep; branch pinning is forbidden in
-production satellites.
+Renovate rule so transport and schemas upgrade in lockstep; branch pinning these two is forbidden
+in production satellites. The one sanctioned branch pin — the `roxabi-satellite` aggregator — and
+its rationale are in the Pin doctrine section below.
 
 → ADR-049
 
@@ -213,6 +214,53 @@ change, enumerate every producer per direction (in-repo vs. satellite), every st
 model that carries that field, and extend subject→envelope enforcement tests when adding
 work-plane fields. This enumeration is the actual gate — spec review alone has missed it before.
 
+## Pin doctrine (external consumers)
+
+One doctrine, one documented exception. This section is the SSoT; the package
+READMEs and the invariant below point here rather than restating it.
+
+**Default — pin the wire-contract SDK by tag.** External consumers pin
+`roxabi-nats` and `roxabi-contracts` by git **tag** (`roxabi-nats/vX.Y.Z`,
+`roxabi-contracts/vX.Y.Z`), grouped in a single Renovate `git-refs` rule
+(`groupName: "roxabi sdk"`) so transport and schemas move in lockstep. Branch
+pinning these two is **forbidden** in `staging`/`main` of any production
+satellite (permitted only in plugin-dev branches, per ADR-045). Rationale: a
+branch pin lets the wire `CONTRACT_VERSION` shift under a consumer with no
+coordinated version bump, and ungrouped tag pins can drift into a **partial
+upgrade** (schemas bumped, transport stale) that fails at envelope-parse time —
+the grouped tag rule is what prevents both.
+
+**Exception — the `roxabi-satellite` aggregator may pin `branch = "staging"`.**
+A CLI that consumes plumbing depends on `roxabi-satellite` *only* and receives
+`roxabi-contracts`, `roxabi-nats`, and `roxabi-blobs` transitively. This is
+sanctioned because:
+
+- `roxabi-satellite` is **plumbing, not the wire contract** — its surface is
+  validation/replies/blob-token helpers, not the `CONTRACT_VERSION` boundary.
+- Branch-tracking the aggregator **cannot produce a partial upgrade** — the
+  hazard the tag rule exists to prevent. All three SDK packages resolve from
+  the *same* staging commit (workspace deps), so the consumer always gets an
+  internally-consistent triple, never a schemas-ahead-of-transport skew.
+- `roxabi-satellite` (and `roxabi-blobs`) are pre-1.0 and **not yet
+  tag-released** (no `roxabi-satellite/*` tags exist); branch-tracking lets
+  plumbing fixes propagate without a manual repin per ADR-082.
+
+This is a bounded carve-out: once `roxabi-satellite` starts cutting tags it
+folds back into the default tag rule. Consumers must never branch-pin
+`roxabi-nats`/`roxabi-contracts` **directly** to dodge the tag rule — only the
+aggregator is branch-pinnable.
+
+**Release reminder (no gate).** Every `version =` bump in either wire-contract
+package's `pyproject.toml` MUST be followed by cutting the matching
+`<pkg>/vX.Y.Z` tag in the same release (post-merge on `staging`, or via
+`/promote`). A pyproject that is ahead of the newest tag is exactly what breaks
+external `uv add` resolution (issue #2199). This is a **release-runbook
+reminder, not a quality gate**: tags are cut post-merge, so at PR time the
+pyproject is legitimately ahead of the tag — a `version == latest-tag` gate
+would red every version-bump PR, which is the wrong shape. The proportionate
+control is this line plus the [Unreleased] "tag pending" note each package's
+CHANGELOG carries until its tag is cut.
+
 ## Key invariants
 
 - All cross-project NATS schemas and subject strings live in `packages/roxabi-contracts/`; none are re-implemented in satellite repos, and subjects are frozen `Literal`-typed constants (no inline f-string subject construction outside the contracts per-worker helpers).
@@ -220,7 +268,7 @@ work-plane fields. This enumeration is the actual gate — spec review alone has
 - `roxabi-contracts` runtime has zero transport dependency; transport-coupled test doubles enter only via `roxabi-nats[testing]`.
 - Test doubles are guarded against production contamination: extras gate, `assert_not_production` environment assertion, `assert_loopback_url` NATS URL check.
 - Satellite domain engines stay in satellite repos; only plumbing (validation, replies, blob/token/envelope helpers) may move into `roxabi-satellite`.
-- External consumers pin `roxabi-nats` and `roxabi-contracts` by tag with the grouped Renovate rule; branch pinning is forbidden in `staging`/`main` of any production satellite.
+- External consumers pin `roxabi-nats` and `roxabi-contracts` by tag with the grouped Renovate rule; branch pinning these two is forbidden in `staging`/`main` of any production satellite. The sole exception — branch-pinning the `roxabi-satellite` aggregator — is defined in the Pin doctrine section (partial-upgrade-safe, pre-tag plumbing).
 - Hub-side clients route exclusively via registry-scored per-worker subjects through `WorkerPoolClient`; queue-group fallback routing is forbidden.
 - No exceptions cross the transport boundary: transport methods return `Result`, and `SanitizedError.message` carries the exception type name only, never `str(exc)`.
 - Domain clients composing `WorkerPoolClient` must not add a second circuit-breaker.

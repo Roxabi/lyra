@@ -3,39 +3,54 @@
 ## Overview
 
 `roxabi-factory` auto-merges PRs via two workflows: `.github/workflows/auto-merge.yml` (the
-merge/rebase/close machinery) and `.github/workflows/dependabot-automerge.yml` (auto-labels
+merge/close machinery) and `.github/workflows/dependabot-automerge.yml` (auto-labels
 Dependabot PRs so they enter that machinery). Both mint a short-lived `roxabi-ci` GitHub App
 token rather than using `GITHUB_TOKEN` or a shared PAT.
 
 The whole thing keys off one label: **`reviewed`** (`#0075ca`, "Code reviewed and approved") —
 not `viewed` (a different, similarly-named label used elsewhere for acknowledgement).
 
+Merging goes through GitHub's **merge queue** on `staging`, enabled via the "staging merge
+queue" repository ruleset (a ruleset, not branch protection). Flow: `reviewed` label → arm
+merge-when-ready → the PR **enqueues** once its PR-level required checks pass → the queue
+builds a temporary `gh-readonly-queue/staging/*` ref (the PR merged onto the current queue
+head), re-runs the required checks there via the `merge_group` event (`ci.yml` and
+`secret-scan.yml` both trigger on it), and lands the merge commit on green.
+
 ## `auto-merge.yml`
 
 | Job | Trigger | What it does |
 |---|---|---|
-| `auto-merge` | PR `labeled` / `synchronize` / `closed` (`check_suite` also listed in YAML but **inert** for GHA-origin suites — GitHub suppresses the workflow when the suite was created by Actions; `github.event.pull_request.labels` is empty on `check_suite` anyway) | If the PR carries `reviewed`, runs `gh pr merge --auto --merge` (merge commit — squash is forbidden project-wide, see `~/projects/ssot/conventions.ssot.md`). Arms GitHub's native auto-merge; it fires once required checks go green. **Arming is driven by `labeled` + `synchronize` in practice.** |
-| `update-behind-prs` | `push` to `staging`/`main` | Rebases every open **non-draft** PR targeting that branch via the `update-branch` API (additive merge-update, not a force-push). Runs on ALL open non-draft PRs, not just `reviewed` ones, so PRs don't rot as BEHIND while waiting for review. |
+| `auto-merge` | PR `labeled` / `synchronize` / `closed` | If the PR carries `reviewed`, runs `gh pr merge --auto --merge` (merge commit — squash is forbidden project-wide, see `~/projects/ssot/conventions.ssot.md`). Arms GitHub's merge-when-ready: the PR enqueues as soon as its PR-level required checks pass; the queue does the rest. |
 | `close-linked-issues` | PR `closed` + merged | Closes `Closes #N` references in the PR body — `GITHUB_TOKEN`-initiated auto-merges don't trigger GitHub's native issue-closing behavior, so this job does it explicitly. |
 
-Branch protection on `staging`: `required_status_checks` = `ci` + `trufflehog` (strict/up-to-date
-required), `enforce_admins: false`, and **no required PR review count** — merge only needs the
-`reviewed` label + green required checks + an up-to-date branch. `main` requires the `/promote`
-flow instead (see `~/projects/ssot/conventions.ssot.md`).
+The former update-behind-prs job (rebase every open non-draft PR on every `staging`/`main`
+push) is **retired**: the queue validates each entry as the *actual merge result* against the
+queue head, so freshness is the queue's job now — no update-branch churn (that fan-out was
+67.7% of ALL CI runs pre-#2136).
 
-### `gh pr merge --auto` clean-status race
+Branch protection on `staging`: `required_status_checks` = `ci` + `trufflehog` with
+`strict: false` — the queue owns freshness, so up-to-date branches are **no longer** required
+at merge time — `enforce_admins: false`, and **no required PR review count**: merge only needs
+the `reviewed` label + green required checks. `main` requires the `/promote` flow instead (see
+`~/projects/ssot/conventions.ssot.md`).
 
-If a PR is **already fully green** at the moment `reviewed` is applied, `gh pr merge --auto
---merge` errors ("Pull request is in clean status, nothing to wait for") and the PR does **not**
-merge — the job goes red, the PR shows `UNSTABLE`, `autoMerge` stays off. Only PRs that still had
-a check in flight at label-time arm and merge automatically. Labelling several PRs in the same
-batch: expect only one to merge outright.
+### Queue stalls: a flaky red dequeues the PR
 
-**Recovery:** re-run `gh pr merge <N> --auto --merge` manually. Once the first merge lands on
-`staging`, the remaining PRs become `BEHIND` (no longer "clean"), so `--auto` arms cleanly on
-them and `update-behind-prs` rebases them — the cascade self-sustains until all are merged.
-Plain `gh pr merge --merge` (no `--auto`) is rejected by branch protection while a PR is BEHIND
-("base branch policy prohibits the merge"); always use `--auto`, not `--admin`.
+If a queue entry goes red (flaky test, transient infra), GitHub **dequeues the PR and disarms
+merge-when-ready**. The PR then sits indefinitely with green PR-level checks and the
+`reviewed` label still applied — nothing retries it automatically, and no workflow goes red on
+the PR itself (the failure lives on the temporary queue ref's run).
+
+**Recovery:** re-arm with `gh pr merge <N> --auto --merge`, or remove + re-add the `reviewed`
+label (the `labeled` event re-fires the `auto-merge` job, which re-arms). Either path
+re-enqueues the PR.
+
+**Rollback (queue off):** delete the "staging merge queue" ruleset
+(`gh api repos/Roxabi/roxabi-factory/rulesets/<id> --method DELETE`) and restore
+`strict: true` on the `staging` branch protection — the `merge_group:` triggers in
+`ci.yml`/`secret-scan.yml` are inert without a queue, so that restores pre-queue behavior
+exactly.
 
 ## `dependabot-automerge.yml`
 
@@ -75,6 +90,7 @@ auto-labelled** — they wait for human review.
 ## Troubleshooting
 
 If a human-authored PR "won't merge" despite green CI: check for the `reviewed` label — that's
-the only merge gate on `staging`. If a Dependabot PR is stuck: check its update-type (majors are
-never auto-labelled) and whether it landed *before* the current version of
-`dependabot-automerge.yml`.
+the only merge gate on `staging`. If the label is on and the PR is green but neither queued nor
+merging, it was probably dequeued by a red queue entry — see § Queue stalls above. If a
+Dependabot PR is stuck: check its update-type (majors are never auto-labelled) and whether it
+landed *before* the current version of `dependabot-automerge.yml`.

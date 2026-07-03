@@ -1,6 +1,16 @@
 # Auto-merge PRs that have been reviewed and passed all required checks.
-# Adds the PR to GitHub's merge queue (merge commit) once the "reviewed" label is present.
-# GitHub natively waits for all required status checks before merging.
+#
+# Queue flow: "reviewed" label -> `gh pr merge --auto --merge` arms GitHub's
+# native merge-when-ready. With the merge queue enabled on staging, that call
+# ENQUEUES the PR once its PR-level required checks pass; the queue then builds
+# a temporary gh-readonly-queue/staging/* ref (PR merged onto the current queue
+# head), runs the required checks there via the merge_group event (ci.yml +
+# secret-scan.yml both trigger on it), and merges on green.
+#
+# The queue tests freshness itself — no update-branch calls needed. The former
+# "Update branch if behind" step and "update-behind-prs" job (rebase-all-reviewed
+# -PRs-on-every-staging-push) are retired: with strict up-to-date checks off,
+# that churn (67.7% of ALL CI runs pre-#2136) has no purpose.
 #
 # Project convention: merge commits only (¬squash) — see ~/projects/CLAUDE.md
 # "Release Convention". Squash merges flatten the per-commit history that
@@ -13,10 +23,6 @@ name: Auto Merge
 on:
   pull_request:
     types: [labeled, synchronize, closed]
-  check_suite:
-    types: [completed]
-  push:
-    branches: [staging, main]
 
 permissions:
   contents: write
@@ -44,63 +50,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      # With the merge queue on staging this arms merge-when-ready = enqueue
+      # once PR-level required checks pass. The queue re-validates the actual
+      # merge result on a temporary ref, so no branch-update step is needed.
       - name: Enable auto-merge (merge commit)
         run: gh pr merge "$PR_NUMBER" --auto --merge
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-
-      # strict=true requires up-to-date branches, but native auto-merge never
-      # updates them itself. update-behind-prs only covers reviewed PRs on the
-      # NEXT staging push — update immediately so a quiet repo can't strand a
-      # freshly labeled PR. 422 (already up to date) is fine.
-      - name: Update branch if behind
-        run: |
-          gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/update-branch" \
-            --method PUT || true
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-
-  update-behind-prs:
-    name: Update behind PRs
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    timeout-minutes: 5
-    steps:
-      # roxabi-ci App token (ephemeral, 1 h) — replaces the shared org PAT: its pushes
-      # re-trigger CI and it can merge workflow-file PRs, which GITHUB_TOKEN cannot.
-      - name: Mint app token (roxabi-ci)
-        id: app
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
-        with:
-          app-id: ${{ vars.ROXABI_CI_APP_ID }}
-          private-key: ${{ secrets.ROXABI_CI_APP_PRIVATE_KEY }}
-
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      # Only merge-ready (reviewed) PRs: updating ALL open PRs edit-poisons
-      # dependabot PRs (dependabot refuses to update/supersede/close a PR edited
-      # by someone else → zombie PRs re-CI'd on every staging push; 67% of all
-      # workflow runs in the 2026-06/07 window) and churns human WIP branches.
-      - name: Update reviewed PRs targeting this branch
-        run: |
-          BRANCH="${GITHUB_REF_NAME}"
-          PRS=$(gh pr list --base "$BRANCH" --state open --label reviewed --json number,headRefOid,isDraft --jq '.[] | select(.isDraft | not)')
-          if [ -z "$PRS" ]; then
-            echo "No open reviewed PRs targeting $BRANCH"
-            exit 0
-          fi
-          echo "$PRS" | while IFS= read -r pr; do
-            NUM=$(echo "$pr" | jq -r .number)
-            SHA=$(echo "$pr" | jq -r .headRefOid)
-            echo "Updating PR #$NUM..."
-            gh api "repos/${{ github.repository }}/pulls/$NUM/update-branch" \
-              --method PUT -f expected_head_sha="$SHA" || true
-          done
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
 
   close-linked-issues:
     name: Close linked issues

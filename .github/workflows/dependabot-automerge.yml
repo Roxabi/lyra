@@ -8,7 +8,7 @@
 #
 # Cascade: dependabot opens PR -> (patch|minor) -> add `reviewed` label via PAT ->
 #   PAT-applied label fires auto-merge.yml `labeled` event -> arms GitHub auto-merge
-#   -> update-behind-prs keeps it current on each staging push -> merges when green.
+#   -> merge queue validates the merge result on a temporary ref -> merges when green.
 # Major bumps are NOT labelled -> they wait for human review.
 name: Dependabot Auto-merge
 

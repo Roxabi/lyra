@@ -8,6 +8,7 @@ Point-in-time dev-core outputs moved here during the obsolete-artifacts cleanup 
 | `plans/` | Completed issue execution plans | `artifacts/plans/TEMPLATE/` for new work |
 | `analyses/` | Consensus reviews, date-stamped prep, narrative series | `artifacts/specs/` + kept analyses in `artifacts/analyses/` |
 | `frames/` | Orphan pre-spec frames (no spec promotion) | `artifacts/specs/` |
+| `scripts/` | One-off `.js` orchestration scripts from closed epics (epic-1662 audit/clean, multi-agent-audit) — moved out of `docs/` (#2217) | — |
 | `spikes/`, `reviews/`, `pr-bodies/` | One-off spikes and drafts | — |
 
 Still active at repo root: `artifacts/specs/`, `artifacts/debt/`, `artifacts/analyses/` (SSoT subset), `artifacts/plans/TEMPLATE/`, `artifacts/postmortems/`, `artifacts/evidence/`.

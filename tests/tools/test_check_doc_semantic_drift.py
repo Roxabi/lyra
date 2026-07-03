@@ -85,6 +85,65 @@ def test_readme_mit_fails(tmp_path: Path) -> None:
     assert "readme" in out.lower()
 
 
+def test_tombstones_all_fire(tmp_path: Path) -> None:
+    """Every #2220 tombstone string trips its rule on a fresh doc."""
+    _pyproject(tmp_path)
+    (tmp_path / "README.md").write_text("# Lyra\nAGPL\n", encoding="utf-8")
+    doc = tmp_path / "docs" / "ops" / "stale.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text(
+        "Run `make deploy` to ship.\n"
+        "Also `make full-deploy` works.\n"
+        "Register the slug in `adr/meta.json`.\n"
+        "Build a `CredentialStore` instance.\n"
+        "Export `FACTORY_VAULT_DIR=/tmp/x`.\n"
+        "Then `systemctl reload nats` to apply.\n",
+        encoding="utf-8",
+    )
+    rc, out = _run(tmp_path)
+    assert rc == 1
+    for rule_id in (
+        "tombstone_make_deploy",
+        "tombstone_adr_meta_json",
+        "tombstone_credential_store",
+        "tombstone_factory_vault_dir",
+        "tombstone_systemctl_reload_nats",
+    ):
+        assert rule_id in out, f"expected {rule_id} in output:\n{out}"
+
+
+def test_make_deploy_retired_context_is_exempt(tmp_path: Path) -> None:
+    """A line documenting the retirement itself must not trip (historical keyword).
+
+    This is exactly how the live `docs/DEPLOYMENT.md` records the #1930 removal —
+    the doc is doing its job, so the gate stays quiet.
+    """
+    _pyproject(tmp_path)
+    (tmp_path / "README.md").write_text("# Lyra\nAGPL\n", encoding="utf-8")
+    doc = tmp_path / "docs" / "DEPLOYMENT.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text(
+        "`make deploy` / `make full-deploy` are RETIRED (#1930) — they fail fast.\n",
+        encoding="utf-8",
+    )
+    rc, out = _run(tmp_path)
+    assert rc == 0, out
+    assert "tombstone_make_deploy" not in out
+
+
+def test_root_agents_md_is_scanned(tmp_path: Path) -> None:
+    """Root AGENTS.md is in scope (#2220 scope item 2) — a tombstone there trips."""
+    _pyproject(tmp_path)
+    (tmp_path / "README.md").write_text("# Lyra\nAGPL\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text(
+        "Config lives under `FACTORY_VAULT_DIR`.\n", encoding="utf-8"
+    )
+    rc, out = _run(tmp_path)
+    assert rc == 1
+    assert "tombstone_factory_vault_dir" in out
+    assert "AGENTS.md" in out
+
+
 def test_stale_container_count_message_has_no_hardcoded_count() -> None:
     """The stale_container_count fix-message must not itself hardcode a count.
 

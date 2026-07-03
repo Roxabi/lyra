@@ -203,8 +203,8 @@ provenance) — major `roxabi-contracts` bump + coordinated satellite upgrade on
 **Pattern:** land the field as a `default_factory` mint shim (deserialize-compat within the current
 `CONTRACT_VERSION`, transitional per ADR-084 Amendment / #1619), have every in-repo producer set
 it explicitly at each construction site (+ fakes/fixtures/docker stubs), and let satellites echo
-it after their next lock bump (contracts-bump workflow,
-`docs/ops/contracts-bump-callers.md` — `wire-breaking` label when `CONTRACT_VERSION` changes).
+it after their next Renovate `roxabi sdk` lock bump (`packages/roxabi-contracts/README.md`
+§ Satellite pin freshness — human-gated PR when `CONTRACT_VERSION` changes).
 Flip the field to hard-required only on the next `CONTRACT_VERSION` bump (#1841 for `job_id`).
 Worked example: `WorkEnvelope.job_id` (#1619, ADR-084 Amendment).
 

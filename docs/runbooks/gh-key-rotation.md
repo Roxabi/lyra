@@ -18,7 +18,7 @@ This runbook does **not** cover changing the GitHub App ID or installation ID �
 
 ## Identity → Host Map
 
-A single GitHub App `lyra-harness` (id `3619198`, install_id `129952244`) is used on both hosts post the 2026-05-06 single-App collapse. Per-host audit-log separation is deferred until a 2nd contributor or compliance requirement surfaces — see `artifacts/archive/2026-06/audits/2026-05-06-token-isolation-audit-1078.mdx` § Decision Log.
+A single GitHub App `lyra-harness` (id `3619198`, install_id `129952244`) is used on both hosts post the 2026-05-06 single-App collapse. Per-host audit-log separation is deferred until a 2nd contributor or compliance requirement surfaces. _(The 2026-05-06 token-isolation audit that recorded this decision was retired in the `2026-06` archive tombstone — recover the full Decision Log via `git show artifacts-archive/2026-06 -- artifacts/archive/2026-06/audits/2026-05-06-token-isolation-audit-1078.mdx`.)_
 
 | App | Host | Quadlet unit (PEM consumer) | Secret name |
 |---|---|---|---|

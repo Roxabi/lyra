@@ -6,7 +6,7 @@ Bots are stored in **`~/.roxabi/factory/config.db`** (SQLite, table `bots`). TOM
 
 | Table | Purpose |
 |-------|---------|
-| `bots` | Bot configurations (11 columns — see schema below) |
+| `bots` | Bot adapter/runtime config — see schema below (SSoT `src/factory/core/agent/schema/bot_schema.py`) |
 | `bot_agent_map` | Maps `(platform, bot_id)` → `agent_name` |
 
 ## Bot Configuration
@@ -69,7 +69,7 @@ factory agent telegram add <bot_id> --agent foo --webhook-enabled
 factory agent telegram edit <bot_id>            # interactive field editor
 factory agent telegram patch <bot_id> --webhook-enabled true
 factory agent telegram patch <bot_id> --agent foo
-factory agent telegram patch <bot_id> --owner-users "123,456"
+factory agent telegram patch <bot_id> --public-bot "@handle"   # ADR-090 deny pointer
 factory agent telegram remove <bot_id>          # delete + cascade bot_agent_map cleanup
 factory agent telegram remove <bot_id> --yes    # skip confirmation
 
@@ -78,30 +78,27 @@ factory agent telegram assign <bot_id> --agent foo
 factory agent telegram unassign <bot_id>        # revert to empty agent
 
 # Validation
-factory agent telegram validate <bot_id>        # check agent exists, owners non-empty, secret present
+factory agent telegram validate <bot_id>        # check agent exists + Podman secret present
 ```
 
-**Valid trust levels:** `owner`, `trusted`, `public`, `blocked` (default: `blocked`).
+**Per-user trust/authorization is not a bot column** — ADR-090 moved it into the `agent_grants` table (`auth.db`), managed via `factory agent grant` / `factory agent revoke` / `factory agent auth list`. The `bots` table carries adapter/runtime config only. `public_bot` is a deny-pointer handle, not a trust level.
 
-**Patchable fields:** `agent`, `webhook_enabled`, `default_trust`, `owner_users`, `trusted_users`, `trusted_roles`, `auto_thread`, `thread_hot_hours`. Typer rejects unknown flags (`--webhook-enabel` → shell error).
+**Patchable fields:** `agent`, `webhook_enabled`, `auto_thread`, `thread_hot_hours`, `public_bot`. Typer rejects unknown flags (`--webhook-enabel` → shell error).
 
 ## DB Schema Reference
 
-**bots table** (11 columns):
+**bots table** — DDL SSoT: `src/factory/core/agent/schema/bot_schema.py` (`_CREATE_BOTS`). The four trust columns (`default_trust`, `owner_users`, `trusted_users`, `trusted_roles`) were removed by ADR-090 — authorization now lives in `agent_grants`.
 
 | Column | Type | Default |
 |--------|------|---------|
-| `platform` | TEXT (PK part) | — |
-| `bot_id` | TEXT (PK part) | — |
-| `agent` | TEXT | `""` |
-| `webhook_enabled` | INTEGER | `0` |
-| `default_trust` | TEXT | `"blocked"` |
-| `owner_users` | TEXT | `'[]'` |
-| `trusted_users` | TEXT | `'[]'` |
-| `trusted_roles` | TEXT | `'[]'` |
-| `auto_thread` | INTEGER | `0` |
-| `thread_hot_hours` | INTEGER | `24` |
-| `updated_at` | TEXT | `datetime('now')` |
+| `platform` | TEXT NOT NULL (PK part) | — |
+| `bot_id` | TEXT NOT NULL (PK part) | — |
+| `agent` | TEXT NOT NULL | — |
+| `webhook_enabled` | INTEGER NOT NULL | `0` |
+| `auto_thread` | INTEGER NOT NULL | `0` |
+| `thread_hot_hours` | INTEGER NOT NULL | `24` |
+| `updated_at` | TEXT | — |
+| `public_bot` | TEXT | — |
 
 ## Workflows
 

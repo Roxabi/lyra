@@ -95,4 +95,4 @@ nats --server nats://localhost:4222 --nkey ~/.roxabi/factory/nkeys/hub.seed --in
 
 - [nats-identity-lifecycle.md](../ops/nats-identity-lifecycle.md) — adding/retiring NATS identities, seed propagation across hosts
 - `docs/architecture/security-routing.md` — ACL model, per-identity inbox prefixes (ADR-051), request/reply derivation (ADR-064)
-- `docs/ops/nats-acl-postmortem-remaining.md`, `docs/ops/nats-acl-inbox-case-postmortem.md` — history of the inbox-prefix normalization that makes `--inbox-prefix` mandatory today
+- `docs/ops/nats-acl-inbox-case-postmortem.md` — history of the inbox-prefix normalization that makes `--inbox-prefix` mandatory today

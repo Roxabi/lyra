@@ -14,7 +14,7 @@ factory uses two types of configuration files with distinct responsibilities:
 | `config.toml` | Instance config | No | Deployment wiring: bots, tokens, auth, defaults |
 | `config.toml` | Instance config | No | Monitoring thresholds — `[monitoring]` section of the same `config.toml`, read by `factory.monitoring` |
 | `~/.roxabi/factory/config.db` | Runtime DB | No | Agents, credentials, grants, user prefs (SQLite) |
-| `~/.roxabi/factory/turns.db` | Runtime DB | No | Conversation turns, pool sessions |
+| `~/.roxabi/factory/turn-writer/turns.db` | Runtime DB | No | Conversation turns, pool sessions |
 | `~/.roxabi/factory/discord.db` | Runtime DB | No | Discord thread data (owned by Discord adapter) |
 | `~/.roxabi/factory/auth.db` | Runtime DB | No | Auth grants, identity aliases (legacy name, still used) |
 | `~/.roxabi/factory/message_index.db` | Runtime DB | No | Message index for search/retrieval |
@@ -38,7 +38,7 @@ Resolution order (first match wins):
 
 ```
 1. $FACTORY_CONFIG           (if set, must be under $HOME)
-2. $FACTORY_VAULT_DIR/config.toml
+2. $ROXABI_FACTORY_DIR/config.toml
 3. ./config.toml          (cwd)
 4. Empty dict (defaults)
 ```
@@ -69,10 +69,10 @@ Resolution order:
 
 ### Store directory (`~/.roxabi/factory/`)
 
-Controlled by `FACTORY_VAULT_DIR`:
+Controlled by `ROXABI_FACTORY_DIR`:
 
 ```
-$FACTORY_VAULT_DIR  (if set)
+$ROXABI_FACTORY_DIR  (if set)
 ~/.roxabi/factory          (default)
 ```
 
@@ -82,7 +82,7 @@ Databases created under this directory:
 |---------|--------|
 | `config.db` | `agents`, `bot_agent_map`, `agent_runtime_state`, `bot_secrets`, `user_prefs` |
 | `auth.db` | Auth grants, identity aliases |
-| `turns.db` | Conversation turns, pool sessions |
+| `turn-writer/turns.db` | Conversation turns, pool sessions (WAL siblings co-locate with the `factory-turn-writer` unit — `paths.py`) |
 | `discord.db` | `discord_threads` (owned by Discord adapter) |
 | `message_index.db` | Message index |
 
@@ -436,9 +436,9 @@ health_secret = ""                            # optional health endpoint auth
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FACTORY_CONFIG` | — | Path to `config.toml` (hub) or config.toml (monitoring) |
-| `FACTORY_VAULT_DIR` | `~/.roxabi/factory` | Store directory for all databases |
+| `ROXABI_FACTORY_DIR` | `~/.roxabi/factory` | Store directory for all databases (`factory_data_dir()` in `paths.py`) |
 | `FACTORY_MESSAGES_CONFIG` | bundled | Path to custom `messages.toml` |
-| `FACTORY_DB` | — | Override database path (test only) |
+| `FACTORY_DB` | — | Agent-store implementation selector (not a path): `json` → `JsonAgentStore` (test); unset → SQLite `AgentStore`. See `agent_store_factory.py`. |
 
 ### Telegram
 
@@ -583,7 +583,7 @@ mirror `FACTORY_WEB_*`.
 | Database | Contents |
 |----------|----------|
 | `config.db` | Agents, bot-agent map, agent runtime state, credentials, user prefs |
-| `turns.db` | Conversation turns, pool sessions |
+| `turn-writer/turns.db` | Conversation turns, pool sessions (co-located with the `factory-turn-writer` unit — `paths.py`) |
 | `discord.db` | Discord thread data (owned by Discord adapter) |
 | `auth.db` | Auth grants, identity aliases |
 | `message_index.db` | Message index for search/retrieval |
@@ -644,7 +644,7 @@ enabled = ["echo"]
 startup
   ├── _load_raw_config() → config.toml
   │     ├── $FACTORY_CONFIG (validated under $HOME)
-  │     ├── $FACTORY_VAULT_DIR/config.toml
+  │     ├── $ROXABI_FACTORY_DIR/config.toml
   │     ├── cwd/config.toml
   │     └── {} (empty → all defaults)
   │
@@ -673,9 +673,10 @@ it runs `deploy/quadlet-install-verify.sh`, which:
 
 1. Runs `systemctl --user daemon-reload` — triggers the Quadlet generator to
    produce fresh `.service` units from the copied files.
-2. Restarts (or starts) each container unit: `factory-nats`, `factory-hub`,
-   `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-gh-helper`,
-   `factory-blobstore`, `factory-turn-writer`, `factory-omp`.
+2. Restarts (or starts) each container unit. The unit list is derived at runtime
+   from `deploy/quadlet.toml` (`quadlet_containers` in `deploy/lib/quadlet-units.sh`,
+   `mapfile` in `quadlet-install-verify.sh`) — it auto-updates as components are added,
+   so no fixed roster is hardcoded here.
 3. Waits up to 10 s per unit and checks `systemctl --user is-active`.
 4. If any unit is not `active`, dumps the last 20 lines of
    `journalctl --user -u <unit>` and exits non-zero — the deploy fails loudly.

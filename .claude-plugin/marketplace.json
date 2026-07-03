@@ -1,7 +1,7 @@
 {
   "name": "factory-marketplace",
   "version": "1.0.0",
-  "description": "factory Claude Code plugins — agent management, ops, proactive messaging.",
+  "description": "factory Claude Code plugins — agent management, ops.",
   "owner": { "name": "Roxabi", "url": "https://github.com/Roxabi" },
   "plugins": [
     {
@@ -9,12 +9,6 @@
       "description": "Conversationally refine agent profiles — persona, voice, passthroughs.",
       "source": "./plugins/refine-agent",
       "category": "agent-management"
-    },
-    {
-      "name": "factory-send",
-      "description": "Send messages, images, and voice notes to users via factory bots (Telegram & Discord).",
-      "source": "./plugins/factory-send",
-      "category": "utilities"
     },
     {
       "name": "factory-ops",

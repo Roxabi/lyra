@@ -418,7 +418,6 @@ def setup_plugins(
             "agent-browser",
             "headless browser (auth, interactive pages)",
         ),
-        ("factory-send", "factory-marketplace", "proactive messaging (Telegram & Discord)"),
         ("refine-agent", "factory-marketplace", "agent profile management"),
     ]
     for name, marketplace, desc in mandatory:

@@ -35,7 +35,6 @@ Instruction content lives in `AGENTS.md`. Each `CLAUDE.md` is a thin shim (`@AGE
 | `packages/roxabi-obs/CLAUDE.md` | `packages/roxabi-obs/AGENTS.md` | fleet plane ③ reporter — periodic ContainerReport publish |
 | `packages/roxabi-satellite/CLAUDE.md` | `packages/roxabi-satellite/AGENTS.md` | shared NATS satellite plumbing for GPU worker CLIs |
 | `plugins/factory-ops/CLAUDE.md` | `plugins/factory-ops/AGENTS.md` | ops plugin (debug, remote inspection) |
-| `plugins/factory-send/CLAUDE.md` | `plugins/factory-send/AGENTS.md` | message-send plugin (HTTP → Telegram/Discord) |
 | `plugins/refine-agent/CLAUDE.md` | `plugins/refine-agent/AGENTS.md` | agent-profile refine plugin |
 | `tools/CLAUDE.md` | `tools/AGENTS.md` | quality gates + analysis scripts |
 | `scripts/CLAUDE.md` | `scripts/AGENTS.md` | platform orchestration (bash) + domain operational tooling — scripts/ vs tools/ boundary |

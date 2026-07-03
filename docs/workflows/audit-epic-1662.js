@@ -91,7 +91,7 @@ Vérifications obligatoires:
    - tools/check_file_exemptions.sh
    - tools/check_architecture_snapshot.sh
    Reporter le résultat (exit code + output).
-3. Lire .github/pull_request_template.md — confirmer que les checklists debt/sleep/constant sont présentes.
+3. Lire .github/PULL_REQUEST_TEMPLATE.md — confirmer que les checklists debt/sleep/constant sont présentes.
 4. Lire .github/workflows/axial-review.yml — confirmer qu'il existe et qu'il applique le label dev-core:axial-adr-review.
 5. Lire docs/process/dev-cycle.md — confirmer que la debt retrospective y est documentée.
 6. Vérifier que .importlinter existe et est valide.

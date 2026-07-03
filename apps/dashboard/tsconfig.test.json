@@ -1,14 +1,21 @@
 {
-  // Test-only tsc program (see tsconfig.json for why tests are split out).
+  // Test-only tsc program (see tsconfig.app.json for why tests are split out).
   // Inherits the app compilerOptions (jsx, DOM lib, @/* paths) — tests render
   // components, so they need the exact same browser surface — but allows Node
   // ambient types: vitest executes under Node, and its d.ts chain references
   // them anyway.
-  "extends": "./tsconfig.json",
+  "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test-setup.ts", "src/vite-env.d.ts"],
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/test-setup.ts",
+    "src/vite-env.d.ts"
+  ],
   // Must reset: the inherited exclude would filter this program's own include.
   "exclude": []
 }

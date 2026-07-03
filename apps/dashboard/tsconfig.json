@@ -1,33 +1,21 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true,
-    "isolatedModules": true,
-    "moduleDetection": "force",
-    "noEmit": true,
-    "types": [],
-    "jsx": "react-jsx",
-    "strict": true,
-    "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    },
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
-  },
-  "include": ["src"],
-  // Test files import vitest, whose d.ts chain (vitest -> its nested vite
-  // d.ts) carries `/// <reference types="node" />` — keeping them in this
-  // program leaks Node ambient globals (process, Buffer, ...) into the whole
-  // browser-only app program despite `"types": []`. They typecheck in their
-  // own program instead: tsconfig.test.json.
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test-setup.ts"]
+  // Solution-style config: no files of its own, only project references.
+  // tsserver (VS Code) walks up to the NEAREST tsconfig.json and never probes
+  // sibling tsconfig.*.json files — without this indirection the excluded
+  // test files fall into the editor's inferred project (no @/* paths, no
+  // strict/jsx). References route every file to its real program:
+  //   tsconfig.app.json  — browser-only app program (no Node ambients)
+  //   tsconfig.node.json — vite/vitest config + dev-mock (Node)
+  //   tsconfig.test.json — *.test/*.spec + test-setup (Node ambients OK)
+  // Deliberately NOT composite / `tsc -b`: the test program imports app src
+  // files it does not list, which composite forbids (TS6307) unless the app
+  // project emits declarations — incompatible with noEmit +
+  // allowImportingTsExtensions. CLI stays 3x `tsc -p` (package.json);
+  // references here exist purely so tsserver routes files correctly.
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" },
+    { "path": "./tsconfig.test.json" }
+  ]
 }

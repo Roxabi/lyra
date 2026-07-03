@@ -14,7 +14,7 @@ Le dashboard a **de bonnes fondations et une mauvaise couche de composition**. L
 tokens/theming, les landmarks a11y, le focus-ring, la primitive `EmptyState`, la symétrie i18n
 EN/FR et le build de thème gated sont solides — la migration Astryx (#2087) a bien posé le socle.
 Les défauts ne sont **pas** dans les fondations : ils viennent de **7 primitives/contrats manquants**
-au-dessus. 54 constats vérifiés se réduisent à ces 7 racines. Aucun ne demande de réécriture ni de
+au-dessus. 54 constats vérifiés se ramènent à ces 7 racines (+ un reste de polish, cf. §3). Aucun ne demande de réécriture ni de
 sortir de la stack.
 
 > **Le setup est à ~80 %. Le 20 % manquant est une fine couche de primitives + adaptateurs Astryx.**
@@ -44,7 +44,7 @@ Ré-arbitrage (§7) : +1 P1 (échec WCAG AA light = violation objective + critè
 
 Evidence-first, zéro vibe :
 - **Board de preuves** : 48 screenshots réels — 12 écrans × {dark, light} × {desktop 1440, narrow 768},
-  capturés en `DASHBOARD_MOCK` (déterministe) via Playmwright. Chaque constat cite `écran.png` + `file:line`.
+  capturés en `DASHBOARD_MOCK` (déterministe) via Playwright. Chaque constat cite `écran.png` + `file:line`.
 - **Audit** : 11 lentilles (IA · hiérarchie · tokens · typo · couleur/contraste · états · interaction/motion ·
   a11y · densité-tables · contenu/i18n · responsive), chacune balaie **les 12 écrans**, doctrine `/ui`
   encodée (register=**product**, 6-axes + Nielsen H1-H10 + slop-gate 8-bans + WCAG 2.1 AA + personas Alex/Sam/Riley).
@@ -234,7 +234,7 @@ La vérif adversariale a tué 2 constats — ne pas les re-déposer :
 1. **« Bouton primary dark = blanc-sur-orange 3.35:1, fail AA »** → FAUX. Pixel-sampling : le label Astryx =
    `--color-on-accent` = `#171717` sur `#e85d04` = **5.12:1, passe AA** (light 5.18:1). Le constat était
    contradictoire. ⚠️ **MAIS** un vrai white-on-orange existe ailleurs : `MessageBubble.tsx:56` (bulle chat
-   user, `bg-brand text-brand-foreground` = `#fafafa` sur `#e85d04` = **3.35:1**) — **re-filé en P2** (fix :
+   user, `bg-brand text-brand-foreground` = `#fafafa` sur `#e85d04` = **3.35:1**) — **re-filé en P2**, replié dans le fix S4 `colors.css` (fix :
    `--accent-on` dark → `#171717`, ne touche que ce composant + swatches déco).
 2. **« Vocabulaire couleur status = chaos ad-hoc par page »** → PARTIELLEMENT FAUX. La couleur EST cohérente
    (variants Astryx Badge + helpers centralisés). Le résidu réel est trivial : tokens `status.css` placeholder
@@ -269,7 +269,7 @@ L'audit a des angles morts honnêtes (critique de complétude) :
   cancel/steer cosmétique connu).
 - **Flow re-auth / token expiré** (Integrations:228) et **UX de formulaire** (required, placement erreur,
   submit-disabled sur `UserFormDialog`/`CreateAgentDialog`) : scoppés out, à reprendre.
-- **Contraste micro-texte** : les 18× `text-[10px]/[11px]` jamais mesurés AA à leur taille rendue.
+- **Contraste micro-texte** : les `text-[10px]/[11px]` (18× le premier) jamais mesurés AA à leur taille rendue.
 
 ---
 

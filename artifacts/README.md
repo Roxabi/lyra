@@ -99,7 +99,7 @@ zero inbound links — the same acceptance bar as the wave itself).
 Recover any tombstoned file without un-tombstoning the wave:
 
 ```bash
-git show artifacts-archive/YYYY-MM -- artifacts/archive/YYYY-MM/<path>   # one file
+git show artifacts-archive/YYYY-MM:artifacts/archive/YYYY-MM/<path>     # one file (tree-ish `:` form — `-- <path>` prints a diff, not the body)
 git restore --source artifacts-archive/YYYY-MM artifacts/archive/YYYY-MM # whole wave
 ```
 

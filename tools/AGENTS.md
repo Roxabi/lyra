@@ -72,7 +72,7 @@ Read tools tolerate false positives; write tools must not mutate test/fixture fi
 
 Persistent gates are enumerated in `.claude/stack.yml` `quality_gates`. One-off analysis scripts (`audit_quality_debt.py`, `classify_quality_debt.py`, `capture_v1_text_baseline.py`, `license_check.py`) always exit 0 — they are reporters, not gates. Run `ls tools/*.py tools/*.sh` for the full listing.
 
-`archive_artifacts_wave.py` is neither a gate nor a reporter — it is a manual/monthly **maintenance mutation** tool (policy: `artifacts/README.md`). It moves closed-issue `artifacts/` deltas to `artifacts/archive/YYYY-MM/` and, unlike the read-only scanners above, its exit code IS load-bearing: `0` clean, `1` a link would be stranded, `2` tool error. Its `--apply` rewrite pass deliberately does **not** exclude `tests/`/`packages/` (contrast the #1162 rule) — it rewrites an **exact** archived-path string, so a hit anywhere is a genuine reference that must move too, or the 0-broken-links bar fails.
+`archive_artifacts_wave.py` is neither a gate nor a reporter — it is a manual/monthly **maintenance mutation** tool (policy: `artifacts/README.md`). It moves closed-issue `artifacts/` deltas to `artifacts/archive/YYYY-MM/` and, unlike the read-only scanners above, its exit code IS load-bearing: `0` clean, `1` a link would be stranded, `2` tool error. Its `--apply` rewrite pass deliberately does **not** exclude `tests/`/`packages/` (contrast the #1162 rule) — it locates references **by artifact basename** and resolves each per referring file (repo-root `artifacts/<cat>/<name>`, relative sibling `../<cat>/<name>`, or same-dir bare name), so a hit anywhere is a genuine reference that must move too, or the 0-broken-links bar fails.
 
 
 ## Scope

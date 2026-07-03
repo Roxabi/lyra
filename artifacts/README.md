@@ -66,18 +66,22 @@ uv run python tools/archive_artifacts_wave.py --dry-run
 uv run python tools/archive_artifacts_wave.py --apply
 ```
 
-- **Census** — extracts the issue number from each candidate basename and asks
-  GitHub (GraphQL via `gh`) which are closed. Only closed-issue deltas are
-  candidates. Injectable (`--closed-issues-file`) so the link-rewrite logic is
-  testable offline.
+- **Census** — resolves each candidate's issue number (authoritative `issue:`
+  frontmatter, else a non-date basename prefix) and asks GitHub (GraphQL via
+  `gh`) which are closed. Only closed-issue deltas are candidates. Injectable
+  (`--closed-issues-file`) so the link-rewrite logic is testable offline.
 - **Mandatory link-rewrite (before the move).** For every file about to move,
-  the script `git grep`s its basename across the whole repo — `docs/`, `*.yml`,
-  `skills/`, `tools/`, sibling artifacts — and rewrites each reference to the
-  `archive/YYYY-MM/` path. Only after the tree is link-clean does it `git mv`.
+  the script finds references to it **by basename** across the whole repo —
+  `docs/`, `*.yml`, `skills/`, `tools/`, sibling artifacts — resolves each match
+  per referring file, and rewrites it to the `archive/YYYY-MM/` path. Every
+  reference form is covered: repo-root `artifacts/<cat>/<name>`, relative
+  sibling `../<cat>/<name>` (the `artifacts/` prefix dropped), and same-dir bare
+  names. Only after the tree is link-clean does it `git mv`.
 - **Zero broken links is the acceptance bar.** The 2026-06 wave moved files
-  with a naive in-repo grep and stranded 18 dead links; the rewrite step and the
-  dry-run link check exist so that never repeats. `--dry-run` fails loudly if any
-  reference would be left dangling.
+  with a naive in-repo grep and stranded 18 dead links — mostly relative sibling
+  links a full-path-tail match never saw. The basename-based rewrite step and
+  the dry-run link check (which resolves the same forms) exist so that never
+  repeats. `--dry-run` fails loudly if any reference would be left dangling.
 
 Graduating a "current truth" delta (migrate invariants → domain page, re-point
 the ADR banner, then archive) is the same move done by hand, because the banner

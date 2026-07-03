@@ -15,11 +15,18 @@ Usage::
     uv run python tools/archive_artifacts_wave.py --apply
     uv run python tools/archive_artifacts_wave.py --closed-issues-file closed.json
 
-Census: the issue number is parsed from each candidate basename
-(``<issue>-<slug>-<kind>``) or its ``issue:`` frontmatter field, then GitHub is
-asked (GraphQL via ``gh``) which are closed. ``--closed-issues-file`` (a JSON
-list of issue numbers) bypasses the network so the rewrite logic is testable
-offline.
+Census: the issue number comes from a candidate's ``issue:`` frontmatter
+(authoritative) or, failing that, its basename prefix (``<issue>-<slug>-<kind>``,
+but never a ``YYYY-MM-DD-`` date prefix); then GitHub is asked (GraphQL via
+``gh``) which are closed. ``--closed-issues-file`` (a JSON list of issue numbers)
+bypasses the network so the rewrite logic is testable offline.
+
+Reference rewrite: references are located by artifact **basename** and resolved
+per referring file, so every form is covered — repo-root ``artifacts/<cat>/<name>``,
+relative sibling ``../<cat>/<name>`` (the ``artifacts/`` prefix dropped), and
+same-dir bare names — not just the full path tail. Each matched link is
+rewritten to a path (relative or repo-root, matching how it was written) that
+still resolves to the new ``artifacts/archive/YYYY-MM/<name>`` location.
 
 Exit codes:
     0 = clean — dry-run planned with 0 broken links, or ``--apply`` succeeded.
@@ -32,6 +39,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -55,9 +63,26 @@ SKIP_DIRS: frozenset[str] = frozenset(
     {".git", ".venv", "node_modules", "dist", "build", ".worktrees", ".mypy_cache"}
 )
 
-_ISSUE_BASENAME_RE = re.compile(r"^(\d+)-")
+# Leading issue number in a basename (``<issue>-<slug>-<kind>``). The negative
+# lookahead rejects a ``YYYY-MM-DD-`` date prefix so a date-named analysis
+# (e.g. ``2026-07-03-doc-audit-strategy``) is NOT misread as issue #2026.
+_ISSUE_BASENAME_RE = re.compile(r"^(?!\d{4}-\d{2}-\d{2}-)(\d+)-")
 _ISSUE_FRONTMATTER_RE = re.compile(r"^issue:\s*\"?(\d+)\"?\s*$", re.MULTILINE)
 _DOC_SUFFIXES: frozenset[str] = frozenset({".md", ".mdx"})
+
+# A path token pointing at a markdown artifact: optional ``./`` / ``../``
+# prefix (repeatable), optional directory components, then a ``*.md`` / ``*.mdx``
+# basename. Boundary-guarded so a match never starts mid-path or captures a
+# longer filename (``foo.mdx.bak``). Basename-anchored detection keyed off this
+# is what lets the wave see *relative sibling* refs (``../frames/1057-…``) that a
+# full-``artifacts/<cat>/…`` substring match would miss.
+_PATH_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9._/-])"  # left boundary — do not start mid-path
+    r"((?:\.{1,2}/)*"  # optional ./ or ../ prefix (repeatable)
+    r"(?:[A-Za-z0-9._-]+/)*"  # zero or more directory components
+    r"[A-Za-z0-9._-]+\.mdx?)"  # basename ending in .md / .mdx
+    r"(?![A-Za-z0-9])"  # right boundary — not part of a longer name
+)
 
 
 @dataclass(frozen=True)
@@ -72,7 +97,9 @@ class Candidate:
 
 @dataclass(frozen=True)
 class Move:
-    """A planned archive move plus the path-substring rewrite it implies."""
+    """A planned archive move: source/destination plus the canonical
+    repo-relative old/new paths (``artifacts/<cat>/<name>`` →
+    ``artifacts/archive/<month>/<name>``) that references are resolved against."""
 
     src: Path
     dst: Path
@@ -97,15 +124,21 @@ class WavePlan:
 
 
 def _extract_issue(path: Path) -> int | None:
-    """Return the issue number from the basename prefix or frontmatter."""
-    m = _ISSUE_BASENAME_RE.match(path.name)
-    if m:
-        return int(m.group(1))
+    """Return the issue number for ``path``.
+
+    ``issue:`` frontmatter is authoritative and consulted first — the basename
+    prefix is only a fallback, and it deliberately rejects ``YYYY-MM-DD-`` date
+    prefixes (see ``_ISSUE_BASENAME_RE``) so a date-named delta with no
+    frontmatter is left unassigned rather than mis-archived under a year number.
+    """
     if path.suffix in _DOC_SUFFIXES:
         text = path.read_text(encoding="utf-8", errors="replace")
         fm = _ISSUE_FRONTMATTER_RE.search(text)
         if fm:
             return int(fm.group(1))
+    m = _ISSUE_BASENAME_RE.match(path.name)
+    if m:
+        return int(m.group(1))
     return None
 
 
@@ -209,17 +242,6 @@ def _is_worktrees(dirpath: str, name: str) -> bool:
     return name == "worktrees" and dirpath.endswith(".claude")
 
 
-def count_refs(files: list[Path], tail: str) -> dict[Path, int]:
-    """Map each file to how many times ``tail`` appears in it."""
-    hits: dict[Path, int] = {}
-    for f in files:
-        text = f.read_text(encoding="utf-8", errors="replace")
-        n = text.count(tail)
-        if n:
-            hits[f] = n
-    return hits
-
-
 def _tail(category: str, basename: str) -> str:
     return f"artifacts/{category}/{basename}"
 
@@ -228,16 +250,102 @@ def _new_tail(month: str, basename: str) -> str:
     return f"artifacts/archive/{month}/{basename}"
 
 
+def _repo_dir(root: Path, path: Path) -> str:
+    """POSIX directory of ``path`` relative to ``root`` ('' for a root file)."""
+    parent = path.relative_to(root).parent
+    return "" if str(parent) == "." else parent.as_posix()
+
+
+def _match_old(
+    src_dir: str, tok: str, old_rels: frozenset[str]
+) -> tuple[str, str] | None:
+    """Resolve ``tok`` (as written in a file living in ``src_dir``) to a moved path.
+
+    Returns ``(old_rel, style)`` — ``style`` is ``"root"`` (repo-root-relative,
+    e.g. ``artifacts/frames/…``) or ``"relative"`` (relative to the referring
+    file, e.g. ``../frames/…`` or a same-dir bare basename) — or ``None`` when
+    ``tok`` does not point at any moved file. Trying both interpretations is what
+    makes the wave robust to every reference form, not just the full path tail.
+    """
+    base = src_dir or "."
+    if tok.startswith(("./", "../")):
+        resolved = posixpath.normpath(posixpath.join(base, tok))
+        return (resolved, "relative") if resolved in old_rels else None
+    root_form = posixpath.normpath(tok)
+    if root_form in old_rels:
+        return root_form, "root"
+    rel_form = posixpath.normpath(posixpath.join(base, tok))
+    if rel_form in old_rels:
+        return rel_form, "relative"
+    return None
+
+
+def _rewrite_ref(
+    dst_dir: str, old_rel: str, style: str, new_by_old: dict[str, str]
+) -> str:
+    """The replacement path for a matched reference, in the same style it was written.
+
+    ``dst_dir`` is the referring file's *post-wave* directory (its archive
+    destination when it is itself moving), so a relative link is recomputed from
+    where the link will actually live and still resolves after the move.
+    """
+    new_rel = new_by_old[old_rel]
+    if style == "root":
+        return new_rel
+    return posixpath.relpath(new_rel, dst_dir or ".")
+
+
+def _rewrite_text(
+    text: str, src_dir: str, dst_dir: str, new_by_old: dict[str, str]
+) -> tuple[str, int]:
+    """Rewrite every reference to a moved artifact in ``text``; return (text, count)."""
+    old_rels = frozenset(new_by_old)
+    parts: list[str] = []
+    last = 0
+    count = 0
+    for m in _PATH_TOKEN_RE.finditer(text):
+        matched = _match_old(src_dir, m.group(1), old_rels)
+        if matched is None:
+            continue
+        old_rel, style = matched
+        parts.append(text[last : m.start(1)])
+        parts.append(_rewrite_ref(dst_dir, old_rel, style, new_by_old))
+        last = m.end(1)
+        count += 1
+    parts.append(text[last:])
+    return "".join(parts), count
+
+
+def _broken_refs_in_text(
+    text: str, ref_dir: str, old_rels: frozenset[str]
+) -> list[str]:
+    """References in ``text`` (from a file in ``ref_dir``) that still resolve to a
+    moved-away path — the '0 broken links' check, robust to relative sibling forms."""
+    broken: list[str] = []
+    for m in _PATH_TOKEN_RE.finditer(text):
+        tok = m.group(1)
+        if _match_old(ref_dir, tok, old_rels) is not None:
+            broken.append(f"unrewritten reference to moved artifact: {tok}")
+    return broken
+
+
 # ---------------------------------------------------------------------------
 # Planning
 # ---------------------------------------------------------------------------
 
 
 def build_plan(root: Path, month: str, closed: set[int]) -> WavePlan:
-    """Compute moves, inbound rewrites, and any residual broken links."""
+    """Compute moves, inbound rewrites, and any residual broken links.
+
+    The plan simulates the rewrite in memory and then re-scans the simulated
+    result for any reference that still resolves to a moved-away artifact — so
+    ``plan.broken`` is empty iff applying the plan actually leaves 0 broken
+    links, relative sibling refs included.
+    """
     plan = WavePlan(month=month)
     files = scan_text_files(root)
-    rewrite_map: dict[str, str] = {}
+    new_by_old: dict[str, str] = {}
+    dst_dir_by_src: dict[Path, str] = {}
     for cand in iter_candidates(root):
         if cand.issue is None or cand.issue not in closed:
             continue
@@ -245,31 +353,21 @@ def build_plan(root: Path, month: str, closed: set[int]) -> WavePlan:
         new_tail = _new_tail(month, cand.basename)
         dst = root / "artifacts" / "archive" / month / cand.basename
         plan.moves.append(Move(cand.path, dst, old_tail, new_tail, cand.issue))
-        rewrite_map[old_tail] = new_tail
-    for old_tail in rewrite_map:
-        for path, n in count_refs(files, old_tail).items():
-            plan.rewrites[path] = plan.rewrites.get(path, 0) + n
-    plan.broken = _residual_broken(files, rewrite_map)
-    return plan
-
-
-def _residual_broken(files: list[Path], rewrite_map: dict[str, str]) -> list[str]:
-    """Simulate the rewrite in memory; report any old path still referenced.
-
-    Guarantees the '0 broken links' acceptance bar: every occurrence of a
-    moved file's old path must be covered by a rewrite before the move lands.
-    """
-    if not rewrite_map:
-        return []
-    broken: list[str] = []
+        new_by_old[old_tail] = new_tail
+        dst_dir_by_src[cand.path.resolve()] = _repo_dir(root, dst)
+    if not new_by_old:
+        return plan
+    old_rels = frozenset(new_by_old)
     for f in files:
+        src_dir = _repo_dir(root, f)
+        dst_dir = dst_dir_by_src.get(f.resolve(), src_dir)
         text = f.read_text(encoding="utf-8", errors="replace")
-        for old_tail, new_tail in rewrite_map.items():
-            text = text.replace(old_tail, new_tail)
-        for old_tail in rewrite_map:
-            if old_tail in text:
-                broken.append(f"{f}: unrewritten reference to {old_tail}")
-    return broken
+        new_text, n = _rewrite_text(text, src_dir, dst_dir, new_by_old)
+        if n:
+            plan.rewrites[f] = n
+        for msg in _broken_refs_in_text(new_text, dst_dir, old_rels):
+            plan.broken.append(f"{f}: {msg}")
+    return plan
 
 
 # ---------------------------------------------------------------------------
@@ -279,13 +377,14 @@ def _residual_broken(files: list[Path], rewrite_map: dict[str, str]) -> list[str
 
 def apply_plan(root: Path, plan: WavePlan, use_git: bool = True) -> None:
     """Rewrite every inbound reference, then move each file."""
-    rewrite_map = {m.old_tail: m.new_tail for m in plan.moves}
+    new_by_old = {m.old_tail: m.new_tail for m in plan.moves}
+    dst_dir_by_src = {m.src.resolve(): _repo_dir(root, m.dst) for m in plan.moves}
     for path in scan_text_files(root):
+        src_dir = _repo_dir(root, path)
+        dst_dir = dst_dir_by_src.get(path.resolve(), src_dir)
         text = path.read_text(encoding="utf-8", errors="replace")
-        new_text = text
-        for old_tail, new_tail in rewrite_map.items():
-            new_text = new_text.replace(old_tail, new_tail)
-        if new_text != text:
+        new_text, n = _rewrite_text(text, src_dir, dst_dir, new_by_old)
+        if n and new_text != text:
             path.write_text(new_text, encoding="utf-8")
     for mv in plan.moves:
         _move(root, mv.src, mv.dst, use_git=use_git)

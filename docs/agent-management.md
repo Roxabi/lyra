@@ -66,6 +66,62 @@ Precedence (later overrides earlier):
 
 Override via `ROXABI_FACTORY_DIR` env var: `$ROXABI_FACTORY_DIR/agents/`.
 
+## Agent TOML structure
+
+A seed TOML is one file per agent; the file name must equal the `name` field (e.g.
+`lyra_default.toml`). Agent names must match `^[a-zA-Z0-9_-]+$` (validated by
+`agent_seeder.py`).
+
+```toml
+[agent]
+name = "lyra_default"          # unique; ^[a-zA-Z0-9_-]+$
+memory_namespace = "lyra"      # memory isolation key
+persona = "lyra_default"       # persona file name (without .md)
+show_intermediate = true       # show ⏳ intermediate tool-use turns
+
+[model]
+backend = "claude-cli"         # one of: claude-cli | nats | omp-rpc
+model = "claude-sonnet-4-6"    # model identifier passed to the backend
+tools = ["Read", "Grep"]       # allowed tools (empty = backend defaults)
+skip_permissions = true        # skip Claude Code permission prompts
+
+# max_turns = 10               # cap agentic turns (omit / 0 = unlimited)
+
+[agent.smart_routing]
+enabled = false                # MUST be false — smart_routing is deprecated
+
+[plugins]
+enabled = ["echo", "search"]   # plugin names to enable for this agent
+
+[tts]
+voice = "Sohee"
+
+[workspaces]
+lyra = "~/projects/roxabi-factory"       # /workspace lyra → switches cwd
+```
+
+- **`cwd` does NOT go in agent TOML** — it is machine-specific and belongs in
+  `config.toml [defaults]` (see [Workspaces & cwd](#workspaces--cwd)).
+- **`smart_routing.enabled` must be `false`** — the validator rejects `true` on all
+  backends.
+- **`workspaces` keys must not conflict** with built-in command names — see
+  `_WORKSPACE_BUILTIN_CONFLICTS` in `core/agent/agent_config.py`.
+
+TOML files are seed sources only — the runtime reads from `config.db`, not TOML. After
+editing any TOML file, run `factory agent init --force` and restart the daemon; the DB is
+not updated automatically (there is no file watcher).
+
+## Agent lifecycle
+
+```
+1. Startup:  AgentStore.connect() → factory agent init → DB seeded
+2. Register: hub.register_agent(agent)
+3. Message:  PoolManager.get_or_create_pool() → pool.submit(msg)
+             → agent.handle(msg, pool)
+             → LlmProvider.complete() or .stream()
+4. Hot-reload: TOML/persona edits detected on next handle() call
+```
+
 ## CLI Commands
 
 ```bash
@@ -122,7 +178,7 @@ Composition is hub-only (`core/persona.py` → `compose_soul_document()`). Harne
 ## Validation Rules
 
 - **Name**: `[a-zA-Z0-9_-]+`
-- **Backend**: `claude-cli` | `nats`
+- **Backend**: `claude-cli` | `nats` | `omp-rpc` (`_VALID_BACKENDS`)
 - **Model**: non-empty string
 - **JSON fields**: `tools_json`, `plugins_json`, `permissions_json` must be valid JSON arrays; `workspaces_json`, `commands_json` must be valid objects
 - **Smart routing**: `enabled=true` is deprecated (no backend supports it)
@@ -173,6 +229,18 @@ Use `factory agent <subcommand>` instead.
 | `workspaces` | Per-pool override | Agent DB row (`workspaces_json`) |
 
 Workspaces: `/workspace <key>` switches pool's cwd for the session.
+
+## What NOT to do (agents)
+
+- Do NOT add store or DB logic to agent implementation files — that belongs in `core/`.
+- Do NOT read TOML files at runtime from within agent classes — use `AgentStore`.
+- Do NOT hardcode model names in agent classes — read from `Agent.llm_config`.
+- Do NOT set `cwd` in agent TOML — it belongs in `config.toml [defaults]`.
+- Do NOT enable `smart_routing` — the validator rejects it.
+
+Plugin/command authoring patterns (structure, handler signatures, routing order,
+forbidden names) live in [`standards/backend-patterns.md`](standards/backend-patterns.md)
+§ Commands / Plugins.
 
 ## DB Schema Reference
 

@@ -1,113 +1,86 @@
 ---
-title: Testing Standards — factory
-description: Mandatory testing rules for the factory codebase — negative-test rule, coverage strategy, pytest conventions, and async patterns.
+title: Testing Mechanics — factory
+description: Developer-facing testing mechanics for the factory codebase — run commands, tests/ layout, async helpers, patching helpers, and shared fixtures. Rules live in engineering-standards.md.
 ---
 
-# Testing Standards — factory
+# Testing Mechanics — factory
 
 > Status: LIVING
 > Scope: `tests/` — all test files in the factory project
-> Source: `docs/architecture/engineering-standards.md`, `tests/conftest.py`
+> Source: `tests/conftest.py`
 
-This document is the developer-facing companion to `docs/architecture/engineering-standards.md` (§ Testing conventions). Read both — the architecture doc defines the rules; this doc defines the mechanics.
+This document is the developer-facing **mechanics** companion to
+`docs/architecture/engineering-standards.md` (§ Testing conventions). Read both — the
+architecture doc defines the **rules**; this doc defines **how to run tests and where
+things live**.
+
+## Rules live in engineering-standards.md
+
+The testing **doctrine** is defined once in
+[`engineering-standards.md` § Testing conventions](../architecture/engineering-standards.md#testing-conventions)
+— do not restate it here (two copies diverge):
+
+| Rule | Where |
+|------|-------|
+| Negative-test rule (every guard ships with a failing-when-deleted test) | engineering-standards § Negative-test rule |
+| Mock boundaries & coverage (never mock the module under test; patch the dependency's import site; 0% coverage = wrong patch site) | engineering-standards § Mock boundaries & coverage |
+| Test taxonomy (trophy: static → unit → integration → e2e; prefer integration over heavily-mocked unit) | engineering-standards § Test taxonomy |
+
+Everything below is factory-specific mechanics: commands, layout, and the shared helpers
+in `conftest.py`.
 
 ---
 
 ## Run commands
 
 ```bash
-uv run pytest                          # full suite
-uv run pytest tests/test_config.py     # single file
-uv run pytest -k "TestResolveValue"    # by class/function name
+uv run pytest                            # full suite
+uv run pytest tests/test_config.py       # single file
+uv run pytest -k "TestResolveValue"      # by class/function name
 uv run pytest --cov=src/factory tests/   # with coverage
 ```
 
 ---
 
-## Negative-Test Rule (MANDATORY)
+## File naming and structure
 
-**Every guard must ship with a negative test.** A guard is any `if`/`elif`, `else` that encodes an error path, `None`-check, filter expression, Protocol method implementation, or exception catch that alters control flow.
-
-A test is a negative test if and only if it **fails** when the guard is deleted. If deleting the guard makes the test pass, it is not a negative test.
-
-```python
-# Guard under test
-def process(value: str | None) -> str:
-    if value is None:          # guard
-        raise ValueError("value required")
-    return value.upper()
-
-# Negative test — fails if the guard is deleted
-def test_process_raises_on_none():
-    with pytest.raises(ValueError, match="value required"):
-        process(None)
-```
-
-Anti-patterns that do NOT satisfy this rule:
-
-| Anti-pattern | Why it fails |
-|---|---|
-| `warnings.simplefilter("ignore")` on the warning the test asserts | Guard deletion → test still passes |
-| Assert only happy path, never the branch condition | Guard deletion → test still passes |
-| Protocol method presence not verified against the interface | Method removal → test still passes |
-
-This rule is enforced at code review by `dev-core:tester` and is a **merge blocker**.
-
----
-
-## Test Trophy (priority order)
-
-```
-1. Static  — type checker (pyright) + linter (ruff)  [automatic]
-2. Unit    — pure functions, utilities, type guards
-3. Integration  ← largest layer — real modules wired together
-4. E2E     — critical journeys only
-```
-
-Prefer integration tests over unit tests with heavy mocks. Import and call real source functions — never mock the module under test.
-
-When a tool or static file in `deploy/` is consumed by an external binary (nats-server, podman, systemd, openssl), add a renderer→consumer roundtrip test instead of a plain integration test. This pattern exercises the actual downstream binary in parse/check mode on the rendered output and adds structural-invariant assertions beyond exit-code 0. See [renderer-roundtrip.md](./renderer-roundtrip.md) for the full pattern, required shape, and reviewer checklist.
-
----
-
-## Coverage Rules
-
-```bash
-uv run pytest --cov=src/factory tests/    # must show > 0% on the module under test
-```
-
-If coverage shows 0% on a module you intended to test, you are patching the wrong import site. Patch at the import site of the **dependency**, never the module under test.
-
-```python
-# Correct: patch where the dependency is imported
-monkeypatch.setattr(stores_mod, "AuthStore", lambda **kw: fake_auth_store)
-
-# Wrong: patch the source module
-monkeypatch.setattr("factory.infrastructure.stores.auth_store.AuthStore", ...)  # may silently miss
-```
-
----
-
-## File Naming and Structure
-
-- Test files: `test_{module_under_test}.py` in `tests/` (flat, no subdirs).
+- Test files: `test_{module_under_test}.py`.
 - Classes: `Test{Subject}` containing related test methods.
 - Methods: `test_{scenario}_{expected_outcome}` or `test_{action}_{condition}`.
+
+Test files live under `tests/`, either at the top level or in subdirectories that mirror
+the `src/factory/` package layout (`tests/core/`, `tests/adapters/`, `tests/integration/`,
+`tests/e2e/`, `tests/nats/`, … — 30+ subpackages). Pick the subdirectory that matches the
+module under test; small cross-cutting suites may stay at the top level.
 
 ```
 tests/
   conftest.py                          # shared fixtures (fixtures only, no tests)
-  test_config.py                       # tests for src/factory/config.py
-  test_monitoring_checks_primitives.py # tests for monitoring/checks.py primitives
+  test_config.py                       # top-level suite for src/factory/config.py
+  core/
+    test_config_dataclasses.py         # tests for core config dataclasses
+  adapters/ integration/ e2e/ nats/ …  # subpackage-mirrored suites
 ```
 
 No `__tests__/` directories, no co-located test files inside `src/`.
 
 ---
 
-## Async Tests
+## Config-validation tests (renderer → consumer roundtrip)
 
-Use `pytest-asyncio`. Mark async test functions with `@pytest.mark.asyncio` or configure globally in `pyproject.toml`.
+When a tool or static file in `deploy/` is consumed by an external binary (nats-server,
+podman, systemd, openssl), add a renderer→consumer roundtrip test instead of a plain
+integration test. This pattern exercises the actual downstream binary in parse/check mode
+on the rendered output and adds structural-invariant assertions beyond exit-code 0. See
+[renderer-roundtrip.md](./renderer-roundtrip.md) for the full pattern, required shape, and
+reviewer checklist.
+
+---
+
+## Async tests
+
+Use `pytest-asyncio`. Mark async test functions with `@pytest.mark.asyncio` or configure
+globally in `pyproject.toml`.
 
 ```python
 @pytest.mark.asyncio
@@ -119,7 +92,9 @@ async def test_store_connect_and_read() -> None:
     await store.close()
 ```
 
-Use `yield_once()` (defined in `conftest.py`) instead of `asyncio.sleep(0)` when you need to yield to the event loop once. Use `_drain(pool, timeout=TIMEOUT_IO)` to wait for a pool task to complete in tests.
+Use `yield_once()` (defined in `conftest.py`) instead of `asyncio.sleep(0)` when you need
+to yield to the event loop once. Use `_drain(pool, timeout=TIMEOUT_IO)` to wait for a pool
+task to complete in tests.
 
 Timeout constants from `conftest.py`:
 
@@ -131,7 +106,7 @@ Timeout constants from `conftest.py`:
 
 ---
 
-## Patching Patterns
+## Patching patterns
 
 ### Bootstrap / integration tests
 
@@ -150,7 +125,9 @@ fake_keyring, fake_cred_store = make_fake_stores(monkeypatch)
 
 ### Patching NATS
 
-Use `_patch_nats_stubs(monkeypatch)` (from `conftest.py`) to prevent tests from touching a real NATS server. It patches `ensure_nats`, `acquire_lockfile`, `release_lockfile`, `NatsBus`, and `JetStreamAuditSink`.
+Use `_patch_nats_stubs(monkeypatch)` (from `conftest.py`) to prevent tests from touching a
+real NATS server. It patches `ensure_nats`, `acquire_lockfile`, `release_lockfile`,
+`NatsBus`, and `JetStreamAuditSink`.
 
 Always set `ROXABI_FACTORY_DIR` to a temp dir in tests that touch the credential store:
 
@@ -171,37 +148,34 @@ Key shared fixtures:
 | `circuit_registry` | `CircuitRegistry` | Pre-populated with 4 breakers |
 | `hub` | `Hub` | Hub wired to `circuit_registry` |
 
-Fixture `_reset_version_check_log_state` is `autouse=True` — it clears the `roxabi_nats` rate-limit log state before every test to prevent cross-test ordering flakiness.
+Fixture `_reset_version_check_log_state` is `autouse=True` — it clears the `roxabi_nats`
+rate-limit log state before every test to prevent cross-test ordering flakiness.
 
 ---
 
-## What NOT to Test
+## What NOT to do (mechanics)
 
+- Do NOT use `asyncio.sleep(N)` for event-loop coordination — use `yield_once()` or
+  `_drain()` from `conftest.py`.
+- Do NOT touch a real NATS server or credential store — use `_patch_nats_stubs()` and set
+  `ROXABI_FACTORY_DIR` to a temp dir.
+- Do NOT put tests inside `src/` or in `__tests__/` directories.
 - Do NOT test implementation details of third-party SDKs (aiogram, discord.py).
-- Do NOT assert on log output unless it is part of a guard (the negative test rule applies).
-- Do NOT write tests that pass when the function they test is commented out.
-- Do NOT use `asyncio.sleep(N)` for event-loop coordination — use `yield_once()` or `_drain()`.
 
 ---
 
 ## AI Quick Reference
 
-ALWAYS write a negative test for every guard in new code.
-
-ALWAYS patch at the dependency's import site, not the source module.
-
 ALWAYS use `yield_once()` or `_drain()` instead of `asyncio.sleep(0)` in async tests.
 
 ALWAYS set `ROXABI_FACTORY_DIR` to a temp dir in tests that instantiate credential stores.
 
-NEVER mock the module under test — only mock its dependencies.
-
-NEVER write a test that passes when the guarded branch is deleted.
+ALWAYS use the `conftest.py` bootstrap helpers (`patch_all`, `patch_bootstrap_common`,
+`make_fake_stores`, `_patch_nats_stubs`) rather than hand-rolling bootstrap patches.
 
 NEVER use `asyncio.sleep(N)` for coordination — use event-based helpers from `conftest.py`.
 
-PREFER integration tests (real modules wired) over unit tests with heavy mocks.
+Run: `uv run pytest --cov=src/factory tests/`.
 
-PREFER `pytest.raises(ExceptionType, match="expected message")` over bare `pytest.raises(ExceptionType)`.
-
-Run: `uv run pytest --cov=src/factory tests/` — 0% coverage on the target module means wrong patch site.
+For the negative-test rule, mock boundaries, and the test trophy, see
+[`engineering-standards.md` § Testing conventions](../architecture/engineering-standards.md#testing-conventions).

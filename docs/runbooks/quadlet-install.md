@@ -68,3 +68,40 @@ Use manual `make quadlet-install` when you cannot wait for the timer (hot-fix, d
 | `factory-metrics` | `factory.metric.>` | Limits | 7 d | 256 MiB |
 
 Backed by `factory-jetstream.volume`. Provision: `uv run python deploy/nats/bootstrap_streams.py` (idempotent).
+
+## Deploy-time verification
+
+`make quadlet-install` does more than copy files. After copying all
+`.network`, `.volume`, and `.container` files to `~/.config/containers/systemd/`
+it runs `deploy/quadlet-install-verify.sh`, which:
+
+1. Runs `systemctl --user daemon-reload` — triggers the Quadlet generator to
+   produce fresh `.service` units from the copied files.
+2. Restarts (or starts) each container unit. The unit list is derived at runtime
+   from `deploy/quadlet.toml` (`quadlet_containers` in `deploy/lib/quadlet-units.sh`,
+   `mapfile` in `quadlet-install-verify.sh`) — it auto-updates as components are added,
+   so no fixed roster is hardcoded here.
+3. Waits up to 10 s per unit and checks `systemctl --user is-active`.
+4. If any unit is not `active`, dumps the last 20 lines of
+   `journalctl --user -u <unit>` and exits non-zero — the deploy fails loudly.
+
+This means a broken Quadlet file (e.g. an inline `#` comment on a `Volume=`
+line, which was the root cause of the 2026-05-06 incident) is caught immediately
+at deploy time rather than lying dormant until the next reboot.
+
+### Escape hatch — `NO_RESTART=1`
+
+```bash
+make quadlet-install NO_RESTART=1
+```
+
+Skips steps 1-4 (daemon-reload, restart, and verification). Only the file
+copy runs. Use this when:
+
+- Performing a manual recovery where one or more units are intentionally not
+  running (e.g. after an nkey rotation before new seeds are in place).
+- Deploying on a host that does not yet have the full secrets set up (initial
+  bootstrap before `~/.roxabi/factory/env/` files exist).
+
+After fixing the underlying issue, run a normal `make quadlet-install` (without
+`NO_RESTART=1`) to verify all units come up.

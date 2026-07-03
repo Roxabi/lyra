@@ -23,5 +23,11 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Test files import vitest, whose d.ts chain (vitest -> its nested vite
+  // d.ts) carries `/// <reference types="node" />` — keeping them in this
+  // program leaks Node ambient globals (process, Buffer, ...) into the whole
+  // browser-only app program despite `"types": []`. They typecheck in their
+  // own program instead: tsconfig.test.json.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test-setup.ts"]
 }

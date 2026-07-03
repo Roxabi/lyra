@@ -6,7 +6,8 @@
     "skipLibCheck": true,
     "moduleResolution": "Bundler",
     "strict": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts"]
+  "include": ["vite.config.ts", "vitest.config.ts", "dev-mock"]
 }

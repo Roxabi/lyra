@@ -10,7 +10,11 @@ source "$(dirname "$0")/lib/deploy-common.sh"
 
 main() {
     mkdir -p "${HOME}/.roxabi/factory/state"
-    uv run --project "${FACTORY_DIR}" python "${FACTORY_DIR}/tools/fleet_digest_poll.py" \
+    # --frozen: never re-resolve/rewrite uv.lock on the live prod checkout (this
+    # runs from two 5-min timers; a bare `uv run` here jammed the M1 deploy for
+    # 12h on 2026-07-02). deploy-common.sh also exports UV_FROZEN=1 as the
+    # deploy-path default — this flag is the explicit belt-and-suspenders.
+    uv run --frozen --project "${FACTORY_DIR}" python "${FACTORY_DIR}/tools/fleet_digest_poll.py" \
         --output "${HOME}/.roxabi/factory/state/fleet-digests.json"
 }
 

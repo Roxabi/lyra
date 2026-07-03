@@ -8,59 +8,58 @@ on:
     branches: [main, staging]
   pull_request:
     branches: [main, staging]
+  # Merge queue entries run CI on temporary gh-readonly-queue/staging/* refs.
+  # The required "ci" context MUST report on merge_group or every queue entry
+  # times out (repo-wide merge deadlock).
+  merge_group: {}
   workflow_dispatch: {}  # dispatch resolves from default branch — per-branch re-triggers require the branch to contain a compatible ci.yml
+
+# Single declaration site: the installer step is duplicated in the tests and
+# package-coverage jobs — a per-step env would let the two copies drift on a
+# version bump (coverage floors would then measure against different servers).
+env:
+  NATS_VERSION: "2.10.22"
 
 concurrency:
   group: ci-${{ github.ref }}
   # Cancel only on feature branches; protected branches (main, staging) run to completion so every merge-commit SHA has a recorded status.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/staging' }}
+  # merge_group runs are NEVER cancelled: GitHub advises against cancelling
+  # queue runs — a cancelled run fails the entry and silently dequeues the PR,
+  # and ref uniqueness doesn't cover a dequeue→re-enqueue that rebuilds an
+  # entry on the identical queue head (same ref → same group → preemption).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/staging' }}
 
 jobs:
-  ci:
+  # 3-way split of the former monolithic `ci` job (~4m50 serial → ~2m45 wall):
+  # gates / tests / package-coverage run in parallel; the aggregate `ci` job
+  # below keeps the required-check context stable.
+
+  # No nats-server/nk here: no ci-stage gate shells out to either binary —
+  # acl_authconf_drift runs `factory-acl genkeys --template-only`, which
+  # fabricates placeholder pubkeys without invoking nk.
+  gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          # Full history is load-bearing: check_debt_expiry reads git dates.
           fetch-depth: 0
-
-      - name: Install nats-server
-        env:
-          NATS_VERSION: "2.10.22"
-        run: |
-          ARCH=$(dpkg --print-architecture)
-          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
-          TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
-            -o "${TMPDIR}/${TARBALL}"
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
-            -o "${TMPDIR}/SHA256SUMS"
-          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
-          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
-          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
-          nats-server --version
-
-      - name: Install nk
-        env:
-          NK_VERSION: "0.4.15"
-        run: |
-          ARCH=$(dpkg --print-architecture)
-          ZIPFILE="nkeys-v${NK_VERSION}-linux-${ARCH}.zip"
-          TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${ZIPFILE}" \
-            -o "${TMPDIR}/${ZIPFILE}"
-          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/nkeys-v${NK_VERSION}-checksums.txt" \
-            -o "${TMPDIR}/checksums.txt"
-          cd "${TMPDIR}" && grep -F "${ZIPFILE}" checksums.txt | sha256sum --check
-          unzip -q "${TMPDIR}/${ZIPFILE}" -d "${TMPDIR}"
-          sudo install -m 755 "${TMPDIR}/nkeys-v${NK_VERSION}-linux-${ARCH}/nk" /usr/local/bin/nk
-          nk -v
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
+      # Fail fast if pyproject.toml and uv.lock have drifted. A dependabot
+      # `pip`-ecosystem PR bumps a version specifier without regenerating the
+      # lock; every `uv sync --frozen` below then trusts the stale lock as-is
+      # and never catches the desync — which silently jams the M1 host deploy
+      # (see deploy/lib/deploy-common.sh; 12h outage 2026-07-02, hand-rescued
+      # ≥4× before). Root fix for the recurring lock desync.
+      - name: Verify uv.lock in sync with pyproject.toml
+        run: uv lock --check
+
       - name: Install bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.3.14"
 
@@ -99,6 +98,13 @@ jobs:
           yq --version
 
       - name: Quality gates (stack.yml)
+        env:
+          # PR-only: honor gates' files: filters against the merge-base diff
+          # (origin/<base> exists thanks to fetch-depth: 0). Empty on push to
+          # staging/main, workflow_dispatch, and merge_group (queue entries) →
+          # scripts/qg fails OPEN and runs ALL gates — intentional: queue runs
+          # validate the full merge result, not a diff-scoped subset.
+          QG_DIFF_RANGE: ${{ github.event_name == 'pull_request' && format('origin/{0}...HEAD', github.base_ref) || '' }}
         run: scripts/qg run --stage ci
 
       # CI extras — repo-specific infra checks (not generic quality_gates)
@@ -111,19 +117,132 @@ jobs:
       - name: Test qg runner
         run: bash tests/scripts/test_qg.sh
 
+  # Dashboard e2e + factory unit coverage. Default-depth checkout: these
+  # pytest suites stub git (tests/deploy/test_converge_nats_restart.py) —
+  # only check_debt_expiry (gates job) needs full history.
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # tests/nats + tests/bootstrap/test_embedded_nats.py spawn a real
+      # nats-server subprocess (tests/factories/nats_server.py).
+      - name: Install nats-server
+        run: |
+          ARCH=$(dpkg --print-architecture)
+          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
+            -o "${TMPDIR}/${TARBALL}"
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
+            -o "${TMPDIR}/SHA256SUMS"
+          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
+          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
+          nats-server --version
+
+      # tests/scripts/test_nk.py + test_genkeys_modes.py exercise the real
+      # nk binary.
+      - name: Install nk
+        env:
+          NK_VERSION: "0.4.15"
+        run: |
+          ARCH=$(dpkg --print-architecture)
+          ZIPFILE="nkeys-v${NK_VERSION}-linux-${ARCH}.zip"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${ZIPFILE}" \
+            -o "${TMPDIR}/${ZIPFILE}"
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/nkeys-v${NK_VERSION}-checksums.txt" \
+            -o "${TMPDIR}/checksums.txt"
+          cd "${TMPDIR}" && grep -F "${ZIPFILE}" checksums.txt | sha256sum --check
+          unzip -q "${TMPDIR}/${ZIPFILE}" -d "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nkeys-v${NK_VERSION}-linux-${ARCH}/nk" /usr/local/bin/nk
+          nk -v
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+
+      # Root dev group already carries every workspace [testing] extra
+      # (pyproject [dependency-groups]) — a single sync yields the same venv
+      # end-state as the gates job's two-step sync.
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --group dev
+          bun install --frozen-lockfile
+
+      # The visual e2e fixture pytest.skip()s when apps/dashboard/dist is
+      # missing — in the monolithic job the dashboard_build gate produced it;
+      # build explicitly here so the suite never silently skips.
+      - name: Build dashboard SPA
+        run: bun run build:dashboard
+
       # --only-shell: the visual tests launch default-headless chromium, which
       # executes the headless-shell binary — the 175 MiB full Chrome download is
       # never exercised.
+      # --reruns is scoped to e2e (browser/screenshot timing flake) — NEVER add
+      # it to unit/coverage steps, where a retry would mask real bugs
+      # (exception: vitest dashboard unit retry — see apps/dashboard/vitest.config.ts).
+      # No --tracing flags: these tests drive sync_playwright() manually (no
+      # pytest-playwright plugin), so plugin tracing options don't apply.
       - name: Dashboard visual e2e (#1771)
         run: |
           uv run playwright install chromium --only-shell
-          uv run pytest tests/e2e/dashboard/ -v
+          uv run pytest tests/e2e/dashboard/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-e2e.xml
 
       # tests/integration runs in the dedicated integration job (against real
       # docker NATS) and tests/e2e in the step above — excluded here so each
-      # suite executes exactly once per run.
+      # suite executes exactly once per run. No --reruns here: unit/coverage
+      # failures must surface on first occurrence.
       - name: Coverage — factory
-        run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/e2e --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50
+        run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/e2e --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50 --junitxml=reports/pytest-unit.xml
+
+      # always(): junit XML is most valuable when a rerun turned the job green —
+      # flake-recurrence observability. run_attempt suffix: v4 artifact names
+      # are immutable per run, a "Re-run failed jobs" upload would 409.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tests-failure-artifacts-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 5
+          if-no-files-found: ignore
+
+  # Workspace package suites. roxabi-nats tests spawn a real nats-server
+  # subprocess and auto-skip without the binary — install it so the 70%
+  # floor keeps measuring real-server coverage. No nk (zero references in
+  # packages/*/tests), no bun.
+  package-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install nats-server
+        run: |
+          ARCH=$(dpkg --print-architecture)
+          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
+            -o "${TMPDIR}/${TARBALL}"
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
+            -o "${TMPDIR}/SHA256SUMS"
+          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
+          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
+          nats-server --version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
 
       - name: Coverage — roxabi_nats
         run: uv run pytest packages/roxabi-nats/tests --cov=roxabi_nats --cov-branch --cov-report=term-missing --cov-fail-under=70
@@ -134,6 +253,29 @@ jobs:
       - name: Coverage — roxabi_obs
         run: uv run pytest packages/roxabi-obs/tests --cov=roxabi_obs --cov-branch --cov-report=term-missing --cov-fail-under=69
 
+  # Aggregate gate — staging branch protection requires the check context
+  # "ci" (strict). Keeping this job id `ci` means the 3-way split needs ZERO
+  # branch-protection changes. `if: always()` is mandatory: without it, a
+  # failed needed job leaves this job skipped, and a skipped required check
+  # deadlocks merges exactly like a missing one.
+  ci:
+    needs: [gates, tests, package-coverage]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify all CI jobs succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "needed job results: ${RESULTS}"
+          for result in ${RESULTS}; do
+            if [[ "${result}" != "success" ]]; then
+              echo "::error::a needed job finished with result '${result}' — failing the aggregate ci gate"
+              exit 1
+            fi
+          done
+
   # Self-contained (own checkout/uv sync/docker compose; no artifact from ci),
   # so it runs in parallel from t=0 — the former needs:[ci] edge was ordering-only.
   # The old typing_enabled matrix was behaviorally inert here: FACTORY_TYPING_ENABLED
@@ -141,6 +283,12 @@ jobs:
   # never wire a typing publisher; the disabled branch is unit-covered
   # (tests/core/test_pool_processor_exec.py, tests/adapters/*/test_typing_shims.py).
   integration:
+    # Queue entries don't need this: non-required, and staging-red-alert reads
+    # push runs only — a red here blocks nothing and alerts nobody, it's just
+    # duplicate compute (up to 5 concurrent queue builds).
+    # WARNING: drop this `if:` if the job ever becomes a required check — a
+    # skipped required check deadlocks the queue.
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -155,20 +303,41 @@ jobs:
       - name: Start Docker integration environment
         run: docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 60
 
+      # --reruns is scoped to integration (real docker NATS — network/timing
+      # flake) — NEVER add it to unit/coverage steps, where a retry would mask
+      # real bugs (exception: vitest dashboard unit retry — see
+      # apps/dashboard/vitest.config.ts). Caveat: future JetStream-using tests
+      # inherit rerun-pollution risk (fixed stream/durable names surviving
+      # attempt 1) — use unique names or clean up before relying on --reruns.
       - name: Run integration tests
         env:
           NATS_URL: nats://localhost:4222
-        run: uv run pytest tests/integration/ -v
+        run: uv run pytest tests/integration/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-integration.xml
 
       - name: Tear down Docker environment
         if: always()
         run: docker compose -f docker/docker-compose.test.yml down -v
+
+      # always(): junit XML is most valuable when a rerun turned the job green —
+      # flake-recurrence observability. run_attempt suffix: v4 artifact names
+      # are immutable per run, a "Re-run failed jobs" upload would 409.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: integration-failure-artifacts-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 5
+          if-no-files-found: ignore
 
   docker-build:
     # Build-only gate: verifies the Dockerfile compiles on every PR.
     # Runs in parallel with ci/integration (no needs:).
     # Does NOT push. Uses CI-scoped GHA cache (factory-agent-ci / factory-svc-ci)
     # so it never pollutes the publish job's factory-agent / factory-svc scopes.
+    # docker-build is a REQUIRED check (added post python:3.14 incident, where an
+    # advisory red merged and broke staging publish) — it MUST run on merge_group:
+    # a skipped required check deadlocks every queue entry (30-min timeout each).
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -184,6 +353,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # factory-omp-base pin bumps merge before the GHCR tag publish completes
+      # (~2/month, 11 reds in 2min measured 2026-07-01). Wait for the pinned
+      # manifest instead of blind-retrying the whole bake: real Dockerfile
+      # errors fail fast on the single bake below; the race waits ≤3min.
+      - name: Wait for pinned factory-omp-base manifest
+        run: |
+          tag=$(grep -oP 'ghcr\.io/roxabi/factory-omp-base:[0-9][0-9.]*' Dockerfile | head -1)
+          [[ -n "$tag" ]] || { echo "no omp-base pin found — skipping"; exit 0; }
+          for i in $(seq 1 6); do
+            docker manifest inspect "$tag" >/dev/null 2>&1 && { echo "manifest present: $tag"; exit 0; }
+            echo "attempt $i/6: $tag not yet published — waiting 30s"
+            sleep 30
+          done
+          echo "::warning::$tag still unpublished after 3min — proceeding, bake will fail if truly missing"
 
       - name: Build (no push)
         uses: docker/bake-action@6614cfa25eff9a0b2b2697efb0b6159e7680d584 # v7.2.0

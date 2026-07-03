@@ -229,6 +229,37 @@ class TestLogRateLimit:
         assert len(error_records) == 1
         assert "NATS schema version mismatch" in error_records[0].getMessage()
 
+    def test_first_drop_logs_on_young_monotonic_clock(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """First drop fires even when time.monotonic() < _LOG_INTERVAL_S.
+
+        time.monotonic() counts from boot on Linux; on a freshly booted CI VM
+        it is < 60 s for the first minute.  With a 0.0 "never logged" sentinel
+        the very first drop would be silenced (now - 0.0 < interval) — the
+        first-drop log must key off *absence* of prior state, not a timestamp.
+        """
+        # Arrange — pin monotonic inside the boot window (< _LOG_INTERVAL_S)
+        monkeypatch.setattr(
+            _version_check.time,
+            "monotonic",
+            lambda: _version_check._LOG_INTERVAL_S / 2,
+        )
+
+        # Act
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
+            check_schema_version(
+                {"schema_version": 2},
+                envelope_name="InboundMessage",
+                expected=1,
+            )
+
+        # Assert — the first drop logs despite the young clock
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 1
+
     def test_subsequent_drops_within_interval_silent(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:

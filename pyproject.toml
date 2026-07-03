@@ -29,7 +29,7 @@ dependencies = [
     "roxabi-blobs",
     "roxabi-obs",
     "roxabi-otel",
-    "grpcio>=1.70.0",
+    "grpcio>=1.81.1",
     "opentelemetry-proto>=1.30.0",
     "typer>=0.26.7",
     "tomli-w>=1.0",

@@ -24,7 +24,7 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository) ||
       github.event_name == 'push'
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
         with:
           # workflow_run runs at default-branch HEAD; check out the triggering commit.
           # For direct tag push, github.sha is already correct.

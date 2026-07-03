@@ -108,7 +108,7 @@ grep -E "(factory-ingress|INGRESS_GITHUB_INSTALLATION_ID|unknown_installation|Lo
 
 echo "== step 7: spec + publisher grep =="
 grep -E "tenant|per_connector_tenant_event|factory\.event\.github\." \
-  artifacts/specs/sentinelle-four-planes-spec.mdx \
+  artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx \
   packages/roxabi-contracts/src/roxabi_contracts/event/subjects.py \
   src/factory/ingress/publisher.py 2>&1 | cat \
   | tee "$SCRATCH/spec-grep.log"

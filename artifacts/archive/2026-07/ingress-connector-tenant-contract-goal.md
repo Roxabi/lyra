@@ -212,7 +212,7 @@ shared store — not via webhook handlers (except lifecycle events).
 - [ ] **AC6b** — `installation` absent + mono-user → `default` fallback (check_run compat)
 - [ ] **AC7** — `ingress.toml` generic `[connector.<name>]`; no hardcoded `IngressConfig.github` fields
 - [ ] **AC8** — Unit tests for verify strategies via registry (GH HMAC, CF header)
-- [ ] **AC9** — `artifacts/specs/sentinelle-four-planes-spec.mdx` updated (ingress 4-segment)
+- [ ] **AC9** — `artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx` updated (ingress 4-segment)
 - [ ] **AC10** — `uv run pytest`, `uv run ruff check .`, `uv run pyright` green
 - [ ] **AC11** — Sentinelle trigger patterns tenant-aware (`factory.event.github.>.check_run.completed` or equivalent)
 - [ ] **AC12** — `per_service_event` retained for non-ingress; ingress uses `per_connector_tenant_event` only
@@ -295,7 +295,7 @@ uv run pytest tests/ingress/ -q
 | File | Change |
 |---|---|
 | `src/factory/ingress/publisher.py` | `per_connector_tenant_event` |
-| `artifacts/specs/sentinelle-four-planes-spec.mdx` | 4-segment ingress row + triggers |
+| `artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx` | 4-segment ingress row + triggers |
 | `docs/architecture/CURRENT.generated.md` | Regenerate if gate requires |
 
 ```bash
@@ -368,7 +368,7 @@ tenants without per-cell hardcoding. V1 = mono-user `default`; contract opens M>
 
 ## Acceptance criteria
 
-See `artifacts/goal/ingress-connector-tenant-contract-goal.md` AC1–AC14, AC-S1–S12.
+See `artifacts/archive/2026-07/ingress-connector-tenant-contract-goal.md` AC1–AC14, AC-S1–S12.
 
 ## References
 

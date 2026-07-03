@@ -7,8 +7,8 @@ deciders: [Mickael]
 related: [038, 076, 084, 088]
 ---
 
-> **Current truth** → [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx)
-> This ADR is preserved as a decision record. For taxonomy tables, probe catalog, and v1 triggers, read the spec.
+> **Current truth** → [`docs/architecture/observability.md`](../observability.md){#current-truth}
+> This ADR is preserved as a decision record. Planes, boundary rules, and the hub-spoke deployment model are current in the domain page; the design-phase spec (probe catalog, v1 triggers, open questions) is archived at [`artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx`](../../../artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx) (#2218 graduation — ADR-086 deltas-only).
 
 ## Status
 
@@ -108,7 +108,8 @@ ADR-076 catalogues message/persistence/typing planes for **hub traffic**. The fo
 
 ## See also
 
-- [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx) — taxonomy, probes, triggers v1, open questions
+- [`docs/architecture/observability.md`](../observability.md) — current truth: planes, boundary rules, deployment model
+- [`artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx`](../../../artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx) — archived design spec: probe catalog, triggers v1, open questions
 - [`docs/architecture/job-model.md`](../job-model.md) — job plane SSoT
 - [`docs/architecture/adr/archive/038-health-monitoring-layer-boundaries.mdx`](archive/038-health-monitoring-layer-boundaries.mdx) — health layer boundaries
 - Forge diagram: `~/.roxabi/forge/roxabi-factory/visuals/sentinelle-architecture.html`

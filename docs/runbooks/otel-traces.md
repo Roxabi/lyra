@@ -88,7 +88,7 @@ Rollout checklist: `artifacts/specs/otel-satellite-rollout-spec.mdx`.
 
 ## Retention
 
-- Rotate `spans.jsonl` via host `logrotate` (7 days / 5 GiB — see `artifacts/specs/otel-raw-store-spec.mdx`)
+- Rotate `spans.jsonl` via host `logrotate` (7 days / 5 GiB — see `artifacts/archive/2026-07/otel-raw-store-spec.mdx`)
 - Alert when `~/.local/state/factory/otel/` exceeds 80% of allocated disk
 
 ## Langfuse (optional)

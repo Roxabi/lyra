@@ -76,7 +76,7 @@ The trace plane (OTel / Langfuse) is **not** gated on the distributed harness (*
 
 Engine topology diagram below still lists Langfuse as a *possible* headless engine; v1 factory ships **otel-raw** as the active trace sink. Langfuse may return as an optional drill-down engine later.
 
-Full implementation spec: [`artifacts/specs/otel-raw-store-spec.mdx`](../../../artifacts/specs/otel-raw-store-spec.mdx) · historical record: [ADR-097 (archived)](archive/097-otel-raw-telemetry-store.mdx).
+Current truth: [`docs/architecture/observability.md`](../observability.md) § Trace engine v1 — otel-raw. Archived implementation spec (JSONL/SQLite schema, retention, read API): [`artifacts/archive/2026-07/otel-raw-store-spec.mdx`](../../../artifacts/archive/2026-07/otel-raw-store-spec.mdx) (#2218 graduation) · historical record: [ADR-097 (archived)](archive/097-otel-raw-telemetry-store.mdx).
 
 ### Engine topology (push vs pull)
 
@@ -112,7 +112,7 @@ Full implementation spec: [`artifacts/specs/otel-raw-store-spec.mdx`](../../../a
 ## See also
 
 - [`docs/architecture/adr/091-four-observability-planes.mdx`](091-four-observability-planes.mdx) — plane taxonomy (what kinds of signal exist)
-- [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx) — Sentinelle consumer spec, probes, v1 triggers
+- [`artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx`](../../../artifacts/archive/2026-07/sentinelle-four-planes-spec.mdx) — archived Sentinelle consumer spec, probes, v1 triggers
 - [`docs/architecture/observability.md`](../observability.md) — current observability state (logs, trace IDs, turn store)
 - [`docs/architecture/adr/archive/038-health-monitoring-layer-boundaries.mdx`](archive/038-health-monitoring-layer-boundaries.mdx) — plane ③ health-observation layers
 - [`docs/architecture/job-model.md`](../job-model.md) — job plane SSoT

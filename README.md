@@ -210,7 +210,6 @@ docs/         — ARCHITECTURE, ADRs, guides
 | [QUICKSTART.md](docs/QUICKSTART.md) | Dev / single-process — zero to first message in ~5 min |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Production hub setup on a fresh Ubuntu 26.04 box |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Hub design, memory model, decisions |
-| [ROADMAP.md](docs/ROADMAP.md) | Phase 1/2/3 scope |
 | [COMMANDS.md](docs/COMMANDS.md) | Command router, plugins |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Quadlet containers, auto-update, logs |
 | [Runbooks](docs/runbooks/README.md) | Ops procedures — install, secrets, backup, diagnostic |

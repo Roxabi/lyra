@@ -90,4 +90,4 @@ Routing: `(platform, bot_id, scope_id)` → `(agent, pool_id)`. One pool per sco
 
 **Phase 1b complete.** All items shipped. Phase 2 (atomic SLMs) deferred until Machine 1 VRAM budget is validated.
 
-See [ROADMAP.md](ROADMAP.md) for backlog and priorities.
+See [GitHub issues](https://github.com/Roxabi/roxabi-factory/issues) for backlog and priorities.

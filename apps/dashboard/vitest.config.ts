@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
+    // Single retry under CI only: absorbs shared-runner infra flake without
+    // masking real failures locally (retry stays 0 → identical local behavior).
+    retry: process.env.CI ? 1 : 0,
     deps: {
       optimizer: {
         // Prebundle the @phosphor-icons/react barrel once with esbuild instead

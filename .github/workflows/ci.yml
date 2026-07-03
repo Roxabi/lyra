@@ -167,16 +167,30 @@ jobs:
       # --only-shell: the visual tests launch default-headless chromium, which
       # executes the headless-shell binary — the 175 MiB full Chrome download is
       # never exercised.
+      # --reruns is scoped to e2e (browser/screenshot timing flake) — NEVER add
+      # it to unit/coverage steps, where a retry would mask real bugs.
+      # No --tracing flags: these tests drive sync_playwright() manually (no
+      # pytest-playwright plugin), so plugin tracing options don't apply.
       - name: Dashboard visual e2e (#1771)
         run: |
           uv run playwright install chromium --only-shell
-          uv run pytest tests/e2e/dashboard/ -v
+          uv run pytest tests/e2e/dashboard/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-e2e.xml
 
       # tests/integration runs in the dedicated integration job (against real
       # docker NATS) and tests/e2e in the step above — excluded here so each
-      # suite executes exactly once per run.
+      # suite executes exactly once per run. No --reruns here: unit/coverage
+      # failures must surface on first occurrence.
       - name: Coverage — factory
-        run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/e2e --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50
+        run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/e2e --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50 --junitxml=reports/pytest-unit.xml
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tests-failure-artifacts
+          path: reports/
+          retention-days: 5
+          if-no-files-found: ignore
 
   # Workspace package suites. roxabi-nats tests spawn a real nats-server
   # subprocess and auto-skip without the binary — install it so the 70%
@@ -261,14 +275,26 @@ jobs:
       - name: Start Docker integration environment
         run: docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 60
 
+      # --reruns is scoped to integration (real docker NATS — network/timing
+      # flake) — NEVER add it to unit/coverage steps, where a retry would mask
+      # real bugs.
       - name: Run integration tests
         env:
           NATS_URL: nats://localhost:4222
-        run: uv run pytest tests/integration/ -v
+        run: uv run pytest tests/integration/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-integration.xml
 
       - name: Tear down Docker environment
         if: always()
         run: docker compose -f docker/docker-compose.test.yml down -v
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: integration-failure-artifacts
+          path: reports/
+          retention-days: 5
+          if-no-files-found: ignore
 
   docker-build:
     # Build-only gate: verifies the Dockerfile compiles on every PR.
@@ -291,7 +317,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Publish-ordering race: a factory-omp-base:X pin bump can merge before
+      # omp-base.yml publishes the GHCR tag — every docker-build in that window
+      # fails "not found" (~2×/month; 11 reds in 2 min measured 2026-07-01).
+      # Bounded single retry: first attempt is continue-on-error, then wait 90s
+      # (≈ observed tag-publish lag) and re-run the identical bake. The job
+      # fails only if the retry also fails.
       - name: Build (no push)
+        id: bake1
+        continue-on-error: true
+        uses: docker/bake-action@6614cfa25eff9a0b2b2697efb0b6159e7680d584 # v7.2.0
+        with:
+          files: docker-bake.hcl
+          push: false
+          set: |
+            *.cache-from=type=gha,scope=factory-agent-ci
+            *.cache-to=type=gha,mode=min,scope=factory-agent-ci
+            svc-runtime.cache-from=type=gha,scope=factory-svc-ci
+            svc-runtime.cache-to=type=gha,mode=min,scope=factory-svc-ci
+
+      - name: Wait for base-image tag publish
+        if: steps.bake1.outcome == 'failure'
+        run: sleep 90
+
+      # Identical invocation (same files/push/cache set) — only the retry's
+      # outcome decides the job result.
+      - name: Build (no push) — retry
+        if: steps.bake1.outcome == 'failure'
         uses: docker/bake-action@6614cfa25eff9a0b2b2697efb0b6159e7680d584 # v7.2.0
         with:
           files: docker-bake.hcl

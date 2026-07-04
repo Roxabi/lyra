@@ -3,6 +3,9 @@
 Guards the least-privilege NATS contract for gh-helper:
 - publish: fleet container_report + factory.gh.mint_failure.>
 - subscribe: [] — no subscribe permissions
+
+Static (no live server) — see tests/scripts/test_parity_e2e.py for the
+matrix-driven live-nats-server ACL round-trip layer (#2247).
 """
 
 from __future__ import annotations

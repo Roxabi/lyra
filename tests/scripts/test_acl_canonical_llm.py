@@ -3,6 +3,9 @@
 Guards #1104. Two layers of assertions:
 - structured: acl-matrix.json identity allow-lists (per-identity)
 - rendered:   auth.conf has no legacy subjects
+
+Static (no live server) — see tests/scripts/test_parity_e2e.py for the
+matrix-driven live-nats-server ACL round-trip layer (#2247).
 """
 
 from __future__ import annotations

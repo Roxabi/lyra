@@ -363,6 +363,12 @@ check-seed-age:  ## warn/fail on stale nkey seeds (rotation-log.md driven)
 test:
 	uv run pytest -v
 
+# test-acl: live-nats-server matrix-driven ACL round-trip (issue #2247).
+# Requires nats-server + nk on PATH; hard-fails in CI (GITHUB_ACTIONS=true) if missing,
+# skips gracefully locally. See tests/scripts/test_parity_e2e.py.
+test-acl:
+	uv run pytest tests/scripts/test_parity_e2e.py -v
+
 test-integration:
 	@echo "Starting integration environment..."
 	docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 30

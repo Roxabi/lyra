@@ -1,17 +1,21 @@
 """E2E parity test: boots nats-server with rendered auth.conf.
 
-Verifies identity authorization end-to-end.
+Verifies identity authorization end-to-end. Matrix-driven live ACL round-trip
+coverage (#2247) lives here too — see tests/scripts/test_acl_canonical_llm.py
+and tests/scripts/test_acl_gh_helper.py for the static (no live server)
+per-identity string-membership layer this file complements.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import socket
 import subprocess
 import time
 import urllib.request
 from pathlib import Path
-from typing import Generator, NamedTuple
+from typing import Any, Generator, NamedTuple
 
 import pytest
 
@@ -42,6 +46,222 @@ except ImportError:
     pass
 
 NATS_PY_AVAILABLE: bool = _nats_py_available
+
+# ── CI hard-fail guard (#2247, N6) ──────────────────────────────────────────
+# Inside GitHub Actions, a missing binary/import here means a broken CI
+# environment, not an intentionally minimal dev machine — fail collection
+# outright instead of letting the per-test `skipif(not NATS_PY_AVAILABLE)`
+# decorators below quietly report "N skipped". `nats-py` is included because
+# it is a hard transitive dependency (arrives via packages/roxabi-nats, see
+# pyproject.toml), not an optional one.
+#
+# Keyed on GITHUB_ACTIONS rather than the generic CI precedent used by
+# tests/integration/test_voice_routing.py: .claude/stack.yml's pytest_smoke
+# pre-push gate imports this module locally (to inspect markers) even though
+# none of its tests carry the `smoke` marker, so this guard also executes on
+# every local pre-push run. A dev shell that happens to export a generic
+# CI=true but lacks nats-server/nk locally would otherwise hard-fail
+# unexpectedly. GITHUB_ACTIONS=true is set only by actual GitHub runners.
+if os.getenv("GITHUB_ACTIONS") == "true" and not (
+    NATS_AVAILABLE and NK_AVAILABLE and NATS_PY_AVAILABLE
+):
+    _missing = [
+        name
+        for name, available in (
+            ("nats-server", NATS_AVAILABLE),
+            ("nk", NK_AVAILABLE),
+            ("nats-py", NATS_PY_AVAILABLE),
+        )
+        if not available
+    ]
+    pytest.fail(
+        f"GITHUB_ACTIONS=true but missing: {', '.join(_missing)} — CI must "
+        "install nats-server + nk and have nats-py importable; a silent skip "
+        "here would mask a broken CI environment (#2247)."
+    )
+
+# ── Matrix-driven parametrization (#2247) ───────────────────────────────────
+# Sourced directly from the SSoT (deploy/nats/acl-matrix.json), not from the
+# v3-current.json snapshot the live nats-server below boots from — see Design
+# Note item 1 in artifacts/specs/2247-matrix-driven-live-acl-round-trip-spec.mdx.
+# test_acl_matrix_v3_current_in_sync (below) asserts the two currently agree,
+# so any future drift between them surfaces as one clearly-labeled failure.
+# None of these three imports touch nats-py, so collection stays safe even
+# when nats-py is not installed.
+from scripts._effective import effective_grants  # noqa: E402
+from scripts._loader import load_matrix  # noqa: E402
+
+from roxabi_contracts.verify import verify_deny  # noqa: E402
+
+ACL_MATRIX_PATH = REPO_ROOT / "deploy/nats/acl-matrix.json"
+ACL_MATRIX = load_matrix(ACL_MATRIX_PATH)
+EFFECTIVE_GRANTS = effective_grants(ACL_MATRIX)
+ACTIVE_IDENTITIES = sorted(EFFECTIVE_GRANTS)
+FLOWS = ACL_MATRIX.get("request_reply_flows", [])
+
+
+def _flow_id(flow: dict) -> str:
+    return f"{flow['requester']}-{flow['responder']}"
+
+
+def _identity_params_xfail_empty_grant(direction_index: int, direction: str) -> list:
+    """Parametrize ACTIVE_IDENTITIES, xfail(strict)-marking empty-allow-list cases.
+
+    **Live gap found while implementing #2247, not a test bug — documented
+    here, flagged in the PR description, out of scope to fix under this
+    issue.** Confirmed by isolated reproduction against a real nats-server
+    2.10.22: a user permissions block with an explicit empty allow list
+    (`publish: { allow: [] }` or `subscribe: { allow: [] }`) is NOT deny-all.
+    nats-server only builds a restrictive allow-sublist when the list is
+    non-empty; an empty list leaves that direction's allow-set nil, i.e.
+    "unrestricted" — and because the per-user `permissions` block replaces
+    `default_permissions` wholesale (not merged), the top-level
+    `deny: [">"]` fallback rendered by scripts/_renderer.py never applies
+    either. Reproduced with zero prior probes on the connection and
+    re-checked after `nc.drain()`, ruling out the `_probe()` timing race
+    that `_settle_deny` (above) exists to absorb — this is a distinct,
+    deterministic gap, not flakiness.
+
+    In `deploy/nats/acl-matrix.json` today this affects `dashboard-reader`
+    (publish: []), `gh-helper` (subscribe: []), and `ingress`
+    (subscribe: []) — computed here from EFFECTIVE_GRANTS, not hardcoded,
+    so any future identity added with an empty allow-list on either
+    direction is automatically caught by the same xfail rather than
+    silently green.
+
+    Root-cause fix belongs in scripts/_renderer.py (e.g. emit an explicit
+    `deny: [">"]` for a direction whose intended allow-list is empty) or in
+    how empty allow-lists are represented — both out of scope for #2247
+    (test-only; acl-matrix.json/_renderer.py/_effective.py/ops.py are all
+    reused as-is per the approved spec's Out of Scope section). `strict=True`
+    is deliberate: once the renderer bug is fixed, this deny-probe starts
+    passing, XPASS fails the suite, and the marker must be removed by
+    whoever lands that fix — the gap cannot silently regress further nor
+    bit-rot silently once fixed.
+    """
+    params: list = []
+    for identity in ACTIVE_IDENTITIES:
+        if EFFECTIVE_GRANTS[identity][direction_index]:
+            params.append(identity)
+            continue
+        params.append(
+            pytest.param(
+                identity,
+                marks=pytest.mark.xfail(
+                    strict=True,
+                    reason=(
+                        f"{identity}: effective {direction} allow-list is "
+                        "empty — nats-server treats an empty `allow: []` as "
+                        "unrestricted, not deny-all (live gap found by this "
+                        "test; out of scope to fix under #2247 — see PR "
+                        "description and _identity_params_xfail_empty_grant "
+                        "docstring)"
+                    ),
+                ),
+            )
+        )
+    return params
+
+
+def _non_flow_pair_target(flow: dict) -> str:
+    """Active identity T such that (flow's responder, T) is not itself a flow pair.
+
+    Excludes the responder itself and every requester paired with it across
+    ALL request_reply_flows entries (not just this one) — so a responder that
+    appears in multiple flows never accidentally gets probed against one of
+    its own real pairs.
+    """
+    responder = flow["responder"]
+    paired_requesters = {f["requester"] for f in FLOWS if f["responder"] == responder}
+    for candidate in ACTIVE_IDENTITIES:
+        if candidate != responder and candidate not in paired_requesters:
+            return candidate
+    raise AssertionError(
+        f"no eligible non-flow-pair target identity for responder {responder!r} — "
+        "every active identity is either the responder itself or one of its "
+        "paired requesters"
+    )
+
+
+def _is_subscribe_permission_error(message: str) -> bool:
+    """Subscribe-direction counterpart to factory.cli.ops._is_permission_error.
+
+    That function's "publish" substring check is publish-only by design (it
+    mirrors factory.cli.ops._probe, which only ever calls nc.publish()) and
+    false-negatives on a real subscribe violation — confirmed empirically:
+      publish violation:   'nats: permissions violation for publish to "..."'
+      subscribe violation: 'nats: permissions violation for subscription to "..."'
+    """
+    msg = message.lower()
+    return "permission" in msg and "subscri" in msg
+
+
+async def _probe_subscribe(
+    nc: Any, subject: str, errors: list[str], *, expect_deny: bool
+) -> tuple[bool, str]:
+    """Subscribe-direction counterpart to factory.cli.ops._probe.
+
+    No subscribe-direction primitive exists in factory.cli.ops (it is
+    publish-only) — this mirrors its flush + yield-once + inspect-errors-
+    since-call idiom locally, reusing the same reliability property (more
+    robust than a fixed sleep) without duplicating the publish-side code.
+    """
+    import asyncio
+
+    import nats.errors
+
+    before = len(errors)
+    await nc.subscribe(subject)
+    try:
+        await nc.flush(timeout=2)
+    except (asyncio.TimeoutError, TimeoutError, nats.errors.Error) as exc:
+        return False, f"flush error: {exc}"
+    await asyncio.sleep(0)
+    denied = any(_is_subscribe_permission_error(e) for e in errors[before:])
+    if expect_deny:
+        return (
+            (True, "permission denied")
+            if denied
+            else (False, "subscribe accepted (expected deny)")
+        )
+    return (False, "permission denied") if denied else (True, "subscribed")
+
+
+async def _settle_deny(
+    errors: list[str],
+    before: int,
+    is_perm_error: Any,
+    ok: bool,
+    actual: str,
+) -> tuple[bool, str]:
+    """Bounded extra settle window for a deny-probe reported as accepted.
+
+    Empirically observed (#2247 implementation): factory.cli.ops._probe (and
+    the local _probe_subscribe above) only yield once via
+    `await asyncio.sleep(0)` after flush() before inspecting captured errors.
+    The async error_cb for the probed violation can land after that single
+    yield — confirmed by re-inspecting `errors` moments later, after the
+    connection had otherwise drained cleanly. Two distinct symptoms were
+    observed empirically, both timing-shaped: (a) back-to-back probes on an
+    already-"warm" connection needing one extra ~0.2s tick, and (b) a
+    deny-probe that is the FIRST operation on a freshly-opened connection
+    (identities with an empty allow-list on the probed direction, e.g.
+    dashboard-reader/gh-helper/ingress) needing more cumulative elapsed time
+    than a single 0.2s wait — a one-shot wait left 3/68 nodes flaky. A
+    bounded poll (5 × 0.2s = up to 1s total) covers both without loosening
+    the assertion itself or touching the reused primitive (out of scope —
+    see spec Out of Scope).
+    """
+    import asyncio
+
+    if ok:
+        return ok, actual
+    for _ in range(5):
+        await asyncio.sleep(0.2)
+        if any(is_perm_error(e) for e in errors[before:]):
+            return True, "permission denied (delayed delivery)"
+    return ok, actual
+
 
 pytestmark = [
     pytest.mark.skipif(
@@ -90,7 +310,11 @@ def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
     (tmp / "auth.conf").write_text(text)
     for name, seed in seeds.items():
-        (tmp / f"{name}.seed").write_bytes(seed + b"\n")
+        seed_path = tmp / f"{name}.seed"
+        seed_path.write_bytes(seed + b"\n")
+        # 0o600: factory.cli.ops._read_seed (reused by the #2247 live-ACL
+        # tests below) hardens against group/world-readable seed files.
+        seed_path.chmod(0o600)
     return tmp
 
 
@@ -413,6 +637,252 @@ def test_clipool_worker_subscribe_acl_enforced(
     ]
     assert perm_violations, (
         f"Expected Permissions Violation for denied subscribe; errors: {acl_errors}"
+    )
+
+
+# ── Tests: matrix-driven live ACL round-trip (#2247) ───────────────────────
+# Auto-covers every active identity/subject in acl-matrix.json (N2, N3) plus
+# live cross-identity request/reply round-trips (N4, N5) — closing the
+# postmortem's P0 gap without a 3rd per-identity static test file. Reuses
+# factory.cli.ops's live-ACL primitives + roxabi_contracts.verify.verify_deny
+# instead of reimplementing them (see spec Design Note item 3).
+
+
+def test_acl_matrix_active_identities_nonempty() -> None:
+    """Regression guard: a matrix edit must never silently zero out coverage.
+
+    @pytest.mark.parametrize over an empty list below would otherwise
+    disappear as zero collected test nodes with no failure at all.
+    """
+    assert len(ACTIVE_IDENTITIES) > 0, (
+        "acl-matrix.json has no active identities — matrix authoring regression"
+    )
+
+
+@pytest.mark.skipif(
+    not NATS_PY_AVAILABLE,
+    reason="nats-py not installed — skipping live ACL test",
+)
+@pytest.mark.parametrize("identity", _identity_params_xfail_empty_grant(0, "publish"))
+def test_acl_matrix_publish(
+    identity: str, nats_server: NatsServerEndpoints, rendered_auth_conf: Path
+) -> None:
+    """Every active identity's effective publish grants succeed; deny-probe denied.
+
+    Sourced from effective_grants() (post group-expansion, post flow-inbox-
+    injection) — add an identity or subject to acl-matrix.json and this picks
+    it up with zero test-file edits. Tolerates empty publish lists (e.g.
+    dashboard-reader): the deny-probe assertion still fires and is the
+    substance of the test for those identities.
+    """
+    import asyncio
+
+    from factory.cli.ops import (
+        _expand_subject,
+        _identity_connection,
+        _is_permission_error,
+        _probe,
+    )
+
+    pub_subjects, _sub_subjects = EFFECTIVE_GRANTS[identity]
+    seed_path = rendered_auth_conf / f"{identity}.seed"
+
+    async def _run() -> None:
+        errors: list[str] = []
+        async with _identity_connection(
+            nats_server.client_url, seed_path, errors
+        ) as nc:
+            for subject in pub_subjects:
+                ok, actual = await _probe(
+                    nc, _expand_subject(subject), errors, expect_deny=False
+                )
+                assert ok, (
+                    f"{identity}: expected publish to {subject!r} to succeed; "
+                    f"got {actual}"
+                )
+            before = len(errors)
+            ok, actual = await _probe(
+                nc, verify_deny(identity), errors, expect_deny=True
+            )
+            ok, actual = await _settle_deny(
+                errors, before, _is_permission_error, ok, actual
+            )
+            assert ok, f"{identity}: expected deny-probe to be denied; got {actual}"
+
+    asyncio.run(_run())
+
+
+@pytest.mark.skipif(
+    not NATS_PY_AVAILABLE,
+    reason="nats-py not installed — skipping live ACL test",
+)
+@pytest.mark.parametrize("identity", _identity_params_xfail_empty_grant(1, "subscribe"))
+def test_acl_matrix_subscribe(
+    identity: str, nats_server: NatsServerEndpoints, rendered_auth_conf: Path
+) -> None:
+    """Every active identity's effective subscribe grants succeed; deny-probe denied.
+
+    Mirrors test_acl_matrix_publish for the subscribe direction. factory.cli.ops
+    has no subscribe-direction primitive (it is publish-only) — this uses the
+    local _probe_subscribe/_is_subscribe_permission_error helpers above,
+    built on the same reused connection/concretization/deny-subject primitives.
+    Tolerates empty subscribe lists (e.g. gh-helper, ingress).
+    """
+    import asyncio
+
+    from factory.cli.ops import _expand_subject, _identity_connection
+
+    _pub_subjects, sub_subjects = EFFECTIVE_GRANTS[identity]
+    seed_path = rendered_auth_conf / f"{identity}.seed"
+
+    async def _run() -> None:
+        errors: list[str] = []
+        async with _identity_connection(
+            nats_server.client_url, seed_path, errors
+        ) as nc:
+            for subject in sub_subjects:
+                ok, actual = await _probe_subscribe(
+                    nc, _expand_subject(subject), errors, expect_deny=False
+                )
+                assert ok, (
+                    f"{identity}: expected subscribe to {subject!r} to succeed; "
+                    f"got {actual}"
+                )
+            before = len(errors)
+            ok, actual = await _probe_subscribe(
+                nc, verify_deny(identity), errors, expect_deny=True
+            )
+            ok, actual = await _settle_deny(
+                errors, before, _is_subscribe_permission_error, ok, actual
+            )
+            assert ok, (
+                f"{identity}: expected subscribe deny-probe to be denied; got {actual}"
+            )
+
+    asyncio.run(_run())
+
+
+@pytest.mark.skipif(
+    not NATS_PY_AVAILABLE,
+    reason="nats-py not installed — skipping live ACL test",
+)
+@pytest.mark.parametrize("flow", FLOWS, ids=_flow_id)
+def test_flow_round_trip_positive(
+    flow: dict, nats_server: NatsServerEndpoints, rendered_auth_conf: Path
+) -> None:
+    """Every request_reply_flows entry: requester's live request() gets a real reply.
+
+    Requester and responder connect with their real inbox_prefix (matching
+    production nats_connect(identity_name=...)) for every identity except
+    llm-worker, whose real production inbox is _inbox.llmcli-llm per #1142
+    (documented in acl-matrix.json's llm-worker.description) — harmless here
+    since llm-worker only ever appears as a flow responder, never requester,
+    so its own inbox is never exercised by this test.
+    """
+    import asyncio
+
+    from factory.cli.ops import _expand_subject, _identity_connection
+
+    requester, responder, subject = (
+        flow["requester"],
+        flow["responder"],
+        flow["subject"],
+    )
+    concrete_subject = _expand_subject(subject)
+    req_seed = rendered_auth_conf / f"{requester}.seed"
+    resp_seed = rendered_auth_conf / f"{responder}.seed"
+
+    async def _run() -> None:
+        req_errors: list[str] = []
+        resp_errors: list[str] = []
+        async with _identity_connection(
+            nats_server.client_url, req_seed, req_errors
+        ) as req_nc:
+            async with _identity_connection(
+                nats_server.client_url, resp_seed, resp_errors
+            ) as resp_nc:
+
+                async def _respond(msg: Any) -> None:
+                    await msg.respond(b"pong")
+
+                await resp_nc.subscribe(concrete_subject, cb=_respond)
+                await resp_nc.flush(timeout=2)
+                reply = await req_nc.request(concrete_subject, b"ping", timeout=2)
+                assert reply.data == b"pong", (
+                    f"{requester}->{responder} on {concrete_subject!r}: "
+                    f"unexpected reply {reply.data!r}"
+                )
+
+    asyncio.run(_run())
+
+
+@pytest.mark.skipif(
+    not NATS_PY_AVAILABLE,
+    reason="nats-py not installed — skipping live ACL test",
+)
+@pytest.mark.parametrize("flow", FLOWS, ids=_flow_id)
+def test_flow_round_trip_denies_non_flow_pair(
+    flow: dict, nats_server: NatsServerEndpoints, rendered_auth_conf: Path
+) -> None:
+    """A responder publishing into a non-paired identity's inbox is denied.
+
+    One-way publish-ACL check, NOT a round-trip: no request(), no reply, no
+    callback to observe. An earlier draft of this test asserted a
+    case-mutated (_INBOX vs _inbox) reply-to subject causes the requester's
+    request() to time out — rejected during expert review, because a
+    case-mutated publish times out regardless of whether the server's ACL
+    allows or denies it (NATS subject matching is case-sensitive at the core
+    protocol level for both authorization AND delivery), so that assertion
+    would pass unconditionally and prove nothing. This test instead asserts
+    real, deterministic ACL denial for a non-flow pair: responder Y publishes
+    into a different active identity T's inbox, where (Y, T) is not itself a
+    flow pair. Because Y never received a request from T, no
+    allow_responses-derived dynamic grant is in play — denial is
+    deterministic and the assertion is on an actual captured
+    "permissions violation" error.
+    """
+    import asyncio
+
+    from factory.cli.ops import _identity_connection, _is_permission_error, _probe
+
+    responder = flow["responder"]
+    target = _non_flow_pair_target(flow)
+    resp_seed = rendered_auth_conf / f"{responder}.seed"
+    probe_subject = f"_inbox.{target}.token"
+
+    async def _run() -> None:
+        errors: list[str] = []
+        async with _identity_connection(
+            nats_server.client_url, resp_seed, errors
+        ) as nc:
+            before = len(errors)
+            ok, actual = await _probe(nc, probe_subject, errors, expect_deny=True)
+            ok, actual = await _settle_deny(
+                errors, before, _is_permission_error, ok, actual
+            )
+            assert ok, (
+                f"{responder}: expected publish to non-flow-paired inbox "
+                f"{probe_subject!r} to be denied; got {actual}"
+            )
+
+    asyncio.run(_run())
+
+
+def test_acl_matrix_v3_current_in_sync() -> None:
+    """acl-matrix.json's effective grants must match the v3-current.json fixture.
+
+    The live nats-server for this file boots from the v3-current.json
+    snapshot, while the matrix-driven tests above parametrize off the SSoT
+    acl-matrix.json directly (Design Note item 1). This asserts the two
+    currently agree so any future drift surfaces as one clearly-labeled
+    failure instead of a batch of confusing per-identity ACL mismatches.
+    """
+    v3_matrix = load_matrix(FIXTURES_DIR / "v3-current.json")
+    v3_grants = effective_grants(v3_matrix)
+    assert EFFECTIVE_GRANTS == v3_grants, (
+        "deploy/nats/acl-matrix.json and tests/scripts/fixtures/v3-current.json "
+        "have drifted — regenerate the fixture "
+        "(see scripts/check-acl-specs-drift.sh)"
     )
 
 

@@ -36,7 +36,7 @@ Verification transcripts (§Verification outcome, recorded 2026-05-07 on M₁) k
 
 ## Context
 
-The `claude` CLI subprocess spawned by `factory-clipool` requires authentication to call Anthropic. Three upstream constraints frame the choice:
+The `claude` CLI subprocess spawned by `lyra-clipool` *(2026-07-04: now `factory-clipool` — see Amendment.)* requires authentication to call Anthropic. Three upstream constraints frame the choice:
 
 1. **OAuth refresh broken in headless subprocess contexts** ([anthropics/claude-code#50743](https://github.com/anthropics/claude-code/issues/50743), closed-as-duplicate, no fix planned). The `accessToken` in `~/.claude/.credentials.json` expires every ~6–8h; the CLI does not auto-refresh in non-TTY invocations. Cloudflare WAF additionally blocks the OAuth refresh endpoint from headless Linux ([#47754](https://github.com/anthropics/claude-code/issues/47754)). Production lyra-clipool *(2026-07-04: now `factory-clipool` — see Amendment.)* fails with `401 authentication_error` every ~6–8h until interactive re-login.
 

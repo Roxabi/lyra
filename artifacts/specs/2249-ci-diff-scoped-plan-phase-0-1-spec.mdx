@@ -1,0 +1,258 @@
+---
+title: "feat(ci): Diff-scoped CI plan — phase 0–1 (aggregate + qg plan)"
+issue: 2249
+status: approved
+tier: F-lite
+date: 2026-07-04
+adr: docs/architecture/adr/086-documentation-architecture.mdx
+source: artifacts/analyses/2026-07-04-multi-axis-comprehension-semctx.md
+---
+
+## Context
+
+Promoted from multi-agent validation (DevOps + architecte + pratiques industrie Google presubmit / Pants skip-jobs) and discussion 2026-07-04.
+
+Factory already diff-scopes **quality gates** on `pull_request` via `QG_DIFF_RANGE` + `files:` regex in `.claude/stack.yml` (`scripts/qg`, #2176). Merge queue and push to protected branches intentionally **fail-open** (full suite).
+
+Gaps today:
+
+| Gap | Impact |
+|-----|--------|
+| Job `tests` + `package-coverage` | Always full pytest/e2e (~5–8 min) even for `.md`-only PRs |
+| ~31/36 CI gates sans `files:` | Ruff, pyright, ACL, deploy drift run on every PR |
+| Aggregate `ci` rejects `skipped` | Blocks future job-level `if:` skips (deadlock branch protection) |
+| No `qg plan` contract | Job skip logic would duplicate `stack.yml` in `ci.yml` |
+
+**Policy (ADR-worthy, recorded here until dedicated ADR):**
+
+- `pull_request` → affected validation (fast feedback)
+- `merge_group` / `push` `main`/`staging` → full validation (integration point hard gate)
+- `stack.yml` + `scripts/qg` = **single SSoT** for change classification — no parallel `dorny/paths-filter` rules in `ci.yml`
+- `doc_drift_bundle` stays **always-on** when diff touches doc paths (ADR-086 oracle)
+
+## Goal
+
+Phase **0–1** only (phase 2 = conditional test jobs; phase 3 = `verify_change.py`):
+
+1. **Phase 0** — Aggregate required check `ci` accepts `success` **and** `skipped`; fails on `failure` / `cancelled` only.
+2. **Phase 1** — `scripts/qg plan --stage ci` emits stable JSON; `stack.yml` gains change taxonomy + tripwires; extend `files:` on high-cost gates.
+
+## Constraints
+
+- **Do not** add a separate required check `ci-docs` (branch protection stays single context `ci`).
+- **Do not** add workflow-level `paths:` / `paths-ignore` (GitHub Pending deadlock).
+- **Do not** fail-closed when `git diff` fails — preserve fail-open (documented in `ci.yml` L104–106).
+- **Do not** diff-scope `docker-build` or `trufflehog` (separate required checks; merge queue policy).
+- **Do not** weaken `doc_drift_bundle` filtering — bundle composes doc gates; must run on any PR touching `docs/`, `artifacts/`, `AGENTS.md`, root `*.md`.
+- Tripwire files force **full** plan (`tests`, `package-coverage` = run in phase 2; all gates in phase 1).
+
+## Out of Scope
+
+- Phase 2: `ci.yml` jobs `tests` / `package-coverage` / `integration` conditional on `qg plan` outputs.
+- Absorbing satellite workflows (`quadlet-lint.yml`, `context-lint.yml`, `renderer-roundtrip.yml`) into `stack.yml`.
+- `ccm_axis` tags on every gate (CCM V1 — follow-up).
+- Dedicated ADR file (optional follow-up; decisions listed in §ADR decisions).
+
+## Users
+
+| User | Workflow |
+|------|----------|
+| Contributor | Doc-only PR gets faster `gates` job; full suite still runs in merge queue |
+| Maintainer | One place (`stack.yml`) to tune what runs when |
+| Agent / reviewer | `qg plan` JSON explains skip/run decisions in CI logs |
+
+## Expected Behavior
+
+### Phase 0 — Smart aggregate `ci`
+
+**File:** `.github/workflows/ci.yml` job `ci`
+
+Replace result loop:
+
+```bash
+# success OR skipped → OK; failure OR cancelled → fail
+[[ "${result}" == "success" || "${result}" == "skipped" ]] || exit 1
+```
+
+Add comment: skipped is expected once phase 2 enables conditional `tests`/`package-coverage`; until then all jobs still run (no behavior change except forward-compatible).
+
+**Tests:** `tests/scripts/test_qg.sh` section **G** (new) — bash fixture simulating result vectors:
+
+| Input results | Expected exit |
+|---------------|---------------|
+| `success success success` | 0 |
+| `success skipped success` | 0 |
+| `failure success success` | 1 |
+| `success cancelled success` | 1 |
+
+Extract aggregate loop to `scripts/ci-aggregate-results.sh` **only if** testability requires it; otherwise inline test via sourced function.
+
+### Phase 1 — `scripts/qg plan`
+
+**CLI:**
+
+```bash
+scripts/qg plan --stage ci [--format json|github]
+# Env: QG_DIFF_RANGE (same as `qg run` — set by ci.yml on pull_request only)
+```
+
+**Output JSON schema** (`schema_version: 1`):
+
+```json
+{
+  "schema_version": 1,
+  "filter_active": true,
+  "diff_range": "origin/staging...HEAD",
+  "changed_files": ["artifacts/analyses/foo.md"],
+  "taxonomy": ["docs"],
+  "tripwire_hit": false,
+  "fail_open": false,
+  "gates": [
+    {"name": "lint", "action": "skip", "reason": "no_matching_files"},
+    {"name": "doc_drift_bundle", "action": "run", "reason": "taxonomy_docs"}
+  ],
+  "jobs": {
+    "gates": {"action": "run"},
+    "tests": {"action": "skip", "reason": "docs_only"},
+    "package-coverage": {"action": "skip", "reason": "docs_only"},
+    "integration": {"action": "skip", "reason": "docs_only"}
+  }
+}
+```
+
+**Semantics:**
+
+| Field | Rule |
+|-------|------|
+| `filter_active` | `1` iff `QG_DIFF_RANGE` set **and** `git diff` succeeded (mirror `CI_FILTER_ACTIVE`) |
+| `fail_open` | `true` when diff unavailable → all gates `run`, all jobs `run` |
+| `taxonomy` | Union of matched classes from changed files |
+| `tripwire_hit` | Any changed file matches `qg.tripwires` → force full plan |
+| `gates[].action` | `run` \| `skip` — same logic as `should_run_gate` + doc_drift_bundle rules |
+| `jobs` | Phase 1: **informational** + CI log annotation; phase 2 wires `if:` |
+
+**`--format github`:** multiline `::notice::` / job summary markdown for Actions UI.
+
+**Usage in phase 1 CI:** add step after checkout in `gates` job:
+
+```yaml
+- name: CI plan (diff-scoped)
+  env:
+    QG_DIFF_RANGE: ${{ ... }}
+  run: scripts/qg plan --stage ci --format github
+```
+
+No job skipping yet — observability + contract hardening only.
+
+### Phase 1 — `stack.yml` extensions
+
+**Section `qg.change_classes`** (taxonomy):
+
+| Class | `paths` regex (grep -E, same engine as `files:`) |
+|-------|--------------------------------------------------|
+| `docs` | `^docs/`, `^artifacts/`, `AGENTS\.md$`, `\.md$`, `^\.claude/` |
+| `python` | `^src/`, `^packages/[^/]+/src/`, `^tests/`, `^pyproject\.toml$`, `^uv\.lock$` |
+| `frontend` | `^apps/`, `^packages/shared/`, `^brand/`, `^biome\.json$`, `^bun\.lock$` |
+| `deploy` | `^deploy/`, `^docker/` |
+| `tooling` | `^scripts/`, `^\.github/`, `^\.claude/stack\.yml$`, `^tools/` |
+
+**Section `qg.tripwires`** — any match forces full plan (all gates run, all jobs `run`):
+
+```yaml
+qg:
+  tripwires:
+    - ^pyproject\.toml$
+    - ^uv\.lock$
+    - ^package\.json$
+    - ^bun\.lock$
+    - ^\.claude/stack\.yml$
+    - ^\.github/workflows/ci\.yml$
+    - ^scripts/qg$
+```
+
+**`docs_only` definition** (for `jobs.*.skip`):
+
+```
+taxonomy == ["docs"] AND NOT tripwire_hit AND filter_active
+```
+
+**Extend `files:` on gates** (minimum set — phase 1):
+
+| Gate | `files:` pattern (add or refine) |
+|------|----------------------------------|
+| `typecheck` | `^src/`, `^packages/[^/]+/src/`, `^tests/`, `^pyproject\.toml$` |
+| `theme_build_drift` | `^brand/`, `^packages/roxabi/` (match existing theme paths) |
+| `astryx_doctor` | `^brand/`, `^packages/roxabi/` |
+| `str_exc_bus_bound` | `^src/` |
+| `omp_pin_lockstep` | `^deploy/omp`, `^src/factory/adapters/omp` (verify paths in repo) |
+
+`doc_drift_bundle` — **no** `files:` entry (bundle always evaluates; internal doc paths trigger via changed file list + legacy grep in bundle).
+
+**`lint` (ruff)** — remains global in phase 1 (cheap); optional `files:` in phase 2.
+
+### Phase 1 — Tests (`tests/scripts/test_qg.sh`)
+
+New sections:
+
+| ID | Case |
+|----|------|
+| **G** | Aggregate results script (phase 0) |
+| **H1** | `qg plan` docs-only diff → `jobs.tests.action=skip`, `doc_drift_bundle` run |
+| **H2** | Tripwire: diff touches `uv.lock` + `.md` → `tripwire_hit=true`, all jobs run |
+| **H3** | `QG_DIFF_RANGE` unset → `fail_open=true`, all gates run |
+| **H4** | Bad diff ref → `fail_open=true` (mirror E2b) |
+| **H5** | `typecheck` skipped on docs-only plan gate list |
+
+Update `tests/scripts/test_check_qg_conf_drift.sh` if `qg` section shape changes.
+
+## Slices
+
+| Slice | Scope | Acceptance |
+|-------|-------|------------|
+| **S0** | Aggregate `ci` loop + test G | PR with only phase 0 still runs full tests; aggregate green; skipped simulation passes |
+| **S1** | `qg plan` command + JSON schema + tests H1–H5 | `scripts/qg plan --stage ci` locally with `QG_DIFF_RANGE=origin/staging...HEAD` |
+| **S2** | `stack.yml` taxonomy + tripwires + `files:` extensions | Doc-only PR: fewer gates execute in `gates` job (CI log shows skips); merge queue unchanged (full) |
+| **S3** | `ci.yml` plan step + upload artifact `ci-plan.json` | Plan visible in Actions summary; artifact retained 5 days |
+
+**Order:** S0 → S1 → S2 → S3 (S0 unblocks phase 2 PRs).
+
+## Acceptance Criteria
+
+- [ ] Aggregate `ci` accepts `skipped` without failing (S0)
+- [ ] `tests/scripts/test_qg.sh` section G green
+- [ ] `scripts/qg plan --stage ci --format json` exits 0; output validates against embedded schema check in test
+- [ ] Docs-only fixture: `taxonomy` includes `docs`, `jobs.tests.action` is `skip`, `doc_drift_bundle` action is `run`
+- [ ] Tripwire fixture (`uv.lock`): `tripwire_hit=true`, all jobs `run`
+- [ ] `merge_group` / empty `QG_DIFF_RANGE`: `fail_open=true` (test + manual queue verification post-merge)
+- [ ] At least 4 new `files:` gates skip on docs-only PR (S2)
+- [ ] `doc_drift_bundle` still runs on PR touching `artifacts/analyses/*.md`
+- [ ] No new required check contexts; branch protection unchanged
+- [ ] `scripts/check-qg-conf-drift.sh` green (if applicable)
+
+## ADR Decisions (record in follow-up ADR or amend 086)
+
+1. `stack.yml` is the sole SSoT for gate `files:`, change taxonomy, tripwires, and (phase 2) CI job run/skip.
+2. `scripts/qg plan` is the machine contract consumed by `ci.yml` — no duplicate path rules in workflows.
+3. PR = affected validation; merge queue = full validation (fail-open preserved).
+4. `doc_drift_bundle` is never filtered by `files:` on the bundle gate; taxonomy `docs` forces run.
+5. Tripwires prevent `docs_only` classification when lockfiles or CI tooling change.
+
+## Risks
+
+| Risk | Mitigation |
+|------|------------|
+| Stale `files:` regex | `qg_conf_drift` + H5 fixtures |
+| Gaming via docs-only PR | Merge queue full suite; tripwires |
+| Aggregate accepts wrongful skip | Phase 1 does not skip jobs yet; S0 only enables future phase 2 |
+| `grep -E` vs picomatch drift | Reject `dorny/paths-filter`; one engine in `qg` |
+
+## References
+
+- Issue #2249
+- `artifacts/analyses/2026-07-04-multi-axis-comprehension-semctx.md`
+- `.github/workflows/ci.yml` — `QG_DIFF_RANGE`, jobs `gates`/`tests`/`ci`
+- `scripts/qg` — `CI_FILTER_ACTIVE`, fail-open
+- `tests/scripts/test_qg.sh` — sections E (filtering)
+- [Pants — skipping jobs without breaking branch protection](https://www.pantsbuild.org/blog/2022/10/10/skipping-github-actions-jobs-without-breaking-branch-protection)
+- [GitHub — merge queue](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
+- [Google SWE Book — Continuous Integration (ch.23)](https://abseil.io/resources/swe-book/html/ch23.html)

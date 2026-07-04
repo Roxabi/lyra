@@ -60,7 +60,7 @@ Verdicts : **14 aligned · 14 amend-adr · 6 fix-page · 0 archive**. Lignes cit
 | 100 | llm-streaming | aligned | — | — |
 | 010 | workers-tooling | aligned | — | — |
 | 071 | workers-tooling | amend-adr | 2 med 1 low + 1 lien | `lyra-clipool.container` + secret `lyra-claude-oauth` (réels `factory-clipool.container` / `factory-claude-oauth`) ; consensus 1105 mort |
-| 084 | job-model | fix-page | (critique) | job-model.md:10,324,338 présentent 075 « superseded by 078 » (faux ×3) + row 049 « Accepted » vs `amended` |
+| 084 | job-model | fix-page | 1 med (M30) | job-model.md:10,324,338 présentent 075 « superseded by 078 » (faux ×3) + row 049 « Accepted » vs `amended` |
 | 055 | deployment | amend-adr | 2 med + 5 liens | publish.yml décrit comme réutilisable `Roxabi/.github` — réel : bake pipeline self-contained ; 5× `docs/PROD-MIGRATION-STRATEGY.md` → `docs/history/` |
 | 086 | meta (ARCHITECTURE.md) | aligned | 1 low | — |
 | 093 | meta (runbooks/operator-log) | aligned | 1 low | — |
@@ -68,9 +68,9 @@ Verdicts : **14 aligned · 14 amend-adr · 6 fix-page · 0 archive**. Lignes cit
 
 Raw stats du run : 15/14/5 — le critique a requalifié 084 aligned→fix-page (job-model.md:10,324,338 présentent 075 « superseded by 078 », faux ×3).
 
-**Motif dominant (11 des 26 med)** : résidus pré-rename `lyra→factory` dans des sections opératoires (commandes systemctl, units Quadlet, secrets, env vars, subjects) — exactement la classe « un opérateur qui suit l'ADR échoue ». ¬déprioriser comme « juste med » : la conséquence est un échec opératoire à l'exécution, le label med tient seulement au banner qui coiffe chaque ADR.
+**Motif dominant (7 des 30 med — M01-M03, M09, M17, M22, M26)** : résidus pré-rename `lyra→factory` dans des sections opératoires (commandes systemctl, units Quadlet, secrets, env vars, subjects) — exactement la classe « un opérateur qui suit l'ADR échoue ». ¬déprioriser comme « juste med » : la conséquence est un échec opératoire à l'exécution, le label med tient seulement au banner qui coiffe chaque ADR.
 
-**Traçabilité acceptance** : AC1 (matrice 34) = ce doc. AC2 : les domain pages ont été scannées pour liens `artifacts/` morts → **0** (vérifié 2×, scan + reviewer indépendant) ; le solde vit dans les ADRs et hors docs/. AC3 (« écarts high résolus ») : **satisfait par vacuité** — 0 high trouvé (verify adversarial armé, jamais déclenché) ; les 26 med sont fixés quand même via Shape A, en bonus au-delà du critère strict.
+**Traçabilité acceptance** : AC1 (matrice 34) = ce doc. AC2 : les domain pages ont été scannées pour liens `artifacts/` morts → **0** (vérifié 2×, scan + reviewer indépendant) ; le solde vit dans les ADRs et hors docs/. AC3 (« écarts high résolus ») : **satisfait par vacuité** — 0 high trouvé (verify adversarial armé, jamais déclenché) ; les 30 med (itemisés M01-M30 en appendix) sont fixés quand même via Shape A, en bonus au-delà du critère strict.
 
 ## Page findings (page ≠ code, découverts en passant)
 
@@ -157,3 +157,60 @@ Ordre : PR liens d'abord (zéro dépendance), puis amend-adr, puis pages+tables 
 
 ---
 *Audit : workflow `wf_5e646859-d27` (17 agents Explore lecture-seule, 1 190 857 tokens, 264 tool-uses, 14 min). Critique de complétude : coverage_ok=false → 3 gaps fermés par sweeps déterministes (ce doc). Détail brut : `journal.jsonl` du run + `scratchpad/audit-result.json`.*
+
+## Appendix A — les 30 écarts med itemisés (SC4 du spec)
+
+M01-M29 = colonne « Écarts (sev) » de la matrice, ordre de la matrice ; M30 = finding du critique (084) requalifié med. Les 4 `retarget-link` (M06, M13, M25, M28) sont des doublons de la table « Liens morts » — prouvés via PR1, mappés ici pour l'exhaustivité.
+
+| ID | ADR | fix_type | PR | Claim (tronqué) |
+|---|---|---|---|---|
+| M01 | 065 | amend-adr | S2 | Restart NATS: `systemctl --user restart lyra-nats` (container). |
+| M02 | 065 | amend-adr | S2 | the stanza is in `nats-container.conf`, backed by the `lyra-jetstream.volume` bind-mount (`~/.l |
+| M03 | 076 | amend-adr | S2 | Messages plane subject prefix is `lyra.{inbound,outbound}.<platform>.<bot_id>` (Decision plane  |
+| M04 | 076 | fix-page | S3 | Persistence plane producers = hub (only). |
+| M05 | 079 | amend-adr | S2 | The stream-keyed CI gate reads a JSON manifest `deploy/nats/code-subjects.json` ('new, this ADR |
+| M06 | 079 | retarget-link | S1 | Implementation plan at `artifacts/plans/1521-audio-axial-migration.md` (S2–S5). |
+| M07 | 008 | fix-page | S3 | ADR-archive table row lists ADR-008 status as 'Accepted'. |
+| M08 | 008 | fix-page | S3 | Memory scope: 'Levels 1, 2, 4 are deferred until a concrete trigger arises... Deferred != rejec |
+| M09 | 068 | amend-adr | S2 | Application Map BlobStore Notes: 'HTTP service = dedicated Quadlet lyra-blobstore.container on  |
+| M10 | 068 | fix-page | S3 | ADR-archive table row lists ADR-068 (Ecosystem Service Plane) status as 'Accepted'. |
+| M11 | 075 | fix-page | S3 | storage.md ADR archive table lists ADR-075 status as 'Superseded by ADR-078' |
+| M12 | 087 | fix-page | S3 | Banner delegates 'current truth' to storage.md; decision: roxabi-cortex owns long-term memory a |
+| M13 | 087 | retarget-link | S1 | Context cites artifacts/analyses/architecture-critical-review-2026-06-09.md (critical review §6 |
+| M14 | 091 | amend-adr | S2 | External-events plane ① grammar is `factory.event.<service>.<kind>` (3-segment), presented with |
+| M15 | 092 | amend-adr | S2 | Banner: "The domain page describes the current (pre-engine) state; this ADR is the decision rec |
+| M16 | 052 | amend-adr | S2 | Image per-worker subject pattern is `factory.image.request.<worker_id>` (Decision > Per-worker  |
+| M17 | 046 | amend-adr | S2 | Podman Quadlet secret names follow S8 convention (`lyra-nats-<role>`): lyra-nats-hub, lyra-nats |
+| M18 | 046 | fix-page | S3 | Domain page (the banner's 'current truth') describes the IDENTITIES manifest as 'constants in g |
+| M19 | 051 | fix-page | S3 | Domain page: 'Every NATS identity must connect with inbox_prefix="_INBOX.<identity-name>" ... n |
+| M20 | 051 | fix-page | S3 | Domain page: 'All current identities (hub, telegram-adapter, discord-adapter, tts-adapter, stt- |
+| M21 | 073 | fix-page | S3 | Archive row: '073 \| Stage-axis outbound pivot (OutboundEmitter composition) \| Accepted' |
+| M22 | 083 | amend-adr | S2 | 'Audio cap is `LYRA_MAX_AUDIO_BYTES` (default 5 MiB)' |
+| M23 | 083 | fix-page | S3 | adapters.md is 083's declared current-truth home (banner) and documents AttachmentIngestStage,  |
+| M24 | 059 | amend-adr | S2 | Update 2026-05-09 table marks P1-6 (LlmProvider port move) and P1-7 (STTProtocol/TtsProtocol mo |
+| M25 | 071 | retarget-link | S1 | The consensus analysis is cited at artifacts/analyses/1105-claude-oauth-injection-consensus.mdx |
+| M26 | 071 | amend-adr | S2 | `lyra-clipool.container` declares `Secret=lyra-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_T |
+| M27 | 055 | amend-adr | S2 | Live reference: `.github/workflows/publish.yml` calls `Roxabi/.github/.github/workflows/publish |
+| M28 | 055 | retarget-link | S1 | Migration doc: `docs/PROD-MIGRATION-STRATEGY.md` — Phase 2 entry criterion; §6 enumerates the s |
+| M29 | 101 | amend-adr | S2 | apps/dashboard/src/index.css imports `brand/styles.css` into a dedicated `brand` CSS layer. |
+| M30 | 084 | fix-page | S3 | job-model.md:10,324,338 présentent ADR-075 « superseded by 078 » (critique gap 1, requalifié med) |
+
+## Appendix B — provers reproductibles (source canonique des scripts PR1)
+
+`scripts/check_dead_artifact_refs.sh` (SC1) — logique canonique :
+
+```bash
+scan() {
+  grep -rnoE '(\.\./)*artifacts/[A-Za-z0-9_./-]+' "$1" --include='*.md' --include='*.mdx' 2>/dev/null | while IFS=: read -r file line ref; do
+    clean="${ref%%[)\`,:]*}"; clean="${clean%/}"
+    [ "$clean" = "artifacts" ] && continue
+    if [[ "$clean" == ../* ]]; then base="$(dirname "$file")/$clean"; else base="$clean"; fi
+    # fallback extensions : le strip ci-dessus coupe à '.', re-tester avec .md/.mdx/.claude.md/.json
+    if [[ ! -e "$base" && ! -e "$base.md" && ! -e "$base.mdx" && ! -e "$base.claude.md" && ! -e "$base.json" ]]; then echo "DEAD $file:$line -> $clean"; fi
+  done
+}
+# périmètre : docs/ deploy/ scripts/ src/ packages/ tools/ tests/ .github/ README.md — hors artifacts/ lui-même
+# exclusions connues : refs déjà au format tombstone `git show …` (:21 gh-key-rotation), placeholders YYYY-MM
+```
+
+`scripts/check_adr_archive_tables.py` (SC2) — logique canonique : pour chaque `docs/architecture/*.md` (hors CURRENT.generated), parser les rows `| NNN |` sous `## ADR archive` ; comparer le statut de la row au `status:` frontmatter du fichier `adr/NNN-*` (actif) ou `adr/archive/NNN-*` ; erreurs = row « Accepted » nue pour un ADR archivé-superseded, row sans mention d'amendement pour un frontmatter `amended`, row « superseded » pour un ADR actif, ADR actif sans row (hors 086/093/101 arbitrés), page à ADRs actifs sans table.

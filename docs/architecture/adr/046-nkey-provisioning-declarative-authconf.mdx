@@ -27,6 +27,15 @@ The decision and Invariants 1–5 remain load-bearing (pure render, IDENTITIES =
 
 References to `gen-nkeys.sh` in the Context / Options / Decision sections below are historical — accurate for April 2026, superseded as above.
 
+### Amendment (2026-07-04)
+
+Operational audit found two stale claim classes, both from the `lyra→factory` rename:
+
+- **Invariant 4 — secret naming** (line 97): Secret names follow S8 convention and are listed as `lyra-nats-hub`, `lyra-nats-telegram`, `lyra-nats-discord`, `lyra-nats-clipool`. Now `factory-nats-<role>` — verify via `deploy/quadlet/factory-{hub,clipool,ingress,turn-writer}.container` `Secret=` declarations.
+- **nkeys directory** (Options §B, Invariant 3, Consequences): `~/.lyra/nkeys/` → `~/.roxabi/factory/nkeys/` (data-dir move).
+
+The Invariants and their enforcement (fail-fast on missing seed, naming via S8 convention) remain unchanged; the concrete names and paths are updated for the rename.
+
 ## Context
 
 The #714 per-role ACL rework updated `gen-nkeys.sh` to emit per-identity `permissions` blocks (publish/subscribe matrices, `allow_responses: true`). It also documented a rollout runbook requiring `--regenerate` (full seed rotation + auth.conf rewrite).
@@ -57,7 +66,7 @@ Keep the existing `--regenerate` flag as the sole remediation path. Whenever aut
 
 Add a `--regen-authconf` mode that:
 1. Reads the IDENTITIES manifest embedded in gen-nkeys.sh.
-2. For each identity, reads the existing `.seed` file from `~/.lyra/nkeys/` (if present) and extracts its public key via `nk -inkey`.
+2. For each identity, reads the existing `.seed` file from `~/.lyra/nkeys/` *(2026-07-04: now `~/.roxabi/factory/nkeys/` — see Amendment.)* (if present) and extracts its public key via `nk -inkey`.
 3. For each identity with a missing seed, auto-creates a new seed + writes the pubkey.
 4. Renders auth.conf from scratch using the full IDENTITIES × permissions matrix.
 5. Never touches existing seeds.
@@ -88,13 +97,13 @@ The IDENTITIES constant in gen-nkeys.sh (or its successor) is the authoritative 
 
 ### Invariant 3 — Missing seeds are auto-created, never silently skipped
 
-When `--regen-authconf` encounters an identity in IDENTITIES whose seed file does not exist, it creates the seed, writes it to `~/.lyra/nkeys/<identity>.seed`, and includes the new pubkey in the rendered auth.conf. It MUST NOT skip the identity, emit a partial auth.conf, or require a separate `--create-missing` flag.
+When `--regen-authconf` encounters an identity in IDENTITIES whose seed file does not exist, it creates the seed, writes it to `~/.lyra/nkeys/<identity>.seed` *(2026-07-04: now `~/.roxabi/factory/nkeys/` — see Amendment.)*, and includes the new pubkey in the rendered auth.conf. It MUST NOT skip the identity, emit a partial auth.conf, or require a separate `--create-missing` flag.
 
 ### Invariant 4 — Supervisor env points to identity-specific seed, no fallback
 
 Each supervisor program's environment MUST reference its own seed file (`<identity>.seed`). The `.env` fallback to `hub.seed` is a configuration error, not a feature. The supervisor conf is the authoritative source of which NATS identity a process uses. If the seed file is absent at process start, the process MUST fail fast (exit non-zero) rather than silently degrade to a different identity.
 
-**Quadlet implementation (post-Commit 1B.2/1B.3):** In Podman Quadlet units, Invariant 4 is enforced by `Secret=<secret-name>,type=mount,target=<name>.seed` + `Environment=NATS_NKEY_SEED_PATH=/run/secrets/<name>.seed`. Secret names follow S8 convention (`lyra-nats-<role>`): `lyra-nats-hub`, `lyra-nats-telegram`, `lyra-nats-discord`, `lyra-nats-clipool`. If the Podman secret is absent, the container fails to start — structurally equivalent to the fail-fast mandate above.
+**Quadlet implementation (post-Commit 1B.2/1B.3):** In Podman Quadlet units, Invariant 4 is enforced by `Secret=<secret-name>,type=mount,target=<name>.seed` + `Environment=NATS_NKEY_SEED_PATH=/run/secrets/<name>.seed`. Secret names follow S8 convention (`lyra-nats-<role>`): `lyra-nats-hub`, `lyra-nats-telegram`, `lyra-nats-discord`, `lyra-nats-clipool` *(2026-07-04: now `factory-nats-<role>` — see Amendment.)*. If the Podman secret is absent, the container fails to start — structurally equivalent to the fail-fast mandate above.
 
 ### Invariant 5 — Drift is detectable before harm
 
@@ -135,7 +144,7 @@ Lane B (containerize, #727/#728) remains independent — it does not need to lan
 
 - The telegram/discord "authenticate as hub" issue is closed as part of the current cutover (step 3 above), not deferred to a separate issue. Discovery attribution: found during #689 Lane G T6 execution, April 2026.
 - The `--regenerate` flag remains available for credential rotation (seed compromise, periodic rotation policy). It is not deprecated by this ADR.
-- This ADR does not address the Lane B (containerize) sequencing question — that lane's auth provisioning follows the same invariants but targets Quadlet-mounted secret volumes rather than bare-metal `~/.lyra/nkeys/`.
+- This ADR does not address the Lane B (containerize) sequencing question — that lane's auth provisioning follows the same invariants but targets Quadlet-mounted secret volumes rather than bare-metal `~/.lyra/nkeys/` *(2026-07-04: now `~/.roxabi/factory/nkeys/` — see Amendment.)*.
 
 ## Relation to other ADRs
 

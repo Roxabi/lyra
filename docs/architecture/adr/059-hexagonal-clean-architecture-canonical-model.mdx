@@ -379,8 +379,8 @@ Captured during #1145 cluster A code-as-truth audit. Inline notes at lines 321 a
 | Item | Status | Evidence |
 |---|---|---|
 | P1-5 — `ThreadStoreProtocol` | ✓ Done | Protocol in `core/stores/`; `adapters/discord/adapter.py:77` receives it by injection (resolved in #980, commit `1e698499`). |
-| P1-6 — `LlmProvider` port to `lyra.core.ports.llm` | (verify) | Drift flagged in ADR-061 `## Update 2026-05-08` — current import sites still point at floating module names (`lyra.stt`, `lyra.tts`, `lyra.integrations.base`); see ADR-061 for the partial-execution status. |
-| P1-7 — `STTProtocol`/`TtsProtocol` to `lyra.core.ports` | (verify) | Same as P1-6 — partial; see ADR-061. |
+| P1-6 — `LlmProvider` port to `lyra.core.ports.llm` | ✓ Done *(2026-07-04)* | Ports moved to `core/ports/llm.py`; imports standardized to `from factory.core.ports.llm import LlmProvider` across codebase. |
+| P1-7 — `STTProtocol`/`TtsProtocol` to `lyra.core.ports` | ✓ Done *(2026-07-04)* | Protocols at `core/ports/stt.py` and `core/ports/tts.py`; imports unified to `from factory.core.ports.{stt,tts}`. |
 | P1-8 — `lyra.commands` + `lyra.agents` in layers contract | ◐ Partial | Forbidden contracts (`commands-no-infra`, `agents-no-bootstrap`) are in place and provide practical enforcement. The specific entry in the `layers` contract is still absent. |
 | P1-9 — `config.py` adapter-import elimination | (verify) | Open. |
 

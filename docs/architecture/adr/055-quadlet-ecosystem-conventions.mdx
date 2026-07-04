@@ -482,7 +482,7 @@ ADR-056 established the canonical cross-project container publishing pattern via
 | 6 | `LYRA_IMAGE` conflates local build tag with registry name | Separated: `LYRA_IMAGE ?= localhost/lyra:dev` (local) and `GHCR_IMAGE` (registry) |
 | 7 | `release_please_component` required but never consumed | Marked `required: false`, default `""` |
 
-Live reference: `.github/workflows/publish.yml` calls `Roxabi/.github/.github/workflows/publish-container.yml@v1`.
+Live reference: `.github/workflows/publish.yml` *(2026-07-04: corrected — pipeline is self-contained, not calling reusable workflow from Roxabi/.github — see .github/workflows/publish.yml:1-70)*.
 
 ---
 

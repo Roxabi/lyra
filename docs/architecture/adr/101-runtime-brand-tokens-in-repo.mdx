@@ -21,7 +21,7 @@ ADR-042 (2026-03) solved a real problem of its time: AI-exploration brand assets
 
 What ADR-042 never contemplated is **runtime design tokens**. It predates the shadcn → Astryx dashboard migration (epic #2087), which made brand values a build/runtime dependency of the product itself:
 
-- `apps/dashboard/src/index.css` imports `brand/styles.css` into a dedicated `brand` CSS layer (`@layer reset, theme, base, astryx-base, astryx-theme, brand, components, utilities`).
+- `apps/dashboard/src/index.css` imports `brand/core.css` *(2026-07-04: corrected — actual imports are brand/core.css (line 24) and brand/reset.css (line 11), not brand/styles.css — see apps/dashboard/src/index.css)* into a dedicated `brand` CSS layer (`@layer reset, theme, base, astryx-base, astryx-theme, brand, components, utilities`).
 - `apps/dashboard/src/astryx-theme/roxabi.theme.ts` maps `brand/tokens/*.css` custom properties onto Astryx token names via `var(...)` — no values duplicated, single authority in CSS.
 - The dashboard's inline theme bootstrap (`apps/dashboard/index.html`) relies on `brand/tokens/colors.css` following the light/dark toggle.
 
@@ -34,7 +34,7 @@ The boundary between the two brand categories is:
 | Category | Contents | Canonical location |
 |----------|----------|--------------------|
 | **Exploration brand** | Brand books, avatars, generation prompts/scripts, galleries, `forge.yml`, concepts | `~/.roxabi/forge/{project}/brand/` — unchanged from ADR-042 |
-| **Runtime brand** | Design tokens CSS (`brand/tokens/{colors,typography,spacing,motion,elevation,fonts,status}.css`), `brand/base.css`, `brand/styles.css`, runtime SVG marks (`brand/assets/factory-mark-{light,dark}.svg`, `factory-favicon.svg`) | git-tracked `brand/` in-repo |
+| **Runtime brand** | Design tokens CSS (`brand/tokens/{colors,typography,spacing,motion,elevation,fonts,status}.css`), `brand/core.css`, `brand/reset.css` *(2026-07-04: corrected — actual imports are brand/core.css + brand/reset.css, not brand/styles.css)*, runtime SVG marks (`brand/assets/factory-mark-{light,dark}.svg`, `factory-favicon.svg`) | git-tracked `brand/` in-repo |
 
 The in-repo `brand/` directory is the **design-system SSoT** consumed by the dashboard's Astryx theme. Values are authored once, in CSS.
 

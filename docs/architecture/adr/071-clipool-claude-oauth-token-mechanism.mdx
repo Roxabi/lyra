@@ -1,7 +1,7 @@
 ---
 title: "ADR-071: CliPool Claude OAuth token via type=env Podman-secret exception"
-description: Documents the type=env Podman secret exception for CLAUDE_CODE_OAUTH_TOKEN injection into lyra-clipool, the threat-model scope that bounds it, and the type=mount fallback if Podman bug #28075 forces a switch.
-status: accepted
+description: Documents the type=env Podman secret exception for CLAUDE_CODE_OAUTH_TOKEN injection into factory-clipool, the threat-model scope that bounds it, and the type=mount fallback if Podman bug #28075 forces a switch.
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/workers-tooling.md`](../workers-tooling.md){#current-truth}
@@ -15,11 +15,30 @@ Accepted (2026-05-07)
 Related: ADR-055 (Quadlet ecosystem conventions, absorbs ADR-054 archived — the `type=mount` Podman secret pattern lives there now).
 Issue: #1105 (this ADR's implementation), #1108 (Podman version verification preflight).
 
+Amended 2026-07-04 (operational claim audit): `lyra→factory` rename reflected in unit names and secret names (see Amendment below).
+
+### Amendment (2026-07-04)
+
+Operational audit found comprehensive `lyra→factory` rename stale claims throughout this ADR. The decision and threat-model scope remain unchanged; all changes are unit-name and secret-name editorial updates affecting operational procedures:
+
+1. **Description** (line 3): `lyra-clipool` → `factory-clipool`.
+2. **Decision §1 — unit name** (line 54): `lyra-clipool.container` → `factory-clipool.container` — verify via `deploy/quadlet/factory-clipool.container`.
+3. **Decision §1 — secret name** (line 57): `Secret=lyra-claude-oauth` → `Secret=factory-claude-oauth` — verify via `deploy/quadlet/factory-clipool.container:38`.
+4. **Threat model — secret mask** (line 69): `lyra-claude-oauth=*******` → `factory-claude-oauth=*******` (podman inspect output, secret name only, value masked).
+5. **Threat model — hidepid note** (line 72): `lyra-clipool.container:65-70` → `factory-clipool.container`.
+6. **Bootstrap and rotation** (line 80): `~/.lyra/claude-oauth.tok` → `~/.roxabi/factory/claude-oauth.tok` (data dir moved in rename).
+7. **Bootstrap and rotation** (line 81): `systemctl --user restart lyra-clipool.service` → `factory-clipool` (Quadlet unit, no `.service` extension).
+8. **Verification §#28075** (line 90): `lyra-clipool.container` → `factory-clipool.container`.
+9. **Verification outputs** (lines 108, 109, 113, 115, 122): Example `podman inspect lyra-clipool` output and secret names — all `lyra-*` → `factory-*` in examples.
+10. **Fallback path ini block** (§Fallback): `Secret=lyra-claude-oauth` → `Secret=factory-claude-oauth` — forward-looking instruction, updated in place.
+
+Verification transcripts (§Verification outcome, recorded 2026-05-07 on M₁) keep the `lyra-*` names they were captured under — read them as `factory-*` today per the mapping above.
+
 ## Context
 
-The `claude` CLI subprocess spawned by `lyra-clipool` requires authentication to call Anthropic. Three upstream constraints frame the choice:
+The `claude` CLI subprocess spawned by `factory-clipool` requires authentication to call Anthropic. Three upstream constraints frame the choice:
 
-1. **OAuth refresh broken in headless subprocess contexts** ([anthropics/claude-code#50743](https://github.com/anthropics/claude-code/issues/50743), closed-as-duplicate, no fix planned). The `accessToken` in `~/.claude/.credentials.json` expires every ~6–8h; the CLI does not auto-refresh in non-TTY invocations. Cloudflare WAF additionally blocks the OAuth refresh endpoint from headless Linux ([#47754](https://github.com/anthropics/claude-code/issues/47754)). Production lyra-clipool fails with `401 authentication_error` every ~6–8h until interactive re-login.
+1. **OAuth refresh broken in headless subprocess contexts** ([anthropics/claude-code#50743](https://github.com/anthropics/claude-code/issues/50743), closed-as-duplicate, no fix planned). The `accessToken` in `~/.claude/.credentials.json` expires every ~6–8h; the CLI does not auto-refresh in non-TTY invocations. Cloudflare WAF additionally blocks the OAuth refresh endpoint from headless Linux ([#47754](https://github.com/anthropics/claude-code/issues/47754)). Production lyra-clipool *(2026-07-04: now `factory-clipool` — see Amendment.)* fails with `401 authentication_error` every ~6–8h until interactive re-login.
 
 2. **Auth precedence chain in Claude Code** ([docs](https://code.claude.com/docs/en/authentication)):
    1. Bedrock/Vertex/Foundry env
@@ -37,10 +56,10 @@ ADR-055 (which absorbs the archived ADR-054) establishes `type=mount` as the sta
 
 ### 1. Use `Secret=…,type=env,target=CLAUDE_CODE_OAUTH_TOKEN`
 
-`lyra-clipool.container` declares:
+`factory-clipool.container` *(2026-07-04: see Amendment.)* declares:
 
 ```ini
-Secret=lyra-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_TOKEN
+Secret=factory-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_TOKEN
 ```
 
 This injects the secret value directly as an environment variable in the container. The Python forwarder in `cli_pool_worker._spawn` passes it through `_SAFE_ENV_KEYS` allowlist to the spawned `claude` subprocess.
@@ -52,10 +71,10 @@ This injects the secret value directly as an environment variable in the contain
 `type=env` carries known exposure risks that are accepted in our deployment:
 
 - **Token visible in `/proc/1/environ` of clipool**: bounded by single-tenant container (no co-tenant processes today). `DropCapability=all`, `ReadOnly=true`, and `UserNS=keep-id` confine the blast radius.
-- **`podman inspect` value exposure** ([containers/podman#23788](https://github.com/containers/podman/issues/23788), value-leak fixed in PR #23959). Verified on M₁ (Podman 5.7.0, 2026-05-07): `Config.Env` contains an entry keyed by the *secret name* with the value masked — `lyra-claude-oauth=*******`. The actual token value never appears. Note: the entry is keyed by secret name, not by the `target=` alias, so `Config.Env` exposes which Podman secrets are bound but not their contents. Only readable by users with access to the Podman socket (= the daemon user) regardless.
+- **`podman inspect` value exposure** ([containers/podman#23788](https://github.com/containers/podman/issues/23788), value-leak fixed in PR #23959). Verified on M₁ (Podman 5.7.0, 2026-05-07): `Config.Env` contains an entry keyed by the *secret name* with the value masked — `lyra-claude-oauth=*******` *(2026-07-04: now `factory-claude-oauth` — see Amendment.)*. The actual token value never appears. Note: the entry is keyed by secret name, not by the `target=` alias, so `Config.Env` exposes which Podman secrets are bound but not their contents. Only readable by users with access to the Podman socket (= the daemon user) regardless.
 - **Token also in `/proc/<claude-pid>/environ` of every subprocess**: intrinsic to env-based auth; identical exposure regardless of upstream delivery mechanism.
 
-`hidepid=2` on the container's `/proc` mount is intentionally NOT set per `lyra-clipool.container:65-70` — it would break `podman exec` introspection valuable for ops, and the single-tenant scope makes the `/proc/environ` window already-bounded.
+`hidepid=2` on the container's `/proc` mount is intentionally NOT set per `lyra-clipool.container:65-70` *(2026-07-04: now `factory-clipool.container` — see Amendment.)* — it would break `podman exec` introspection valuable for ops, and the single-tenant scope makes the `/proc/environ` window already-bounded.
 
 ### 3. ANTHROPIC_API_KEY explicitly excluded from `_SAFE_ENV_KEYS`
 
@@ -63,8 +82,8 @@ This injects the secret value directly as an environment variable in the contain
 
 ### 4. Bootstrap and rotation — manual, annual
 
-- Bootstrap (1×): `claude setup-token > ~/.lyra/claude-oauth.tok` on an interactive workstation, then `make quadlet-secrets-install` (or `CLAUDE_OAUTH_TOKEN_PATH=… deploy/provision.sh`) creates the Podman secret. The provision path validates 0600 mode, strips trailing newlines, and shreds the source file after secret creation.
-- Rotation: `deploy/scripts/rotate-claude-oauth.sh /path/to/new.tok` — same pattern, plus `systemctl --user restart lyra-clipool.service` to pick up the new env var binding.
+- Bootstrap (1×): `claude setup-token > ~/.roxabi/factory/claude-oauth.tok` *(2026-07-04: see Amendment.)* on an interactive workstation, then `make quadlet-secrets-install` (or `CLAUDE_OAUTH_TOKEN_PATH=… deploy/provision.sh`) creates the Podman secret. The provision path validates 0600 mode, strips trailing newlines, and shreds the source file after secret creation.
+- Rotation: `deploy/scripts/rotate-claude-oauth.sh /path/to/new.tok` — same pattern, plus `systemctl --user restart factory-clipool` *(2026-07-04: see Amendment.)* to pick up the new env var binding.
 - TTL: 1 year. No upstream programmatic revocation API ([anthropics/claude-code#34198](https://github.com/anthropics/claude-code/issues/34198) open). Stolen token = up to 1y exposure window.
 
 ## Verification outcome (#1108, performed 2026-05-07 on M₁ — Podman 5.7.0)
@@ -73,7 +92,7 @@ Two upstream Podman bugs intersect with our `type=env` choice. Both were tested 
 
 ### #28075 — `target=` mapping survives `Restart=on-failure`?
 
-[containers/podman#28075](https://github.com/containers/podman/issues/28075) reports that in Podman 5.7.1, `--secret name,type=env,target=X` loses the `target=` mapping after a systemd-triggered restart, leaving the variable named after the secret rather than the `target=` alias. The unit declares `[Unit] StartLimitBurst=5` and `[Service] Restart=on-failure` (see `lyra-clipool.container`), making it directly susceptible.
+[containers/podman#28075](https://github.com/containers/podman/issues/28075) reports that in Podman 5.7.1, `--secret name,type=env,target=X` loses the `target=` mapping after a systemd-triggered restart, leaving the variable named after the secret rather than the `target=` alias. The unit declares `[Unit] StartLimitBurst=5` and `[Service] Restart=on-failure` (see `lyra-clipool.container` *(2026-07-04: now `factory-clipool.container` — see Amendment.)*), making it directly susceptible.
 
 **Outcome: NOT reproduced on M₁ at the tested version.** `podman --version` on M₁ (2026-05-07) returned `podman version 5.7.0` — one patch level below the version cited in #28075. Tested via a throwaway Quadlet unit identical in shape to the real one (`Secret=…,type=env,target=TEST_VAR` + `Restart=on-failure` + alpine sleep loop). After forcing a crash with `podman kill --signal=KILL` so systemd restarts the unit:
 
@@ -156,7 +175,7 @@ podman secret rm test-env-restart-1108
 If a future Podman version on M₁ re-introduces #28075 (re-run the recipe above to detect), switch to:
 
 ```ini
-Secret=lyra-claude-oauth,type=mount,target=claude-oauth.tok,mode=0400,uid=1500,gid=1500
+Secret=factory-claude-oauth,type=mount,target=claude-oauth.tok,mode=0400,uid=1500,gid=1500
 ```
 
 And update `cli_pool_worker._spawn` to read `/run/secrets/claude-oauth.tok` once at spawn time, inject the contents into the subprocess `env` dict, then drop the value from the parent dict. This restores parity with the rest of the repo's `type=mount` convention at the cost of a 1-file Python change.

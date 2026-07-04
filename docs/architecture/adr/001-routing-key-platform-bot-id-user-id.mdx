@@ -134,7 +134,7 @@ where `scope_id` represents the conversation scope (e.g. `chat:555`, `thread:111
 Key changes from the original decision:
 
 - **§1** updated: `RoutingKey(platform: Platform, bot_id: str, scope_id: str)`. The
-  `scope_id` is derived from `Message.extract_scope_id()` which maps platform context
+  `scope_id` is derived from `Message.extract_scope_id()` *(2026-07-04: method removed; scope_id calculated by adapters via platform-specific normalizers, e.g., telegram_normalize._make_scope_id — see src/factory/adapters/telegram/telegram_normalize.py)* which maps platform context
   to a canonical scope string (see spec #112 §Scope extraction rules).
 - **§4** updated: Pool ID format is `f"{platform}:{bot_id}:{scope_id}"`. Same user in
   two different chats gets two separate pools with independent histories.

@@ -64,7 +64,7 @@ Requests are published to per-worker subjects:
 |---|---|
 | STT | `factory.voice.stt.request.<worker_id>` |
 | TTS | `factory.voice.tts.request.<worker_id>` |
-| Image | `factory.image.request.<worker_id>` |
+| Image | `factory.image.generate.request.<worker_id>` *(2026-07-04: corrected to include generate segment — see packages/roxabi-contracts/src/roxabi_contracts/image/subjects.py)* |
 
 Workers subscribe to their specific subject (not a queue-group wildcard). This ensures that a request routed to `<worker_id>` is delivered only to that worker, not load-balanced across the queue group.
 

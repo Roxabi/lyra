@@ -1,7 +1,7 @@
 ---
 title: "ADR-083: Central Inbound Attachment Ingest Stage"
 description: Absorb per-adapter attachment ingest into a single stage-axis module, eliminating the N×M trap and guaranteeing blob durability before STT runs.
-status: accepted
+status: amended
 related: [073, 067, 079, 082]
 ---
 
@@ -98,7 +98,7 @@ class PendingAttachment:
 - **Adapter refactor cost.** `handle_voice_message` and `handle_audio` must be refactored to emit `PendingAttachment` and route through `InboundPipeline.run()` instead of calling `push_to_hub_guarded()` directly. Estimated: 9 slices (see design analysis §7).
 - **BlobStore required in production wiring.** `IngestCtx.store` must be non-None in all production bootstrap paths. This must be wired in `bootstrap/wiring.py` or equivalent. Bootstrap MUST assert `ctx.ingest.store is not None` — a missed wiring is silent (stage no-ops) with no user-visible error.
 - **`Attachment` dataclass change.** Adding `blob_ref: BlobRef | None = None` to `Attachment` is additive (default None) but all Attachment construction sites must be audited for completeness.
-- **Non-audio attachment ceiling (open).** Non-audio attachments have no size cap in code today (`telegram_normalize.py:26-81`, `discord_formatting.py:67-88` pass by opaque ref / CDN URL — zero download). The stage is the first download site. Implementation MUST enforce `MAX_ATTACHMENT_INGEST_BYTES` (recommended 20 MiB = Telegram `getFile` cap) before download — reject + log + user-facing error on oversize. Audio cap is `LYRA_MAX_AUDIO_BYTES` (default 5 MiB), not the platform-advertised limits.
+- **Non-audio attachment ceiling (open).** Non-audio attachments have no size cap in code today (`telegram_normalize.py:26-81`, `discord_formatting.py:67-88` pass by opaque ref / CDN URL — zero download). The stage is the first download site. Implementation MUST enforce `MAX_ATTACHMENT_INGEST_BYTES` (recommended 20 MiB = Telegram `getFile` cap) before download — reject + log + user-facing error on oversize. Audio cap is `LYRA_MAX_AUDIO_BYTES` *(2026-07-04: now `FACTORY_MAX_AUDIO_BYTES` — see `src/factory/adapters/telegram/telegram.py:109`.)* (default 5 MiB), not the platform-advertised limits.
 - **HTTP 500 on oversize.** The blobstore HTTP service returns 500 (not 413) on oversize payloads. The stage must map HTTP 500 from `put()` to a user-facing error; do not propagate silently.
 - **Discord CDN URL expiry.** Discord CDN URLs expire within minutes. Ingest must be eager (within the pipeline, before bus enqueue). Confirm timing when extending ingest beyond the voice path.
 

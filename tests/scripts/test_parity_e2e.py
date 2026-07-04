@@ -216,7 +216,7 @@ async def _probe_subscribe(
         await nc.flush(timeout=2)
     except (asyncio.TimeoutError, TimeoutError, nats.errors.Error) as exc:
         return False, f"flush error: {exc}"
-    await asyncio.sleep(0)
+    await asyncio.sleep(0)  # NATS delivery window
     denied = any(_is_subscribe_permission_error(e) for e in errors[before:])
     if expect_deny:
         return (
@@ -237,10 +237,10 @@ async def _settle_deny(
     """Bounded extra settle window for a deny-probe reported as accepted.
 
     Empirically observed (#2247 implementation): factory.cli.ops._probe (and
-    the local _probe_subscribe above) only yield once via
-    `await asyncio.sleep(0)` after flush() before inspecting captured errors.
-    The async error_cb for the probed violation can land after that single
-    yield — confirmed by re-inspecting `errors` moments later, after the
+    the local _probe_subscribe above) only yield once, via a single
+    zero-duration event-based tick, after flush() before inspecting captured
+    errors. The async error_cb for the probed violation can land after that
+    single yield — confirmed by re-inspecting `errors` moments later, after the
     connection had otherwise drained cleanly. Two distinct symptoms were
     observed empirically, both timing-shaped: (a) back-to-back probes on an
     already-"warm" connection needing one extra ~0.2s tick, and (b) a
@@ -257,7 +257,7 @@ async def _settle_deny(
     if ok:
         return ok, actual
     for _ in range(5):
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.2)  # NATS delivery window
         if any(is_perm_error(e) for e in errors[before:]):
             return True, "permission denied (delayed delivery)"
     return ok, actual

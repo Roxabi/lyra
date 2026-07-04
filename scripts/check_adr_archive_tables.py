@@ -305,7 +305,15 @@ def _check_page(page: Path, index: dict[int, AdrEntry]) -> list[Mismatch]:
 
 
 def main() -> int:
+    # Path.glob() on a missing directory silently yields nothing — a renamed
+    # docs/architecture/ tree would index zero ADRs and exit 0 (false-clean).
+    # A prover's exit 0 must mean "actually checked": fail loudly instead.
+    for d in (ADR_DIR, ARCHIVE_DIR, ARCH_DIR):
+        if not d.is_dir():
+            raise SystemExit(f"ERROR: expected directory missing: {d}")
     index = build_adr_index()
+    if not index:
+        raise SystemExit(f"ERROR: no ADR files found under {ADR_DIR}")
     mismatches: list[Mismatch] = []
     for page in sorted(p for p in ARCH_DIR.glob("*.md") if p != EXCLUDE_PAGE):
         mismatches.extend(_check_page(page, index))

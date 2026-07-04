@@ -51,6 +51,13 @@ EXCLUDE_DIR_PREFIX="tests/tools/"
 # at runtime, not a doc reference (#2221 analysis, Liens morts row 25).
 EXCLUDE_OUTPUT_PATH="scripts/smoke/image-request.py"
 
+# A missing scan root would silently shrink the scan (grep skips it, the loop
+# just sees fewer lines) and turn a maintenance rename into a false-clean
+# exit 0 — fail loudly instead: a prover's exit 0 must mean "actually scanned".
+for root in "${SCAN_DIRS[@]}"; do
+    [ -e "$root" ] || { echo "ERROR: scan root missing: $root" >&2; exit 2; }
+done
+
 DEAD=""
 
 while IFS= read -r hit; do
@@ -99,6 +106,8 @@ while IFS= read -r hit; do
     # `git show` on the same source line is treated as a tombstone context —
     # broader than matching the exact ref after the colon, to stay robust to
     # minor formatting variance in how the tombstone is written.
+    # sed failure => same_line empty => tombstone check misses => ref reported
+    # DEAD (fails toward noise, never toward hiding a real dead ref).
     same_line="$(sed -n "${line}p" "$file" 2>/dev/null || true)"
     case "$same_line" in
         *"git show"*) continue ;;
@@ -108,7 +117,7 @@ while IFS= read -r hit; do
 "
 done < <(
     grep -rnoIE '(\.\./)*artifacts/[A-Za-z0-9_./-]+' \
-        "${SCAN_DIRS[@]}" 2>/dev/null
+        "${SCAN_DIRS[@]}"
 )
 
 if [ -n "$DEAD" ]; then

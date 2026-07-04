@@ -7,7 +7,7 @@ description: Current truth for all store, persistence, and event-bus decisions i
 
 > Status: LIVING — current truth for store/persistence/event-bus decisions.
 > Last updated: 2026-07-04.
-> Source ADRs: 008, 022 (amended), 024, 029, 063, 067 (amended), 068, 082. Absorbed via 059: 048.
+> Source ADRs: 008, 022 (superseded), 024, 029, 063, 067 (amended), 068, 082. Absorbed via 059: 048.
 
 ## Scope
 
@@ -118,7 +118,7 @@ async def write(self, user_id: str, content: str, level: MemoryLevel, session_id
 
 ### Long-term memory (roxabi-cortex)
 
-Persistent semantic memory and episodic recall are owned by `roxabi-cortex` (ADR-087). Factory consumes this capability via `roxabi.memory.query.assemble` (NATS subject) and stores only transient session state (L1) and semantic ephemera (L3 ephemeral-TTL rows). The five-level taxonomy remains the long-term architectural target; roxabi-cortex implements the backing store.
+Persistent semantic memory and episodic recall are owned by `roxabi-cortex` (ADR-087). Factory will consume this capability via `roxabi.memory.query.assemble` (ADR-087 target — not yet wired factory-side) and stores only transient session state (L1) and semantic ephemera (L3 ephemeral-TTL rows). The five-level taxonomy remains the long-term architectural target; roxabi-cortex implements the backing store.
 
 ### Agent store (SQLite)
 
@@ -251,7 +251,7 @@ Bootstrap wiring is in `bootstrap/factory/wiring_helpers.py:262`. No module-leve
 (`get_event_bus` / `set_event_bus`) exists in the codebase. The original singleton approach
 (ADR-022 Option A) was accepted as a short-term measure and subsequently replaced by DI per
 ADR-025 F-10. Every emit site used an optional guard (`if bus := get_event_bus()`) — this
-guard pattern is gone; the bus is either injected or absent. → ADR-022 (amended)
+guard pattern is gone; the bus is either injected or absent. → ADR-022 (superseded — archived)
 
 ## Key invariants
 
@@ -306,15 +306,15 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| 008 | Phase-1 memory scope | Accepted — amended (user_id isolation) |
+| 008 | Phase-1 memory scope | Accepted — amended 2026-07-01 (long-term memory → cortex, ADR-087) |
 | 022 | EventBus DI migration | Superseded — archived (event bus now uses DI pattern) |
 | 024 | AgentStore SQLite | Superseded — archived (invariants live in § Agent store above) |
 | 029 | DB-first agent config | Superseded — archived (invariants live in § Agent store above) |
 | 063 | ThreadStore teardown | Superseded — archived (invariants live in § Thread store above) |
 | 067 | BlobStore content-addressed | Accepted (amended 2026-05-24) |
-| 068 | Ecosystem Service Plane | Accepted — amended (HTTP service v1 live) |
+| 068 | Ecosystem Service Plane | Accepted — amended 2026-07-01 (TurnStore α shipped, #1331) |
 | 075 | TurnWriter subscriber-writer | Accepted — turn-writer sublayer in force (078 absorption claim retired 2026-07-01) |
 | 078 | TurnStoreProtocol — decouple core from concrete TurnStore | Accepted — 2026-05-28 |
-| 087 | Memory SSoT (roxabi-cortex) | Accepted — long-term memory owned by cortex |
 | 082 | BlobStorePort — driven-port parity | Superseded — archived (invariants live in § BlobStorePort above) |
+| 087 | Memory SSoT (roxabi-cortex) | Accepted — long-term memory owned by cortex |
 | 048 | Lyra infrastructure layer | Absorbed by ADR-059 |

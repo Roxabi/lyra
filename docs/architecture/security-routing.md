@@ -196,7 +196,7 @@ operator audit (ADR-093), not by `FACTORY_AUDIT`. → ADR-057
 
 ### ACL request/reply derivation
 
-Responder inbox grants are no longer hand-written. A `request_reply_flows` section in `acl-matrix.json` declares each flow as `{ requester, responder, subject }`. The `load_matrix()` function in `gen-nkeys.sh` derives and injects the corresponding `_inbox.<requester>.>` publish grant for each responder automatically. Adding a new responder requires one JSON entry; the copy-paste pattern from ADR-062 Fix 2 — which had no enforcement and caused silent auth failures when any step was missed — is retired. A dedicated CI script (`scripts/check-request-reply-flows.sh`) validates identity existence, subject coverage, and that `--template-only` output contains the derived grants. → ADR-064
+Responder inbox grants are no longer hand-written. A `request_reply_flows` section in `acl-matrix.json` declares each flow as `{ requester, responder, subject }`. `load_matrix()` (`scripts/_loader.py`) reads the flows and the generator (`factory-acl genkeys`, `scripts/gen_nkeys.py`) derives and injects the corresponding `_inbox.<requester>.>` publish grant for each responder automatically — the expansion is centralized in `scripts/_effective.py` (`effective_grants()`). Adding a new responder requires one JSON entry; the copy-paste pattern from ADR-062 Fix 2 — which had no enforcement and caused silent auth failures when any step was missed — is retired. A dedicated CI gate (`request_reply_flows`, `uv run factory-check-flows`) validates identity existence, subject coverage, and that `--template-only` output contains the derived grants. → ADR-064
 
 ### Provisioning posture
 
@@ -204,10 +204,10 @@ Responder inbox grants are no longer hand-written. A `request_reply_flows` secti
 
 ### Key invariants
 
-- No NATS identity may connect without an entry in the `IDENTITIES` manifest in `gen-nkeys.sh`.
+- No NATS identity may connect without an entry in the `identities` map of `deploy/nats/acl-matrix.json`.
 - `auth.conf` is always regenerated from manifest + seed dir — it is never hand-edited, patched, or appended to incrementally.
 - Every supervisor program references its own named seed file; missing seed → process exits non-zero (no silent fallback to another identity's seed).
-- Every identity's `nats_connect` call supplies `inbox_prefix="_INBOX.<identity>"` — the bus-wide _INBOX.> grant is retired for all roles.
+- Every identity's `nats_connect` call supplies `inbox_prefix="_inbox.<identity>"` (lowercase) — the bus-wide `_INBOX.>` grant is retired for all roles.
 - Responder inbox grants are derived from `request_reply_flows` in `acl-matrix.json` — no hand-written `_inbox.<requester>.>` entries in identity publish lists.
 - `CliPool` subprocess spawns are audited to `FACTORY_AUDIT` JetStream stream; NATS unavailability degrades to logger, not crash.
 - Advisory provisioning checks (`warn_subid_overlap`) distinguish missing files (skip silently) from unreadable files (warn operator); they do not suppress the check without notice.

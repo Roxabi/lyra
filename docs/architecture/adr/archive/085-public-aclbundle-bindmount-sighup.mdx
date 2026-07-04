@@ -23,9 +23,9 @@ Accepted — 2026-06-08
 
 `make nats-add-identity NAME=<x>` forces a full-fleet restart of `factory-nats` and all 7 `FACTORY_NATS_CLIENTS` (hub, telegram, discord, clipool, turn-writer, gh-helper, blobstore). The root cause is a delivery-model property: `auth.conf` is currently a Podman `type=mount` secret (tmpfs, bound at container init). When the operator runs `podman secret create --replace factory-nats-auth`, the secret store is updated but the in-container tmpfs file stays **stale until container restart** — documented in `deploy/CLAUDE.md`. `nats-server` supports live config reload via `SIGHUP` (`--signal reload`) without dropping connections, but the stale tmpfs makes SIGHUP useless for `type=mount`-delivered files.
 
-The downstream effect: every identity add forces a full-fleet bounce — momentary connection loss across the whole factory mesh for an operation that should be live and non-disruptive. This was identified in frame `artifacts/frames/1719-nats-identity-add-sighup-bind-mount-frame.mdx`.
+The downstream effect: every identity add forces a full-fleet bounce — momentary connection loss across the whole factory mesh for an operation that should be live and non-disruptive. This was identified in frame `git show eeeb288c2^:artifacts/frames/1719-nats-identity-add-sighup-bind-mount-frame.mdx`.
 
-Key material properties (from analysis `artifacts/analyses/1719-nats-identity-add-sighup-bind-mount-analysis.mdx`):
+Key material properties (from analysis `git show eeeb288c2^:artifacts/analyses/1719-nats-identity-add-sighup-bind-mount-analysis.mdx`):
 
 - **F1:** `auth.conf` holds only PUBLIC nkeys (`U…`) + ACL permission blocks. No private seeds (`S…`) are present. The tmpfs-isolation argument for `type=mount` applies to secrets-at-rest; it is structurally weaker for a file that contains no private material.
 - **F2:** `nats-container.conf` is already delivered as an inline bind mount (`Volume=%h/.roxabi/factory/nats.conf:/etc/nats/nats.conf:ro,z`) — the pattern is proven in production on Podman 5.x without loop-device issues.
@@ -60,7 +60,7 @@ After `nats-add-identity` writes and atomically renames the new `auth.conf` on t
 
 Drop the 7-client fan-out; on identity add, restart only `factory-nats` and allow clients to reconnect via `allow_reconnect`.
 
-Rejected: `factory-nats` still bounces (server-side connection drop). The tmpfs-staleness property persists — the file stays stale until restart, so the architectural problem is not resolved. This option fails the zero-drop success criterion stated in the frame. Cited explicitly in `artifacts/frames/1719-nats-identity-add-sighup-bind-mount-frame.mdx` as the "simplest alternative" and "why not simplest."
+Rejected: `factory-nats` still bounces (server-side connection drop). The tmpfs-staleness property persists — the file stays stale until restart, so the architectural problem is not resolved. This option fails the zero-drop success criterion stated in the frame. Cited explicitly in `git show eeeb288c2^:artifacts/frames/1719-nats-identity-add-sighup-bind-mount-frame.mdx` as the "simplest alternative" and "why not simplest."
 
 ---
 

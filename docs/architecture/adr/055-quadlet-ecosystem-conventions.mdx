@@ -13,7 +13,7 @@ status: amended
 Accepted (2026-04-24)
 
 **Absorbs:** ADR-053 (deployment topology + container hardening, archived), ADR-054 (credential store + UID rework, archived), ADR-056 (container publishing workflow, archived), ADR-068 (SELinux `:z` Quadlet bind-volume policy, archived), ADR-074 (bot credential delivery via Podman secrets, archived) — see `## Supersedes` below for the absorbed content.
-**Migration doc:** `docs/PROD-MIGRATION-STRATEGY.md` — Phase 2 entry criterion; §6 enumerates the seven questions resolved here.
+**Migration doc:** `docs/history/PROD-MIGRATION-STRATEGY.md` — Phase 2 entry criterion; §6 enumerates the seven questions resolved here.
 
 Amended 2026-07-01 (consolidation v2): D2's phased per-project NATS model (incrementing ports 4223/4224 → Phase 4 consolidation) and D5's installed shared deploy library are superseded — consolidation happened big-bang onto a single `factory-nats` on 4222, and deploys converge via `podman auto-update` + `make converge`; the Lyra-vs-factory framing is historical (repo renamed `roxabi-factory`, units `factory-*`).
 
@@ -41,7 +41,7 @@ It is **not** in `roxabi-production` (video showcase) nor `roxabi-boilerplate` (
 
 Let:
   M₁ := `roxabituwer` (192.168.1.16, Ubuntu 26.04 LTS, rootless Podman 5.x)
-  P₁ := Phase 1 of `docs/PROD-MIGRATION-STRATEGY.md` (Lyra Quadlet prod cutover — complete as of #611)
+  P₁ := Phase 1 of `docs/history/PROD-MIGRATION-STRATEGY.md` (Lyra Quadlet prod cutover — complete as of #611)
   P₂ := Phase 2 (voiceCLI Quadlet migration — blocked on this ADR)
 
 P₁ is complete. Lyra runs four Quadlet containers on `lyra.network`: `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-nats` (port 4223, coexisting with host `nats.service` on 4222). The ADR-053 + ADR-054 design is validated in prod.
@@ -108,7 +108,7 @@ These decisions are cross-project. No single project owns them. They must be set
 
 **Rationale:** Option B requires the Phase 4 merged auth.conf and shared network topology to be ready before voiceCLI can start. Blocking P₂ on that setup work is worse than the cost of running two NATS processes for the migration window. Option A (per-project forever) is rejected — fragmented auth surfaces and N NATS processes have no long-term value once the shared model is available.
 
-Option C lets voiceCLI proceed immediately with its own `voicecli-nats.container` (port 4224, continuing the coexistence pattern from Lyra's 4223). Phase 4 then consolidates all NATS-using projects onto one container. The consolidation path is documented in `docs/PROD-MIGRATION-STRATEGY.md` §3 Phase 4 — no new steps required.
+Option C lets voiceCLI proceed immediately with its own `voicecli-nats.container` (port 4224, continuing the coexistence pattern from Lyra's 4223). Phase 4 then consolidates all NATS-using projects onto one container. The consolidation path is documented in `docs/history/PROD-MIGRATION-STRATEGY.md` §3 Phase 4 — no new steps required.
 
 **4223 → 4222 consolidation path (Phase 4):**
 
@@ -170,7 +170,7 @@ During migration, port assignments are: host 4222 (system NATS), Lyra 4223, voic
 
 Centralizing under `~/.roxabi/env/` introduces a second runtime root for projects that already have `~/.<project>/`. The symmetry gain is not worth splitting the mental model. If a future secrets manager (e.g., a shared `podman secret` store) requires centralization, that is an O(N) file-move with no logic change — a low-cost migration deferred to when the need is proven.
 
-**nkey seeds across projects (critical):** voiceCLI seeds currently live in `~/.lyra/nkeys/` (`voice-tts.seed`, `voice-stt.seed`). This is a Phase 1 artifact — they were placed there when voiceCLI ran under Lyra's supervisord conf. They must migrate to `~/.voicecli/nkeys/` as part of Phase 2 step 2 (see `docs/PROD-MIGRATION-STRATEGY.md` §3 Phase 2).
+**nkey seeds across projects (critical):** voiceCLI seeds currently live in `~/.lyra/nkeys/` (`voice-tts.seed`, `voice-stt.seed`). This is a Phase 1 artifact — they were placed there when voiceCLI ran under Lyra's supervisord conf. They must migrate to `~/.voicecli/nkeys/` as part of Phase 2 step 2 (see `docs/history/PROD-MIGRATION-STRATEGY.md` §3 Phase 2).
 
 **Migration procedure for Phase 2:**
 
@@ -429,7 +429,7 @@ ADR-053 Decisions 1–3 (Quadlet as strategic target, naming normalization, imag
 
 1. **roxabi-vault daemon status** — is it a persistent NATS subscriber that needs Quadlet units, or a CLI/library? Determines Phase 4 auth.conf scope. (Follow-up 8 above.)
 2. **imageCLI NATS usage** — supervisord conf shows `autostart=false`; NATS not confirmed. (Follow-up 7.)
-3. **Port assignment registry** — per-project NATS ports are 4223 (Lyra), 4224 (voiceCLI), etc. Authoritative list: `docs/PROD-MIGRATION-STRATEGY.md` §1c (permanent home in Lyra).
+3. **Port assignment registry** — per-project NATS ports are 4223 (Lyra), 4224 (voiceCLI), etc. Authoritative list: `docs/history/PROD-MIGRATION-STRATEGY.md` §1c (permanent home in Lyra).
 
 ---
 

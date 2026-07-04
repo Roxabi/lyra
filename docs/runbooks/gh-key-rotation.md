@@ -161,7 +161,7 @@ Record the rotation in your operations journal:
 
 ## 6. Cross-References
 
-- [Plan #1078](../../artifacts/plans/1078-github-app-identity-plan.mdx) — T15 (rotation script) + T24 (this runbook)
+- Plan #1078 — T15 (rotation script) + T24 (this runbook) _(The plan was archived in the `2026-06` archive tombstone — recover via `git show artifacts-archive/2026-06:artifacts/archive/2026-06/plans/1078-github-app-identity-plan.mdx`.)_
 - [Spec #1078](../../artifacts/specs/1078-github-app-identity-spec.mdx) — slice V5 (UC6 key rotation), AC ops-#2 (≤10 s downtime)
 - [`deploy/scripts/rotate-gh-key.sh`](../../deploy/scripts/rotate-gh-key.sh) — the rotation script
 - [`deploy/provision.sh`](../../deploy/provision.sh) — section "Lyra GitHub App PEM (Podman secret)" for first-time bootstrap

@@ -25,7 +25,7 @@ An audit triggered by issue #1016 established that the gap is structural and cro
 
 ADR-006 decided "always send an error response, never silent drop" for the hub run loop (hub→adapter direction). The worker→hub direction never received the same treatment. This ADR closes that gap.
 
-The shape exploration is in `artifacts/analyses/1016-worker-error-envelope-analysis.mdx` (4 shapes: per-domain narrow patch, additive `WorkerError` on 5 envelopes, tagged-union wrapper, separate error subject). Both an architect and a devops review converged independently on the additive-envelope shape.
+The shape exploration is in `git show 84423dacb^:artifacts/analyses/1016-worker-error-envelope-analysis.mdx` (4 shapes: per-domain narrow patch, additive `WorkerError` on 5 envelopes, tagged-union wrapper, separate error subject). Both an architect and a devops review converged independently on the additive-envelope shape.
 
 ## Options Considered
 
@@ -204,8 +204,8 @@ The P2 shim deletion is **gated on telemetry**, not on judgment:
 ## References
 
 - Issue: [#1016](https://github.com/Roxabi/lyra/issues/1016) — feat(contracts): WorkerError envelope
-- Frame: `artifacts/frames/1016-worker-error-envelope-frame.mdx`
-- Analysis: `artifacts/analyses/1016-worker-error-envelope-analysis.mdx` (4 shapes evaluated; B selected)
+- Frame: `git show 84423dacb^:artifacts/frames/1016-worker-error-envelope-frame.mdx`
+- Analysis: `git show 84423dacb^:artifacts/analyses/1016-worker-error-envelope-analysis.mdx` (4 shapes evaluated; B selected)
 - Extends: ADR-006 (hub run-loop error/response gap) — same principle applied to a different boundary
 - Builds on: ADR-049 (roxabi-contracts shared schema package) — additive-only rule, `extra="ignore"`, test-double 3-guards
 - Builds on: ADR-045 (roxabi-nats SDK) — transport primitives layer this depends on

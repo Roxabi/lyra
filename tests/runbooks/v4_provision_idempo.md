@@ -204,7 +204,7 @@ sudo -u mickael XDG_RUNTIME_DIR=/run/user/1000 podman secret ls | grep factory-g
 ## 8. Cross-references
 
 - **Spec AC ops-#1** — `artifacts/specs/1078-github-app-identity-spec.mdx` line 263: "provision.sh is idempotent: running twice on a clean host produces zero error and zero state diff"
-- **Plan T14** — `artifacts/plans/1078-github-app-identity-plan.mdx`: "Verify: diff empty, both runs exit 0"
+- **Plan T14** — (archived 2026-06, recover via `git show artifacts-archive/2026-06:artifacts/archive/2026-06/plans/1078-github-app-identity-plan.mdx`): "Verify: diff empty, both runs exit 0"
 - **T13 commit** — `eab74935` — "Extend deploy/provision.sh with idempotent factory-gh-pem secret bootstrap"
-- **Plan T13** — `artifacts/plans/1078-github-app-identity-plan.mdx`: provision.sh extension (Slice V4, AC ops-#1)
+- **Plan T13** — (archived 2026-06, recover via `git show artifacts-archive/2026-06:artifacts/archive/2026-06/plans/1078-github-app-identity-plan.mdx`): provision.sh extension (Slice V4, AC ops-#1)
 - **Source block** — `deploy/provision.sh` lines 380-400: "Lyra GitHub App PEM (Podman secret)" section

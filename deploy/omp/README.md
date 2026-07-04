@@ -119,7 +119,7 @@ not add custom retry logic — fix gateway availability or credentials on M₁.
     tests/deploy/test_omp_models_discovery.py::test_live_gateway_catalogue_has_grok_model -x
   ```
 
-- Historical gate (#1811): spike PoC `artifacts/spikes/1807/omp_rpc_poc.py` with
+- Historical gate (#1811): spike PoC (archived 2026-06, recovered via `git show artifacts-archive/2026-06:artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py`) with
   `PI_CODING_AGENT_DIR` — superseded for catalogue sync by discovery (#1923).
 
 ## Boundary

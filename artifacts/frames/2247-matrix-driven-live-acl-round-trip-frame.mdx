@@ -1,0 +1,50 @@
+---
+title: "test(nats): matrix-driven live ACL round-trip — close the postmortem's P0 gap"
+issue: 2247
+status: approved
+tier: F-lite
+date: 2026-07-04
+---
+
+## Problem
+
+The 2026-04-27 NATS-ACL incident postmortem (`docs/history/nats-acl-inbox-case-postmortem.md`) marked its P0 fix — "real NATS server + ephemeral nkeys + cross allow/deny assertions" — as **skipped**. `tests/scripts/test_parity_e2e.py` already boots an ephemeral `nats-server` with the real rendered `auth.conf` + ephemeral nkeys and asserts allow/deny for a handful of hand-picked identities (hub, voice-tts, clipool) plus retired-identity rejection, so the live-server harness exists. What's missing is **coverage breadth** and the **specific failure mechanism**: the suite is not parametrized over the full `deploy/nats/acl-matrix.json`, and there is no live cross-identity request/reply round-trip through the broker's real dynamic inbox (`_INBOX.hub.<NUID>`, case-sensitive, gated by `allow_responses`) — the exact mechanism that broke in April. A static (identity, subject) string-match would not reproduce that failure class; only a live round-trip against the broker's real accept/reject does.
+
+This gap was surfaced during epic #2193 triage and validated 2026-07-04 by a 5-agent panel (architect/product-lead/axial-drift/security/devops), unanimous that this is the highest priority of the four #2202/2203/2204 follow-ups. **Why now:** every new identity/subject added to `acl-matrix.json` since April ships with zero live-ACL coverage until someone remembers to hand-add a case — the postmortem's core lesson (a live broker is the only thing that reproduces this class of bug) is still unenforced in CI.
+
+## Who
+
+- **Primary:** CI / the merge queue — the gate that must catch the next `_INBOX` regression before it reaches staging (this is a test-hardening issue, not a product feature).
+- **Secondary:** future identity/subject authors (`acl-matrix.json` editors) who get auto-coverage without hand-writing a new assertion; the axial-drift reviewer, who flagged that a 3rd per-identity file would institutionalize N×M test-axis drift.
+
+## Constraints
+
+- **Do not build from scratch** — extend `tests/scripts/test_parity_e2e.py`, which already boots the real ephemeral `nats-server` + real rendered `auth.conf` + ephemeral nkeys.
+- **Do not add a 3rd per-identity static ACL test file** — one data-driven harness only; keep `test_acl_canonical_llm.py` and `test_acl_gh_helper.py` as a fast structural pre-check layer, cross-referenced not folded in.
+- Matrix-driven: parametrize over every active `(identity, subject)` pair in `deploy/nats/acl-matrix.json` and every `request_reply_flows` entry; skip `status:retired` identities.
+- CI must **hard-fail**, not skip, when `nats-server`/`nk` are absent (the existing `requires_nats_server` skip guard is itself a false-green risk).
+- Security: ephemeral nkeys generated fresh per run into runner tmpfs only, never committed/cached as artifacts; broker bound to `127.0.0.1` on an ephemeral port with a per-run tmp datadir; never read a real `~/.roxabi` seed path.
+- `make test-acl` alias must run this file.
+- Standalone CI/test-hardening — **not** filed under epic #2193 (doc-strategy).
+
+## Out of Scope
+
+- Rewriting or removing `test_acl_canonical_llm.py` / `test_acl_gh_helper.py` — they stay as the fast pre-check layer.
+- Epic #2193 doc-strategy work (explicitly not this issue's lane).
+- Any change to `acl-matrix.json` content itself (identities, subjects, flows) — this issue only adds coverage over what already exists there.
+- Non-ACL parity assertions already covered elsewhere in `test_parity_e2e.py` (e.g. non-NATS parity checks, if any) beyond what's needed to host the new parametrization.
+
+## Premise Validity
+
+**Success in 6 months:** the live ACL round-trip suite is parametrized over the full active `(identity, subject)` matrix and every `request_reply_flows` entry from `acl-matrix.json`, runs via `make test-acl`, hard-fails (not skips) in CI when `nats-server`/`nk` are missing, and a case-mismatched or non-flow reply-to is denied by a live broker round-trip — i.e. the April failure class is mechanically reproduced and gated on every PR, with zero new identities shipping without live coverage.
+
+**Failure in 6 months:** at any point in the next 6 months, a NATS-ACL regression of the April class (a cross-identity subscribe/reply that should be denied is instead delivered, or vice-versa) reaches `staging` without this suite failing — either because coverage wasn't actually wired to `acl-matrix.json` (new identities silently uncovered) or because the CI job quietly skips instead of hard-failing when `nats-server`/`nk` are unavailable. Both are observable: a merged PR that touches `acl-matrix.json` without a corresponding red/green signal from `test_parity_e2e.py`, or a CI run log showing "SKIPPED" instead of a hard failure for the ACL job.
+
+**Simplest alternative:** add one more hardcoded test case to `test_parity_e2e.py` for the specific identities/subjects involved in the April incident, next to the existing hand-picked hub/voice-tts/clipool assertions.
+**Why not simplest:** this is exactly the pattern the axial-drift panel flagged — hardcoded per-identity assertions don't auto-extend to new identities/subjects added to `acl-matrix.json` later, so the next new identity again ships with zero live-ACL coverage until someone remembers to hand-add a case. Matrix-driven parametrization removes that manual-remembering dependency structurally, which is the entire point of closing a "postmortem P0 gap" rather than patching the one symptom that was noticed.
+
+## Complexity
+
+**Tier: F-lite** — label `size:F-lite`; clear scope, single domain (test infrastructure for one file), no new architecture — the live-server harness, auth.conf rendering, and nkey generation all already exist; this issue extends parametrization and adds one new assertion shape (request/reply round-trip) within that existing harness.
+
+Signals observed: issue label `size:F-lite`; single domain (`tests/scripts/test_parity_e2e.py` + CI wiring); explicit non-goals narrow the scope further (no acl-matrix.json content changes, no epic linkage, no rewrite of the static pre-check files).

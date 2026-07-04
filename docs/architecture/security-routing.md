@@ -172,11 +172,11 @@ Every memory query at every level (L0–L4) must include `user_id` as an explici
 
 ### Nkey identity provisioning
 
-`auth.conf` is a pure function of two inputs: the `IDENTITIES` manifest (constants in `gen-nkeys.sh`) and the seed directory on disk. A `--regen-authconf` mode re-renders the full file without rotating existing seeds — non-destructively closing drift caused by new identities added since the last generation. Missing seeds are auto-created; no identity in the manifest may be silently skipped. Each supervisor program must reference its own named seed file and fail fast if absent — the old `.env` fallback to `hub.seed` (which caused adapters to silently authenticate as hub) is classified as a misconfiguration, not a feature. A `factory ops verify` command detects gaps between the manifest, disk seeds, and live `auth.conf` before harm occurs. → ADR-046
+`auth.conf` is a pure function of two inputs: the `IDENTITIES` manifest (identities map in `deploy/nats/acl-matrix.json`) and the seed directory on disk. A `--regen-authconf` mode in `factory-acl genkeys` re-renders the full file without rotating existing seeds — non-destructively closing drift caused by new identities added since the last generation. Missing seeds are auto-created; no identity in the manifest may be silently skipped. Each supervisor program must reference its own named seed file and fail fast if absent — the old `.env` fallback to `hub.seed` (which caused adapters to silently authenticate as hub) is classified as a misconfiguration, not a feature. A `factory ops verify` command detects gaps between the manifest, disk seeds, and live `auth.conf` before harm occurs. → ADR-046
 
 ### Per-identity NATS inbox prefix
 
-Every NATS identity must connect with `inbox_prefix="_INBOX.<identity-name>"`. This scopes all ephemeral inboxes that identity creates to `_INBOX.<identity>.>`, narrowing the ACL grant from the former bus-wide _INBOX.>. A leaked seed is therefore bounded to the compromised identity's own inbox namespace — it cannot be used to wiretap other identities' request-reply traffic. The fix is enforced at connect time via `roxabi_nats.nats_connect` with no changes to streaming logic. All current identities (hub, telegram-adapter, discord-adapter, tts-adapter, stt-adapter, voice-tts, voice-stt, image-worker) are covered. New identities added to `IDENTITIES` must supply `inbox_prefix` from their first connection. → ADR-051
+Every NATS identity must connect with `inbox_prefix="_inbox.<identity-name>"`. This scopes all ephemeral inboxes that identity creates to `_inbox.<identity>.>`, narrowing the ACL grant from the former bus-wide _INBOX.>. A leaked seed is therefore bounded to the compromised identity's own inbox namespace — it cannot be used to wiretap other identities' request-reply traffic. The fix is enforced at connect time via `roxabi_nats.nats_connect(identity_name=...)` with no changes to streaming logic. All current identities (19 total: hub, telegram-adapter, discord-adapter, tts-adapter, stt-adapter, voice-tts, voice-stt, image-worker, and others) are covered. New identities added to the `identities` map in `acl-matrix.json` must supply `inbox_prefix` from their first connection. → ADR-051
 
 ### Security event audit
 
@@ -196,7 +196,7 @@ operator audit (ADR-093), not by `FACTORY_AUDIT`. → ADR-057
 
 ### ACL request/reply derivation
 
-Responder inbox grants are no longer hand-written. A `request_reply_flows` section in `acl-matrix.json` declares each flow as `{ requester, responder, subject }`. The `load_matrix()` function in `gen-nkeys.sh` derives and injects the corresponding `_inbox.<requester>.>` publish grant for each responder automatically. Adding a new responder requires one JSON entry; the copy-paste pattern from ADR-062 Fix 2 — which had no enforcement and caused silent auth failures when any step was missed — is retired. A dedicated CI script (`scripts/check-request-reply-flows.sh`) validates identity existence, subject coverage, and that `--template-only` output contains the derived grants. → ADR-064
+Responder inbox grants are no longer hand-written. A `request_reply_flows` section in `acl-matrix.json` declares each flow as `{ requester, responder, subject }`. `load_matrix()` (`scripts/_loader.py`) reads the flows and the generator (`factory-acl genkeys`, `scripts/gen_nkeys.py`) derives and injects the corresponding `_inbox.<requester>.>` publish grant for each responder automatically — the expansion is centralized in `scripts/_effective.py` (`effective_grants()`). Adding a new responder requires one JSON entry; the copy-paste pattern from ADR-062 Fix 2 — which had no enforcement and caused silent auth failures when any step was missed — is retired. A dedicated CI gate (`request_reply_flows`, `uv run factory-check-flows`) validates identity existence, subject coverage, and that `--template-only` output contains the derived grants. → ADR-064
 
 ### Provisioning posture
 
@@ -204,10 +204,10 @@ Responder inbox grants are no longer hand-written. A `request_reply_flows` secti
 
 ### Key invariants
 
-- No NATS identity may connect without an entry in the `IDENTITIES` manifest in `gen-nkeys.sh`.
+- No NATS identity may connect without an entry in the `identities` map of `deploy/nats/acl-matrix.json`.
 - `auth.conf` is always regenerated from manifest + seed dir — it is never hand-edited, patched, or appended to incrementally.
 - Every supervisor program references its own named seed file; missing seed → process exits non-zero (no silent fallback to another identity's seed).
-- Every identity's `nats_connect` call supplies `inbox_prefix="_INBOX.<identity>"` — the bus-wide _INBOX.> grant is retired for all roles.
+- Every identity's `nats_connect` call supplies `inbox_prefix="_inbox.<identity>"` (lowercase) — the bus-wide _INBOX.> wildcard grant is retired for all roles.
 - Responder inbox grants are derived from `request_reply_flows` in `acl-matrix.json` — no hand-written `_inbox.<requester>.>` entries in identity publish lists.
 - `CliPool` subprocess spawns are audited to `FACTORY_AUDIT` JetStream stream; NATS unavailability degrades to logger, not crash.
 - Advisory provisioning checks (`warn_subid_overlap`) distinguish missing files (skip silently) from unreadable files (warn operator); they do not suppress the check without notice.
@@ -217,6 +217,16 @@ Responder inbox grants are no longer hand-written. A `request_reply_flows` secti
 - NATS subject naming, KV readiness probe → `messaging.md`
 - Cross-project NATS SDK (absorbs ACL inbox case ADR-062) → `contracts.md` (ADR-045)
 - Quadlet credential-store (absorbs ADR-054) → `deployment.md` (ADR-055)
+
+---
+
+## ADR archive
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| 046 | NATS access artifacts (auth.conf + ACL grants) are derived, never hand-written | Accepted — amended 2026-07-01/2026-07-04 (shell → `factory-acl genkeys`, manifest location) |
+| 051 | Per-identity NATS inbox prefix as a security invariant | Accepted — amended 2026-07-01 (uppercase → lowercase `_inbox.<identity>`) |
+| 090 | Agent-Scoped Authorization Matrix (Bots Inherit) | Accepted |
 
 ---
 

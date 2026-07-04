@@ -25,7 +25,7 @@ LLM streaming internals (see `llm-streaming.md`).
 `RoutingKey(platform, bot_id, scope_id)` is a 3-field `NamedTuple` that uniquely identifies
 a conversation scope within a bot on a platform. The third field was renamed from `user_id`
 to `scope_id` (amendment #125): it encodes conversation context (`chat:555`, `thread:111`,
-`channel:222`) derived from `Message.extract_scope_id()`, not user identity. Two separate
+`channel:222`) derived from the adapter's scope-id computation (e.g., `_make_scope_id()` in telegram adapter), not user identity. Two separate
 chats from the same user produce two independent `RoutingKey`s and two independent pools.
 User identity for rate limiting and authentication stays in `Message.user_id`, keyed on
 `(platform.value, bot_id, user_id)` — not on `scope_id` — so users cannot bypass rate
@@ -62,8 +62,8 @@ NATS type (Core vs JetStream), the durability contract, and the keying shape:
 | Plane | Subject prefix | NATS type | Durability | Producers | Consumers | When to use |
 |---|---|---|---|---|---|---|
 | Messages | `factory.{inbound,outbound}.<platform>.<bot_id>` | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
-| Persistence | `factory.turns.>` | JetStream durable (stream `FACTORY_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub, telegram-adapter, discord-adapter | turn-writer | append-only state changes requiring at-least-once delivery |
-| Typing / Lifecycle | `factory.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
+| Persistence | `factory.turns.>` | JetStream durable (stream `FACTORY_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub | turn-writer | append-only state changes requiring at-least-once delivery |
+| Typing / Lifecycle | `factory.typing.<platform>.<bot_id>` | Core | ephemeral | hub, adapters | adapters | ephemeral display-feedback events (typing indicators; progress UX) — lossy-OK because consumer state auto-expires |
 | Audio delivery | `factory.outbound.audio.<platform>.<bot_id>` | JetStream durable (stream `FACTORY_OUTBOUND_AUDIO`, `MaxAge=24h`, Limits retention) | durable | hub | audio-consumer per bot (`outbound-audio-{platform}-{bot_id}`) | durable outbound audio chunks — exactly-once delivery to bot audio sender; dedup via KV `factory_outbound_audio_sent` (TTL=900s) |
 | Job dispatch | `factory.jobs.<domain>.<verb>` | JetStream WorkQueue (stream `FACTORY_JOBS`, WorkQueue retention) | durable | hub (provisioner), workers (publishers) | job workers per domain | durable job dispatch with at-most-once delivery; DLQ routing on `MAX_DELIVERIES` advisory |
 
@@ -99,7 +99,7 @@ All subjects follow `factory.{domain}.{qualifier...}` (domain-first, NATS conven
 | `factory.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
 | `factory.outbound.{platform}.{bot_id}` | hub → adapter | Response chunk delivery |
 | `factory.outbound.audio.<platform>.<bot_id>` | hub → audio-consumer | Durable outbound audio chunks (JetStream, stream `FACTORY_OUTBOUND_AUDIO`); filter is exact 5-token subject; consumer durable = `outbound-audio-{platform}-{bot_id}` |
-| `factory.typing.{platform}.{bot_id}` | hub → adapter | Ephemeral typing indicator lifecycle (Typing plane — Epic #1375, lands with T1 #1376) |
+| `factory.typing.{platform}.{bot_id}` | hub → adapter | Ephemeral typing indicator lifecycle (Typing plane — Epic #1375, T1 #1376 landed) |
 | `factory.llm.generate.request` | hub → worker | LLM compute offload |
 | `factory.llm.health.{worker_id}` | worker → hub | Satellite LLM worker heartbeats |
 | `factory.jobs.claude` | hub → CliPool | Submit turn + resume UUID |
@@ -297,10 +297,10 @@ at parse (`extra="forbid"`).
 | 002 | Hub dispatch contracts | Superseded — archived (invariants live in § Hub dispatch above) |
 | 035 | NATS subject naming | Superseded by ADR-076 — archived (grammar absorbed there) |
 | 036 | RenderEvent chunk protocol | Superseded by ADR-100 — archived (see `llm-streaming.md`) |
-| 065 | KV readiness probe | Accepted |
-| 072 | Codec registry pattern (v2 RenderEvent) | Accepted — supersedes ADR-032 v1 wire shape |
-| 076 | Three NATS planes (messages / persistence / typing) | Accepted — 2026-05-26; operational landing with Epic #1375 |
+| 065 | KV readiness probe | Accepted — amended 2026-07-04 (lyra→factory unit/volume names) |
+| 072 | Codec registry pattern (v2 RenderEvent) | Superseded by ADR-100 — archived (see `llm-streaming.md`) |
+| 076 | Three NATS planes (messages / persistence / typing) | Accepted — amended 2026-07-02 (absorbs ADR-035); 2026-05-26 operational landing with Epic #1375 |
 | 077 | Outbound audio subject family | Superseded by ADR-079 |
-| 079 | Audio NATS contract — axial consolidation | Accepted — 2026-05-30 |
+| 079 | Audio NATS contract — axial consolidation | Accepted — amended 2026-07-04 (code-subjects.json → RESOURCES); 2026-05-30 operational landing |
 | 095 | Voice lifecycle plane — heartbeat vs capabilities listing | Superseded — archived (invariants live in § Voice lifecycle above) |
 | 037, 040, 047, 062 | (various transport ADRs) | Absorbed by ADR-045 (roxabi-nats SDK) |

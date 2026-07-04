@@ -23,7 +23,7 @@
 | [engineering-standards.md](architecture/engineering-standards.md) | **Cross-repo doctrine** (all Roxabi repos) — Clean/Hexagonal/Kernel layering, error contract, testing conventions, CI quality gates |
 | [CURRENT.generated.md](architecture/CURRENT.generated.md) | **Generated** — machine-generated inventory SSoT: layers, subjects, topology, entry points |
 
-**Decision archive** — the ADRs in [`architecture/adr/`](architecture/adr/) preserve historical reasoning; superseded records move to `adr/archive/`. Each ADR has a redirect banner to its domain page and a decision-stating title — the title IS the index. **Read ADRs only when you need the *why* behind a decision**, not the *what*. Per-domain listings (status + one-line summary) live in each domain page's "ADR archive" table.
+**Decision archive** — the ADRs in [`architecture/adr/`](architecture/adr/) preserve historical reasoning; superseded records move to `adr/archive/`. Each ADR has a redirect banner to its domain page and a decision-stating title — the title IS the index. **Read ADRs only when you need the *why* behind a decision**, not the *what*. Per-domain listings (status + one-line summary) live in each domain page's "ADR archive" table. Two ADRs live outside the domain-page system: ADR-086 (Documentation Architecture — the meta-decision for this tree itself) and ADR-101 (Runtime Brand Tokens — current truth in `brand/` + `packages/shared/`).
 
 ---
 

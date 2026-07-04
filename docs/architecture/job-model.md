@@ -7,7 +7,7 @@ description: Living current-truth document for the unified job model — job_id=
 
 > Status: LIVING — current truth for the unified job model and runtime control (first controls are live; Shape-D routing is still design).
 > Last updated: 2026-07-02.
-> Source: ADR-084 (amended); ADR-045; ADR-049; ADR-075 (superseded by ADR-078); artifacts/analyses/job-model-concept-analysis.md §15. Dispatch-stream (`FACTORY_JOBS`) truth lives in `messaging.md`.
+> Source: ADR-084 (amended); ADR-045; ADR-049 (amended 2026-07-01); ADR-075; artifacts/analyses/job-model-concept-analysis.md §15. Dispatch-stream (`FACTORY_JOBS`) truth lives in `messaging.md`.
 
 ## Scope
 
@@ -321,7 +321,7 @@ Epic #1792 blocked-by #1778 (open); #1619 ✅ / #1203 ✅
 - `docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` — historical why; **WorkEnvelope** / **ContractEnvelope** split; id-model prose amended by #1794
 - `artifacts/analyses/job-model-concept-analysis.md` — full design history; §15 = ratified session (this page distills it)
 - ADR-045 / ADR-049 — roxabi-nats SDK and contract schemas
-- ADR-075 — `turns.db` JetStream persistence (result data layer); superseded by ADR-078 (TurnStoreProtocol)
+- ADR-075 — `turns.db` JetStream persistence (result data layer; turn-writer sublayer in force)
 - `docs/architecture/contracts.md` — cross-project contract schemas
 - `docs/architecture/messaging.md` — NATS planes, subject naming, hub dispatch; current truth for the `FACTORY_JOBS` dispatch stream + DLQ (ADR-088 decision record)
 - `docs/architecture/storage.md` — thread/session stores, KV details
@@ -334,6 +334,6 @@ Epic #1792 blocked-by #1778 (open); #1619 ✅ / #1203 ✅
 |---|---|---|
 | ADR-084 | Amended (#1794 — `job_id`=run) | **WorkEnvelope** / **ContractEnvelope** split; id-model |
 | ADR-045 | Accepted | roxabi-nats SDK transport contracts |
-| ADR-049 | Accepted | roxabi-contracts schema registry |
-| ADR-075 | Superseded by ADR-078 | `turns.db` JetStream persistence |
-| ADR-088 | Decision record — current truth in `messaging.md` | `FACTORY_JOBS` dispatch stream + DLQ router |
+| ADR-049 | Accepted — amended 2026-07-01 | roxabi-contracts schema registry |
+| ADR-075 | Accepted | `turns.db` JetStream persistence (turn-writer sublayer in force) |
+| ADR-088 | Superseded — archived (decision absorbed by messaging.md) | `FACTORY_JOBS` dispatch stream + DLQ router |

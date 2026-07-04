@@ -26,7 +26,7 @@ HEARTBEAT_SUBJECT = "factory.image.heartbeat"
 
 This ADR aligns to the **shipped subject** (`factory.image.heartbeat`). The `generate` segment is omitted because heartbeats are worker-level liveness signals, not tied to a single verb. This is consistent with the naming convention in ADR-035 and the voicecli heartbeat pattern in ADR-044.
 
-Cross-references: imageCLI#50 (satellite implementation), `artifacts/specs/754-lyra-image-domain-integration-spec.mdx` (lyra-side spec).
+Cross-references: imageCLI#50 (satellite implementation), `git show cc05650ee^:artifacts/specs/754-lyra-image-domain-integration-spec.mdx` (lyra-side spec).
 
 ## Decision
 
@@ -280,7 +280,7 @@ Path validation uses `Path.resolve()` to canonicalize before the `relative_to` c
 
 ## References
 
-- Spec: [`artifacts/specs/754-lyra-image-domain-integration-spec.mdx`](../../../artifacts/specs/754-lyra-image-domain-integration-spec.mdx)
+- Spec: `git show cc05650ee^:artifacts/specs/754-lyra-image-domain-integration-spec.mdx`
 - Issue: [#754](https://github.com/Roxabi/lyra/issues/754)
 - Satellite implementation: `imageCLI/src/imagecli/nats/adapter.py` (shipped by imageCLI#50, closed 2026-04-15)
 - Hub client: `src/lyra/nats/nats_image_client.py` (new — ships with #754)

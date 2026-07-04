@@ -4,7 +4,7 @@ Pure Pydantic. No NATS imports. No transport logic. Every model subclasses
 WorkEnvelope, which provides (contract_version, trace_id, issued_at, job_id)
 plus ConfigDict(extra="ignore") for forward-compat (ADR-084).
 
-See artifacts/specs/763-port-voice-domain-spec.mdx §Known drift for the
+See docs/architecture/contracts.md and ADR-084 for the
 rationale on optional-but-invariant fields on response models.
 """
 

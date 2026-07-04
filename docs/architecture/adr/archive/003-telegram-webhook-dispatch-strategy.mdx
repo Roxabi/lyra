@@ -40,7 +40,7 @@ Two integration patterns exist in aiogram v3 for feeding webhook updates:
    it rather than owning the dispatch loop.
 
 The current PR plan (T18 in
-`artifacts/plans/29-slice-2-telegram-adapter-aiogram-v3-webhook.mdx`) specified
+`git show cc05650ee^:artifacts/plans/29-slice-2-telegram-adapter-aiogram-v3-webhook.mdx`) specified
 `feed_update()` directly. `SimpleRequestHandler` is the aiohttp-specific helper; the FastAPI
 equivalent exists but requires mounting aiogram's router rather than defining a plain
 `@app.post` handler.

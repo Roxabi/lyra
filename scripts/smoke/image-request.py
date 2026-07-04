@@ -3,10 +3,10 @@
 
 Publishes one factory.image.generate.request and asserts ok:true on the reply.
 Run on Machine 1 (hub host) after imagecli_gen is RUNNING under the new
-image-worker nkey. Capture stdout as rollout evidence:
+image-worker nkey. Capture stdout as evidence:
 
     python scripts/smoke/image-request.py \
-        > artifacts/rollout-evidence/754-image-smoke.txt
+        > artifacts/evidence/image-request-smoke.txt
 
 Env:
     NATS_URL               Defaults to nats://127.0.0.1:4222

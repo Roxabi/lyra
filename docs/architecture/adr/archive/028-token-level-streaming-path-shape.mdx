@@ -22,7 +22,7 @@ Accepted — partially superseded
 
 Issue #320 adds token-level streaming from the Claude CLI subprocess to Telegram/Discord adapters. The Claude CLI already supports `--include-partial-messages` in `stream-json` mode, emitting `stream_event/content_block_delta` NDJSON lines. The downstream plumbing — `dispatch_streaming`, `enqueue_streaming`, adapter `send_streaming` — is fully implemented and ready.
 
-The work is concentrated in the CLI protocol layer (`cli_protocol.py`, `cli_pool.py`) and the driver/agent path (`cli.py`, `simple_agent.py`). Three shapes were evaluated in `artifacts/analyses/320-token-level-streaming-analysis.mdx`.
+The work is concentrated in the CLI protocol layer (`cli_protocol.py`, `cli_pool.py`) and the driver/agent path (`cli.py`, `simple_agent.py`). Three shapes were evaluated in `git show cc05650ee^:artifacts/analyses/320-token-level-streaming-analysis.mdx`.
 
 An architectural review of that analysis identified four edge cases not addressed by the analysis document. This ADR records both the shape decision and the edge-case contracts that the spec must enforce.
 

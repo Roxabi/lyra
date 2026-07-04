@@ -45,7 +45,7 @@ Secret=lyra-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_TOKEN
 
 This injects the secret value directly as an environment variable in the container. The Python forwarder in `cli_pool_worker._spawn` passes it through `_SAFE_ENV_KEYS` allowlist to the spawned `claude` subprocess.
 
-**Rationale for `type=env` over `type=mount`:** the `claude` CLI must receive the token in its environment regardless of upstream delivery — there is no `--token-file` flag. Using `type=mount` would require Python to read `/run/secrets/claude-oauth.tok` and inject the contents into `env` at spawn time, achieving identical `/proc/<claude-pid>/environ` exposure with one extra syscall and a parent-process token lifecycle to manage. The architect's analysis on the consensus panel (`artifacts/analyses/1105-claude-oauth-injection-consensus.mdx`) concluded: "mount-then-read achieves *identical* exposure with more indirection. No benefit."
+**Rationale for `type=env` over `type=mount`:** the `claude` CLI must receive the token in its environment regardless of upstream delivery — there is no `--token-file` flag. Using `type=mount` would require Python to read `/run/secrets/claude-oauth.tok` and inject the contents into `env` at spawn time, achieving identical `/proc/<claude-pid>/environ` exposure with one extra syscall and a parent-process token lifecycle to manage. The architect's analysis on the consensus panel (`git show eeeb288c2^:artifacts/analyses/1105-claude-oauth-injection-consensus.mdx`) concluded: "mount-then-read achieves *identical* exposure with more indirection. No benefit."
 
 ### 2. Threat-model scope that bounds the residual exposure
 

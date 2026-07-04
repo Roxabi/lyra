@@ -207,7 +207,7 @@ Responder inbox grants are no longer hand-written. A `request_reply_flows` secti
 - No NATS identity may connect without an entry in the `identities` map of `deploy/nats/acl-matrix.json`.
 - `auth.conf` is always regenerated from manifest + seed dir — it is never hand-edited, patched, or appended to incrementally.
 - Every supervisor program references its own named seed file; missing seed → process exits non-zero (no silent fallback to another identity's seed).
-- Every identity's `nats_connect` call supplies `inbox_prefix="_inbox.<identity>"` (lowercase) — the bus-wide `_INBOX.>` grant is retired for all roles.
+- Every identity's `nats_connect` call supplies `inbox_prefix="_inbox.<identity>"` (lowercase) — the bus-wide _INBOX.> wildcard grant is retired for all roles.
 - Responder inbox grants are derived from `request_reply_flows` in `acl-matrix.json` — no hand-written `_inbox.<requester>.>` entries in identity publish lists.
 - `CliPool` subprocess spawns are audited to `FACTORY_AUDIT` JetStream stream; NATS unavailability degrades to logger, not crash.
 - Advisory provisioning checks (`warn_subid_overlap`) distinguish missing files (skip silently) from unreadable files (warn operator); they do not suppress the check without notice.

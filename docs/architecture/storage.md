@@ -1,17 +1,17 @@
 ---
 title: Storage & Persistence
-description: Current truth for all store, persistence, and event-bus decisions in Lyra — agent store, thread store, blobstore, memory scope, and event bus wiring.
+description: Current truth for all store, persistence, and event-bus decisions in factory — agent store, thread store, blobstore, memory scope, and event bus wiring.
 ---
 
 # Storage & Persistence — factory
 
 > Status: LIVING — current truth for store/persistence/event-bus decisions.
-> Last updated: 2026-05-24.
+> Last updated: 2026-07-04.
 > Source ADRs: 008, 022 (amended), 024, 029, 063, 067 (amended), 068, 082. Absorbed via 059: 048.
 
 ## Scope
 
-Covers the five persistence surfaces in Lyra: memory scope (what is actually stored at runtime),
+Covers the five persistence surfaces in factory: memory scope (what is actually stored at runtime),
 the agent config store (SQLite, write-through cache), the thread store (Discord thread
 persistence), the blobstore (content-addressed binary archive), and the event bus wiring
 pattern. The hexagonal placement of all stores within `factory.infrastructure` is canonical in
@@ -116,6 +116,10 @@ async def write(self, user_id: str, content: str, level: MemoryLevel, session_id
 - [ ] TTL auto-purge for L1/L2
 - [ ] Per-user stats endpoint (usage, size, last activity)
 
+### Long-term memory (roxabi-cortex)
+
+Persistent semantic memory and episodic recall are owned by `roxabi-cortex` (ADR-087). Factory consumes this capability via `roxabi.memory.query.assemble` (NATS subject) and stores only transient session state (L1) and semantic ephemera (L3 ephemeral-TTL rows). The five-level taxonomy remains the long-term architectural target; roxabi-cortex implements the backing store.
+
 ### Agent store (SQLite)
 
 `AgentStore` lives at `factory.infrastructure.stores.registry.agent_store` (moved from `factory.core` during
@@ -155,12 +159,12 @@ SHA-256-addressed flat-FS tree (`~/.roxabi/factory/blobstore/<sha[:2]>/<sha>`) p
 `~/.roxabi/factory/blobstore/index.sqlite` (two tables: `blobs` keyed by `content_hash`; `blob_refs` for
 per-ingestion provenance). The backend runs on `factory-hub` role (M₁) and is exposed via a
 dedicated Quadlet container `factory-blobstore.container` (FastAPI on TCP `:8449`, image
-`ghcr.io/roxabi/factory` + `lyra blobstore serve` subcommand) — V8 issue #1330. Host paths:
-`~/.roxabi/factory/blobs/` (data, bind-mount into container) and `~/.roxabi/factory/env/blobstore.env`
+`ghcr.io/roxabi/factory` + `factory blobstore serve` subcommand) — V8 issue #1330. Host paths:
+`~/.roxabi/factory/blobstore/` (data, bind-mount into container) and `~/.roxabi/factory/env/blobstore.env`
 (Quadlet env). Direct-FS access is reserved for co-located writers only (telegram_normalize,
 hub middleware); all other consumers (e.g., M₂ image-worker) use `HttpBlobStore` — the store
 host is invisible to them. Auth: shared bearer token via Podman secret `factory_blobstore_token`
-(`type=mount`) in Phase 1 → per-identity JWT or `auth.db` lookup + `blob_grants` table in
+(`type=mount`) in Phase 1 → per-identity JWT or `auth.db` lookup + `agent_grants` table in
 Phase 2 (see ADR-067 §Auth plane). Dedup: `put()` hashes first; if `blobs.content_hash`
 exists, only a new `blob_refs` row is appended. Write durability order: write file → `fsync`
 → INSERT. Backup (Phase 1): Restic → Cloudflare R2 daily, `index.sqlite` snapshotted via
@@ -302,14 +306,15 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| 008 | Phase-1 memory scope | Accepted |
-| 022 | EventBus DI migration | Amended |
-| 024 | AgentStore SQLite | Accepted |
-| 029 | DB-first agent config | Accepted |
-| 063 | ThreadStore teardown | Accepted |
+| 008 | Phase-1 memory scope | Accepted — amended (user_id isolation) |
+| 022 | EventBus DI migration | Superseded — archived (event bus now uses DI pattern) |
+| 024 | AgentStore SQLite | Superseded — archived (invariants live in § Agent store above) |
+| 029 | DB-first agent config | Superseded — archived (invariants live in § Agent store above) |
+| 063 | ThreadStore teardown | Superseded — archived (invariants live in § Thread store above) |
 | 067 | BlobStore content-addressed | Accepted (amended 2026-05-24) |
-| 068 | Ecosystem Service Plane | Accepted |
-| 075 | TurnWriter subscriber-writer | Superseded by ADR-078 |
+| 068 | Ecosystem Service Plane | Accepted — amended (HTTP service v1 live) |
+| 075 | TurnWriter subscriber-writer | Accepted — turn-writer sublayer in force (078 absorption claim retired 2026-07-01) |
 | 078 | TurnStoreProtocol — decouple core from concrete TurnStore | Accepted — 2026-05-28 |
-| 082 | BlobStorePort — driven-port parity | Accepted |
+| 087 | Memory SSoT (roxabi-cortex) | Accepted — long-term memory owned by cortex |
+| 082 | BlobStorePort — driven-port parity | Superseded — archived (invariants live in § BlobStorePort above) |
 | 048 | Lyra infrastructure layer | Absorbed by ADR-059 |

@@ -299,7 +299,7 @@ Labeled target to prevent doc-drift-by-optimism:
 | ADR | Title | Status |
 |-----|-------|--------|
 | 091 | Sentinelle — four observability planes | Accepted — 2026-06-25; design-only (consumer module not yet built); plane ① grammar amended by ADR-096 |
-| 092 | Observability architecture — control-plane + headless engines | Accepted — 2026-06-25; absorbs ADR-097 (trace plane v1 = otel-raw) |
+| 092 | Observability architecture — control-plane + headless engines | Accepted — amended 2026-07-04 (engines deployed); 2026-06-25 absorbs ADR-097 (trace plane v1 = otel-raw) |
 | 093 | Operator audit — three-channel deploy logging | Accepted — 2026-06-26 |
 | 094 | Control-plane dashboard consolidation | Accepted — 2026-06-27; BFF read path amended by ADR-097 |
 | 096 | Ingress connector registry + tenant-scoped events | Accepted — 2026-06-29; amends ADR-091 plane ① for ingress subjects |

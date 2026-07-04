@@ -204,4 +204,4 @@ Three observation layers: (1) in-process self-monitoring (circuit breakers, erro
 | 031 | ProcessorRegistry & concurrent outbound dispatch | Superseded in part (#372) — archived (`adr/archive/`) |
 | 038 | Health monitoring layer boundaries | Superseded — archived (`adr/archive/`) |
 | 061 | Importlinter independence contract — port-import fix | Superseded — archived 2026-07-02 (plan landed minus SessionToolsProtocol, tracked as debt) |
-| 071 | CliPool Claude OAuth token mechanism | Accepted — active |
+| 071 | CliPool Claude OAuth token mechanism | Accepted — amended 2026-07-04 (lyra→factory unit/secret names) |

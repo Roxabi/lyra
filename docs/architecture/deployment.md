@@ -272,3 +272,11 @@ The proposal was superseded by the Quadlet + `podman auto-update` path before `r
 - CliPool OAuth token (`type=env` exception) → `workers-tooling.md` (ADR-071)
 - Security audit infra → `security-routing.md` (ADR-057)
 - Cross-project NATS contracts → `contracts.md`
+
+---
+
+## ADR archive
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| 055 | Quadlet Ecosystem Conventions | Accepted — amended 2026-07-01 (absorbs ADR-053/054/056/074 + ADR-068 SELinux policy, archived) · 2026-07-04 (publish.yml self-contained) |

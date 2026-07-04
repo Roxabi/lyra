@@ -6,7 +6,7 @@ description: Current truth for Telegram, Discord, CLI, and audio adapter decisio
 # Adapters (Inbound Channels) — factory
 
 > Status: LIVING — current truth for Telegram/Discord/CLI/audio adapter decisions.
-> Last updated: 2026-05-09.
+> Last updated: 2026-07-04.
 > Source ADRs: 003, 013, 014, 015, 020, 023, 039, 073.
 
 ## Scope
@@ -219,11 +219,12 @@ runs post-NATS inside the hub process. See `ARCHITECTURE.md §Inbound Message Pi
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| 003 | Telegram webhook dispatch strategy | Accepted |
-| 013 | Media temp-file lifecycle ownership | Accepted |
-| 014 | Adapter protocol gaps and inbound audio routing | Accepted |
-| 015 | Outbound audio dispatch gap and streaming reply-id | Accepted (2026-05-08) |
-| 020 | CLI entry-point dispatch strategy | Accepted (2026-05-08) |
-| 023 | Per-user TTS prefs and agent TTS config overlay | Accepted (2026-05-08) |
-| 039 | STT/TTS NATS adapter decoupling | Accepted |
-| 073 | Stage-axis outbound pivot (OutboundEmitter composition) | Accepted |
+| 003 | Telegram webhook dispatch strategy | Superseded — archived (absorbed into adapters.md) |
+| 013 | Media temp-file lifecycle ownership | Superseded — archived (absorbed into adapters.md) |
+| 014 | Adapter protocol gaps and inbound audio routing | Superseded — archived (absorbed into adapters.md) |
+| 015 | Outbound audio dispatch gap and streaming reply-id | Superseded — archived (absorbed into adapters.md) |
+| 020 | CLI entry-point dispatch strategy | Superseded — archived (absorbed into adapters.md) |
+| 023 | Per-user TTS prefs and agent TTS config overlay | Superseded — archived (absorbed into adapters.md) |
+| 039 | STT/TTS NATS adapter decoupling | Superseded — archived (absorbed into adapters.md) |
+| 073 | Stage-axis outbound pivot (OutboundEmitter composition) | Accepted — amended 2026-07-01 (stage axis primacy, N×M trap boundary) |
+| 083 | Central Inbound Attachment Ingest Stage | Accepted — amended 2026-07-04 (FACTORY_MAX_AUDIO_BYTES rename) |

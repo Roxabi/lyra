@@ -30,7 +30,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 QG="${REPO_ROOT}/scripts/qg"
 AGG="${REPO_ROOT}/scripts/ci-aggregate-results.sh"
-PLAN_EMIT="${REPO_ROOT}/scripts/qg_plan_emit.py"
 
 if [[ ! -x "$QG" ]]; then
   echo "ERROR: qg runner not found at $QG" >&2
@@ -53,6 +52,36 @@ plan_json_body() {
 
 plan_json_field() {
   plan_json_body | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d'"$1"')'
+}
+
+plan_gate_action() {
+  local gate_name="$1"
+  plan_json_body | python3 -c 'import json,sys; d=json.load(sys.stdin); g=sys.argv[1]; print(next(x["action"] for x in d["gates"] if x["name"]==g))' "$gate_name"
+}
+
+validate_plan_schema() {
+  plan_json_body | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+required = (
+    "schema_version", "stage", "filter_active", "diff_range", "changed_files",
+    "taxonomy", "tripwire_hit", "fail_open", "docs_only", "gates", "jobs",
+)
+for key in required:
+    if key not in d:
+        raise SystemExit(f"missing key: {key}")
+if d["schema_version"] != 1:
+    raise SystemExit(f"schema_version={d['"'"'schema_version'"'"']}")
+for gate in d["gates"]:
+    for field in ("name", "action", "reason"):
+        if field not in gate:
+            raise SystemExit(f"gate missing {field}: {gate}")
+    if gate["action"] not in ("run", "skip"):
+        raise SystemExit(f"invalid gate action: {gate}")
+for job in ("gates", "tests", "package-coverage", "integration"):
+    if job not in d["jobs"] or "action" not in d["jobs"][job]:
+        raise SystemExit(f"jobs.{job} missing action")
+'
 }
 
 # ---------------------------------------------------------------------------
@@ -477,7 +506,7 @@ DOC_ONLY_SHA="$(git -C "$WORK4" rev-parse HEAD)"
 run_plan_fixture "${PLAN_BASE}...HEAD"
 if [[ "$plan_rc" -eq 0 ]]; then
   jobs_tests="$(printf '%s\n' "$plan_out" | plan_json_field "['jobs']['tests']['action']")"
-  bundle_action="$(printf '%s\n' "$plan_out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(g["action"] for g in d["gates"] if g["name"]=="doc_drift_bundle"))')"
+  bundle_action="$(printf '%s\n' "$plan_out" | plan_gate_action doc_drift_bundle)"
   taxonomy="$(printf '%s\n' "$plan_out" | plan_json_field "['taxonomy']")"
   if [[ "$jobs_tests" == "skip" && "$bundle_action" == "run" && "$taxonomy" == *docs* ]]; then
     pass "plan H1: docs-only → jobs.tests skip, doc_drift_bundle run"
@@ -535,7 +564,7 @@ fi
 # H5. docs-only plan skips typecheck gate
 run_plan_fixture "${PLAN_BASE}...${DOC_ONLY_SHA}"
 if [[ "$plan_rc" -eq 0 ]]; then
-  tc_action="$(printf '%s\n' "$plan_out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(g["action"] for g in d["gates"] if g["name"]=="typecheck"))')"
+  tc_action="$(printf '%s\n' "$plan_out" | plan_gate_action typecheck)"
   if [[ "$tc_action" == "skip" ]]; then
     pass "plan H5: docs-only diff skips typecheck gate"
   else
@@ -543,6 +572,14 @@ if [[ "$plan_rc" -eq 0 ]]; then
   fi
 else
   fail "plan H5 exit" "rc=$plan_rc output: $plan_out"
+fi
+
+# H6. plan JSON matches embedded schema (spec acceptance)
+run_plan_fixture "${PLAN_BASE}...${DOC_ONLY_SHA}"
+if [[ "$plan_rc" -eq 0 ]] && printf '%s\n' "$plan_out" | validate_plan_schema; then
+  pass "plan H6: JSON output validates embedded schema"
+else
+  fail "plan H6 schema" "rc=$plan_rc output: $plan_out"
 fi
 
 rm -rf "$WORK4"

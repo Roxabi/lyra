@@ -100,9 +100,7 @@ jobs:
       - name: CI plan (diff-scoped)
         env:
           QG_DIFF_RANGE: ${{ github.event_name == 'pull_request' && format('origin/{0}...HEAD', github.base_ref) || '' }}
-        run: |
-          scripts/qg plan --stage ci --format github >> "${GITHUB_STEP_SUMMARY}"
-          scripts/qg plan --stage ci --format json --output ci-plan.json
+        run: scripts/qg plan --stage ci --format github --output ci-plan.json >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload CI plan artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

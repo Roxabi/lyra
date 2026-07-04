@@ -74,6 +74,7 @@ def emit_github_summary(doc: dict[str, Any]) -> None:
     gates = doc["gates"]
     skipped = [g["name"] for g in gates if g["action"] == "skip"]
     run = [g["name"] for g in gates if g["action"] == "run"]
+    print("::notice title=CI plan (diff-scoped)::")
     print("### CI plan (diff-scoped)")
     print(f"- filter_active: {doc['filter_active']}")
     print(f"- fail_open: {doc['fail_open']}")

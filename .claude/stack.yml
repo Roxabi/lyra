@@ -84,6 +84,7 @@ quality_gates:
     # pre-push (not pre-commit): pyright costs ~10-22s per run — too heavy for
     # every commit, still blocks type errors before they reach CI.
     stages: [pre-push, ci]
+    files: ^(src/|packages/[^/]+/src/|tests/|pyproject\.toml$)
 
   file_length:
     enabled: true
@@ -296,11 +297,13 @@ quality_gates:
     enabled: true
     script: tools/check_str_exc_bus_bound.sh
     stages: [ci]
+    files: ^src/
 
   omp_pin_lockstep:
     enabled: true
     script: tools/check_omp_pin_lockstep.sh
     stages: [ci]
+    files: ^(deploy/omp|src/factory/adapters/omp)
 
   acl_matrix_retired:
     enabled: true
@@ -332,6 +335,7 @@ quality_gates:
     script: bash scripts/check-astryx-doctor.sh
     requires: bun
     stages: [ci]
+    files: ^(apps/dashboard/src/astryx-theme/|brand/)|^(bun\.lock|package\.json)$
     description: Astryx design-system setup health (Node floor, core<->cli alignment, peer deps) — #2088
 
   theme_build_drift:
@@ -339,9 +343,29 @@ quality_gates:
     script: bash scripts/check-theme-build-drift.sh
     requires: bun
     stages: [ci]
+    files: ^(apps/dashboard/src/astryx-theme/|brand/)|^(bun\.lock|package\.json)$
     description: committed roxabi built/ theme artifacts must match a fresh build of the source (#2089)
 
 qg:
+  change_classes:
+    docs:
+      paths: ^(docs/|artifacts/)|AGENTS\.md$|\.md$|^\.claude/
+    python:
+      paths: ^(src/|packages/[^/]+/src/|tests/|pyproject\.toml$|uv\.lock$)
+    frontend:
+      paths: ^(apps/|packages/shared/|brand/)|^(biome\.json|bun\.lock|package\.json)$
+    deploy:
+      paths: ^(deploy/|docker/)
+    tooling:
+      paths: ^(scripts/|\.github/|\.claude/stack\.yml$|tools/)
+  tripwires:
+    - ^pyproject\.toml$
+    - ^uv\.lock$
+    - ^package\.json$
+    - ^bun\.lock$
+    - ^\.claude/stack\.yml$
+    - ^\.github/workflows/ci\.yml$
+    - ^scripts/qg$
   run_order:
     pre-commit:
       - lint

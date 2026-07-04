@@ -13,6 +13,8 @@
 #      gates; pre-commit ignores QG_DIFF_RANGE (staged diff wins).
 #   F. dashboard_build.files stays byte-identical to dashboard_dist_assert.files
 #      in the real stack.yml (dist_assert is a guaranteed red if build skipped).
+#   G. ci-aggregate-results.sh accepts success/skipped, rejects failure/cancelled.
+#   H. qg plan --stage ci — docs-only, tripwire, fail-open, typecheck skip (H1–H5).
 #
 # Usage: bash tests/scripts/test_qg.sh
 
@@ -27,6 +29,8 @@ fail() { echo "[FAIL] $1: $2"; FAIL=$((FAIL + 1)); }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 QG="${REPO_ROOT}/scripts/qg"
+AGG="${REPO_ROOT}/scripts/ci-aggregate-results.sh"
+PLAN_EMIT="${REPO_ROOT}/scripts/qg_plan_emit.py"
 
 if [[ ! -x "$QG" ]]; then
   echo "ERROR: qg runner not found at $QG" >&2
@@ -37,6 +41,19 @@ if ! command -v yq >/dev/null 2>&1; then
   echo "ERROR: yq required for test_qg.sh" >&2
   exit 1
 fi
+
+if [[ ! -x "$AGG" ]]; then
+  echo "ERROR: ci-aggregate-results.sh not found at $AGG" >&2
+  exit 1
+fi
+
+plan_json_body() {
+  python3 -c 'import json,re,sys; t=sys.stdin.read(); m=re.search(r"\{.*\}\s*$", t, re.S); d=json.loads(m.group(0) if m else t); print(json.dumps(d))'
+}
+
+plan_json_field() {
+  plan_json_body | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d'"$1"')'
+}
 
 # ---------------------------------------------------------------------------
 # A. Smoke — real repo, single gate
@@ -53,7 +70,7 @@ fi
 WORK="$(mktemp -d)"
 # WORK2/WORK3 are created later; ${VAR:+...} keeps the trap safe (set -u)
 # and covers aborts between fixture creation and the inline rm -rf.
-cleanup() { rm -rf "$WORK" ${WORK2:+"$WORK2"} ${WORK3:+"$WORK3"}; }
+cleanup() { rm -rf "$WORK" ${WORK2:+"$WORK2"} ${WORK3:+"$WORK3"} ${WORK4:+"$WORK4"}; }
 trap cleanup EXIT
 
 mkdir -p "$WORK/.claude"
@@ -348,6 +365,187 @@ else
 fi
 
 rm -rf "$WORK3"
+
+# ---------------------------------------------------------------------------
+# G. Aggregate CI results (phase 0)
+# ---------------------------------------------------------------------------
+set +e
+"$AGG" success success success >/dev/null 2>&1
+g_rc=$?
+"$AGG" success skipped success >/dev/null 2>&1
+g_skip_rc=$?
+"$AGG" failure success success >/dev/null 2>&1
+g_fail_rc=$?
+"$AGG" success cancelled success >/dev/null 2>&1
+g_cancel_rc=$?
+set -e
+
+if [[ "$g_rc" -eq 0 ]]; then
+  pass "aggregate: all success → exit 0"
+else
+  fail "aggregate all success" "expected 0, got $g_rc"
+fi
+
+if [[ "$g_skip_rc" -eq 0 ]]; then
+  pass "aggregate: success + skipped → exit 0"
+else
+  fail "aggregate skipped" "expected 0, got $g_skip_rc"
+fi
+
+if [[ "$g_fail_rc" -eq 1 ]]; then
+  pass "aggregate: failure → exit 1"
+else
+  fail "aggregate failure" "expected 1, got $g_fail_rc"
+fi
+
+if [[ "$g_cancel_rc" -eq 1 ]]; then
+  pass "aggregate: cancelled → exit 1"
+else
+  fail "aggregate cancelled" "expected 1, got $g_cancel_rc"
+fi
+
+# ---------------------------------------------------------------------------
+# H. qg plan — diff-scoped CI contract (phase 1)
+# ---------------------------------------------------------------------------
+WORK4="$(mktemp -d)"
+
+mkdir -p "$WORK4/.claude"
+cat >"$WORK4/.claude/stack.yml" <<'EOF'
+quality_gates:
+  typecheck:
+    enabled: true
+    script: true
+    stages: [ci]
+    files: ^(src/|packages/[^/]+/src/|tests/|pyproject\.toml$)
+  lint:
+    enabled: true
+    script: true
+    stages: [ci]
+  doc_drift_bundle:
+    enabled: true
+    stages: [ci]
+qg:
+  change_classes:
+    docs:
+      paths: ^(docs/|artifacts/)|AGENTS\.md$|\.md$|^\.claude/
+    python:
+      paths: ^(src/|packages/[^/]+/src/|tests/|pyproject\.toml$|uv\.lock$)
+  tripwires:
+    - ^uv\.lock$
+    - ^pyproject\.toml$
+  run_order:
+    ci:
+      - lint
+      - typecheck
+      - doc_drift_bundle
+EOF
+
+git init "$WORK4" >/dev/null 2>&1
+git -C "$WORK4" config user.email "tester@example.com"
+git -C "$WORK4" config user.name "tester"
+git -C "$WORK4" config commit.gpgsign false
+git -C "$WORK4" config core.hooksPath "$WORK4/.git/hooks"
+mkdir -p "$WORK4/artifacts/analyses"
+echo base >"$WORK4/artifacts/analyses/base.md"
+git -C "$WORK4" add artifacts/analyses/base.md
+git -C "$WORK4" commit -m base >/dev/null 2>&1
+PLAN_BASE="$(git -C "$WORK4" rev-parse HEAD)"
+
+run_plan_fixture() {
+  local range="$1"
+  set +e
+  if [[ "$range" == "--unset" ]]; then
+    plan_out="$(
+      env -u QG_DIFF_RANGE QG_REPO_ROOT="$WORK4" QG_STACK="$WORK4/.claude/stack.yml" \
+        "$QG" plan --stage ci --format json 2>&1
+    )"
+  else
+    plan_out="$(
+      QG_REPO_ROOT="$WORK4" QG_STACK="$WORK4/.claude/stack.yml" QG_DIFF_RANGE="$range" \
+        "$QG" plan --stage ci --format json 2>&1
+    )"
+  fi
+  plan_rc=$?
+  set -e
+}
+
+# H1. docs-only diff → jobs.tests skip, doc_drift_bundle run
+echo doc >"$WORK4/artifacts/analyses/only-doc.md"
+git -C "$WORK4" add artifacts/analyses/only-doc.md
+git -C "$WORK4" commit -m doc >/dev/null 2>&1
+DOC_ONLY_SHA="$(git -C "$WORK4" rev-parse HEAD)"
+run_plan_fixture "${PLAN_BASE}...HEAD"
+if [[ "$plan_rc" -eq 0 ]]; then
+  jobs_tests="$(printf '%s\n' "$plan_out" | plan_json_field "['jobs']['tests']['action']")"
+  bundle_action="$(printf '%s\n' "$plan_out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(g["action"] for g in d["gates"] if g["name"]=="doc_drift_bundle"))')"
+  taxonomy="$(printf '%s\n' "$plan_out" | plan_json_field "['taxonomy']")"
+  if [[ "$jobs_tests" == "skip" && "$bundle_action" == "run" && "$taxonomy" == *docs* ]]; then
+    pass "plan H1: docs-only → jobs.tests skip, doc_drift_bundle run"
+  else
+    fail "plan H1" "tests=$jobs_tests bundle=$bundle_action taxonomy=$taxonomy"
+  fi
+else
+  fail "plan H1 exit" "rc=$plan_rc output: $plan_out"
+fi
+
+# H2. tripwire (uv.lock) + doc in one diff → tripwire_hit, all jobs run
+echo lock >"$WORK4/uv.lock"
+echo more >"$WORK4/artifacts/analyses/trip.md"
+git -C "$WORK4" add uv.lock artifacts/analyses/trip.md
+git -C "$WORK4" commit -m tripwire >/dev/null 2>&1
+run_plan_fixture "${DOC_ONLY_SHA}...HEAD"
+if [[ "$plan_rc" -eq 0 ]]; then
+  trip_hit="$(printf '%s\n' "$plan_out" | plan_json_field "['tripwire_hit']")"
+  tests_action="$(printf '%s\n' "$plan_out" | plan_json_field "['jobs']['tests']['action']")"
+  if [[ "$trip_hit" == "True" && "$tests_action" == "run" ]]; then
+    pass "plan H2: tripwire_hit forces all jobs run"
+  else
+    fail "plan H2" "tripwire_hit=$trip_hit tests=$tests_action"
+  fi
+else
+  fail "plan H2 exit" "rc=$plan_rc output: $plan_out"
+fi
+
+# H3. QG_DIFF_RANGE unset → fail_open
+run_plan_fixture "--unset"
+if [[ "$plan_rc" -eq 0 ]]; then
+  fail_open="$(printf '%s\n' "$plan_out" | plan_json_field "['fail_open']")"
+  if [[ "$fail_open" == "True" ]]; then
+    pass "plan H3: unset QG_DIFF_RANGE → fail_open"
+  else
+    fail "plan H3" "fail_open=$fail_open"
+  fi
+else
+  fail "plan H3 exit" "rc=$plan_rc output: $plan_out"
+fi
+
+# H4. invalid diff ref → fail_open (mirror E2b)
+run_plan_fixture "definitely-not-a-ref...HEAD"
+if [[ "$plan_rc" -eq 0 ]]; then
+  fail_open="$(printf '%s\n' "$plan_out" | plan_json_field "['fail_open']")"
+  if [[ "$fail_open" == "True" ]] && printf '%s\n' "$plan_out" | grep -q 'files: filters disabled'; then
+    pass "plan H4: invalid QG_DIFF_RANGE → fail_open"
+  else
+    fail "plan H4" "fail_open=$fail_open output: $plan_out"
+  fi
+else
+  fail "plan H4 exit" "rc=$plan_rc output: $plan_out"
+fi
+
+# H5. docs-only plan skips typecheck gate
+run_plan_fixture "${PLAN_BASE}...${DOC_ONLY_SHA}"
+if [[ "$plan_rc" -eq 0 ]]; then
+  tc_action="$(printf '%s\n' "$plan_out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(g["action"] for g in d["gates"] if g["name"]=="typecheck"))')"
+  if [[ "$tc_action" == "skip" ]]; then
+    pass "plan H5: docs-only diff skips typecheck gate"
+  else
+    fail "plan H5" "typecheck action=$tc_action"
+  fi
+else
+  fail "plan H5 exit" "rc=$plan_rc output: $plan_out"
+fi
+
+rm -rf "$WORK4"
 
 # ---------------------------------------------------------------------------
 # F. dashboard_build.files ≡ dashboard_dist_assert.files — real stack.yml.

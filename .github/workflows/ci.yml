@@ -97,6 +97,20 @@ jobs:
           sudo install -m 755 /tmp/yq /usr/local/bin/yq
           yq --version
 
+      - name: CI plan (diff-scoped)
+        env:
+          QG_DIFF_RANGE: ${{ github.event_name == 'pull_request' && format('origin/{0}...HEAD', github.base_ref) || '' }}
+        run: |
+          scripts/qg plan --stage ci --format github >> "${GITHUB_STEP_SUMMARY}"
+          scripts/qg plan --stage ci --format json --output ci-plan.json
+
+      - name: Upload CI plan artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-plan
+          path: ci-plan.json
+          retention-days: 5
+
       - name: Quality gates (stack.yml)
         env:
           # PR-only: honor gates' files: filters against the merge-base diff
@@ -264,17 +278,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
       - name: Verify all CI jobs succeeded
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
           echo "needed job results: ${RESULTS}"
-          for result in ${RESULTS}; do
-            if [[ "${result}" != "success" ]]; then
-              echo "::error::a needed job finished with result '${result}' — failing the aggregate ci gate"
-              exit 1
-            fi
-          done
+          # success and skipped are OK (skipped enables phase-2 conditional jobs).
+          scripts/ci-aggregate-results.sh ${RESULTS}
 
   # Self-contained (own checkout/uv sync/docker compose; no artifact from ci),
   # so it runs in parallel from t=0 — the former needs:[ci] edge was ordering-only.

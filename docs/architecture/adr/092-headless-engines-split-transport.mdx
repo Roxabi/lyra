@@ -1,14 +1,14 @@
 ---
 title: "ADR-092: Observability Architecture — Control-Plane + Headless Engines"
 description: "The control-plane dashboard is the sole human surface; metrics/logs/traces/alerting engines run headless behind it. Split transport (NATS push + Prometheus pull), Grafana dropped, Alertmanager owns alerting, OTel sources ranked Claude Code > LiteLLM."
-status: accepted
+status: amended
 date: 2026-06-25
 deciders: [Mickael]
 related: [038, 076, 084, 088, 091, 097]
 ---
 
 > **Current truth** → [`docs/architecture/observability.md`](../observability.md){#current-truth}
-> This ADR records the *target* observability/control-plane arbitration. The domain page describes the current (pre-engine) state; this ADR is the decision record for what the engines layer becomes.
+> This ADR records the *target* observability/control-plane arbitration. The domain page describes the current (pre-engine) state *(2026-07-04: engines deployed — factory-otel v1 + loki+promtail live in deploy/quadlet.toml)*; this ADR is the decision record for what the engines layer becomes.
 
 ## Status
 

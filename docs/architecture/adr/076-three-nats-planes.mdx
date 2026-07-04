@@ -23,6 +23,9 @@ and persistence planes and prescribes where the new plane fits.
 Amended 2026-07-02 (consolidation wave 3): this record now also carries the domain-first
 subject grammar it builds on — ADR-035 is absorbed below and archived.
 
+Amended 2026-07-04 (operational claim audit): lyra→factory rename reflected in subject
+prefixes and unit names (see Amendment below).
+
 ## Absorbed — ADR-035: domain-first subject grammar
 
 The token grammar the planes inherit. Decision (Option A, 2026-05): every subject follows
@@ -34,6 +37,17 @@ control-plane subjects stay deny-listed until a dedicated ADR approves their pay
 Amended along the way: the `lyra.` prefix became `factory.` (repo rename), and the numeric-only
 `bot_id` rule was corrected to the real slug rule `[A-Za-z0-9_-]+` once the web platform landed.
 Full record with options and token tables: `archive/035-nats-subject-naming-convention.mdx`.
+
+### Amendment (2026-07-04)
+
+Operational audit found stale claims reflecting the `lyra→factory` rename. All references below are documented in historical sections; they do not change the Decision or plane definitions, only the concrete names and systemd unit references:
+
+1. **Decision table — Messages plane prefix** (line 69): Subject prefix was stated as `lyra.{inbound,outbound}.<platform>.<bot_id>`. Now `factory.{inbound,outbound}.<platform>.<bot_id>` — verify via `AGENTS.md § Topics` and `src/factory/transport/` subject builders.
+2. **Enforcement — Typing plane monitoring** (line 102–103): References `journalctl --user -u lyra-{discord,telegram}` and `lyra-nats.service`. Now `factory-{discord,telegram}` units and `factory-nats` — see `deploy/quadlet/factory-{discord,telegram,nats}.container`.
+3. **Sibling subjects table** (line 143): Mentions `lyra.{voice,llm,image}.heartbeat`. These are control-plane heartbeats; the pattern update to `factory.*` is ongoing (heartbeats now route via `factory.event` when available, see ADR-091).
+4. **Consequences — Worker pub grants note** (lines 217–219): References `systemctl --user restart lyra-nats` (twice). Now `factory-nats` — see `deploy/quadlet/factory-nats.container:9`.
+
+The Decision and plane definitions remain unchanged; prefixes and systemd unit names are unit-sensitive editorial updates.
 
 ## Context
 
@@ -66,7 +80,7 @@ Three planes are recognised. Every NATS subject in Lyra MUST belong to exactly o
 
 | Plane | Subject prefix | NATS type | Durability | Producers | Consumers | When to use |
 |---|---|---|---|---|---|---|
-| **Messages** | `lyra.{inbound,outbound}.<platform>.<bot_id>` | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
+| **Messages** | `lyra.{inbound,outbound}.<platform>.<bot_id>` *(2026-07-04: see Amendment.)* | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
 | **Persistence** | `factory.turns.>` | JetStream durable (stream `FACTORY_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub | turn-writer | append-only state changes (turn log, session lifecycle, resume counts) requiring at-least-once delivery |
 | **Typing / Lifecycle** *(NEW)* | `factory.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
 
@@ -86,7 +100,7 @@ must be enforced explicitly:
   body. The publisher contract (T1, see #1376 spec) requires every envelope to carry
   `scope_id`; subscribers MUST reject envelopes missing `scope_id` and log a structured
   error. Validation failures surface in the **adapter** units
-  (`journalctl --user -u lyra-{discord,telegram}`), NOT in `lyra-nats.service` — this is
+  (`journalctl --user -u lyra-{discord,telegram}`) *(2026-07-04: see Amendment.)*, NOT in `lyra-nats.service` — this is
   the monitoring grep target if the #1374 bug class re-emerges.
 
 ### Choosing Core vs JetStream
@@ -127,7 +141,7 @@ each other:
 | Subject | Plane | Why it is NOT typing |
 |---|---|---|
 | `factory.progress.<job_id>` (#1044) | Workers (TBD) | Progress is **job-internal** — reports "step 3/7" inside a long-running compute job. Typing is **display feedback** — reports "the bot is thinking about your scope right now." Same wire shape, different semantic owner; conflating them would force progress to be keyed on `WorkScope` rather than `job_id`. |
-| `factory.clipool.heartbeat` | Health (control-plane) | Internal liveness of a subprocess runner. Not user-facing, not scoped to a conversation. Lives alongside `lyra.{voice,llm,image}.heartbeat` and `factory.system.ready` — a control-plane that may eventually become its own catalogued plane but is not the same shape as Typing. |
+| `factory.clipool.heartbeat` | Health (control-plane) | Internal liveness of a subprocess runner. Not user-facing, not scoped to a conversation. Lives alongside `lyra.{voice,llm,image}.heartbeat` *(2026-07-04: see Amendment.)* and `factory.system.ready` — a control-plane that may eventually become its own catalogued plane but is not the same shape as Typing. |
 | `$KV.factory-state.hub.ready` | KV (control-plane) | Persistent flag in JetStream KV, watched by adapters. Lifecycle owned by the **store**, not by a producer-publish event. |
 
 If a future emitter sits between "job-internal" and "display feedback" (e.g. TTS rendering
@@ -214,7 +228,7 @@ the design question — surface it, do not silently file a new plane.
   `factory.typing.<platform>.<bot_id>` matching the job's assigned scope — never the
   plane-level wildcard `factory.typing.>`. The wildcard would let any worker publish typing
   on behalf of any bot, regardless of the job's relationship to that bot. Refreshing the
-  grant means rewriting `auth.conf` and restarting `lyra-nats` (`systemctl --user restart
+  grant means rewriting `auth.conf` and restarting `lyra-nats` *(2026-07-04: see Amendment.)* (`systemctl --user restart
   lyra-nats`); the `type=mount` secret pattern (per
   `~/projects/docs/container-deployment-standard.md` S7) does NOT support HUP refresh.
 - **Sub-axis is invisible from filenames.** Unlike the stage axis (where the directory name

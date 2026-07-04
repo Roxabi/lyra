@@ -1,7 +1,7 @@
 ---
 title: "ADR-065: NATS KV readiness probe replaces request/reply"
 description: Replace the hub readiness req/reply probe with a JetStream KV key (hub.ready in factory-state) to eliminate inbox-subject ACL violations under allow_responses:false.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
@@ -78,9 +78,9 @@ Bucket provisioning ownership: the hub is the sole creator of the `factory-state
 
 When deploying this change, the following order must be respected:
 
-1. **Enable JetStream on NATS.** Both container and systemd installs use the `jetstream { store_dir: ... }` stanza in the NATS config. Container installs: the stanza is in `nats-container.conf`, backed by the `lyra-jetstream.volume` bind-mount (`~/.lyra/nats/jetstream` → `/var/lib/nats/jetstream`). The `-js` CLI flag was removed in #1055. Systemd installs: the stanza is in `nats.conf`.
+1. **Enable JetStream on NATS.** Both container and systemd installs use the `jetstream { store_dir: ... }` stanza in the NATS config. Container installs: the stanza is in `nats-container.conf`, backed by the `lyra-jetstream.volume` bind-mount (`~/.lyra/nats/jetstream` → `/var/lib/nats/jetstream`) *(2026-07-04: now `factory-jetstream.volume`, host path `~/.roxabi/factory/nats/jetstream` — see `deploy/quadlet/factory-nats.container:24`.)*. The `-js` CLI flag was removed in #1055. Systemd installs: the stanza is in `nats.conf`.
 2. **Regen auth.conf.** Run `make nats-regen-authconf` to add the `$KV.factory-state.>` subscribe grants and voice-client identity to the production ACL.
-3. **Restart NATS.** `make quadlet-secrets-install && systemctl --user restart lyra-nats` (container — restart, not HUP, because the Podman secret is `type=mount` and the tmpfs file inside the running container is bound at init; see [`nats-authconf-update.md`](../../runbooks/nats-authconf-update.md#steps)) or `systemctl reload nats-server` (systemd — file-backed config, HUP refreshes content in place).
+3. **Restart NATS.** `make quadlet-secrets-install && systemctl --user restart lyra-nats` *(2026-07-04: now `factory-nats` — see `deploy/quadlet/factory-nats.container:9`.)* (container — restart, not HUP, because the Podman secret is `type=mount` and the tmpfs file inside the running container is bound at init; see [`nats-authconf-update.md`](../../runbooks/nats-authconf-update.md#steps)) or `systemctl reload nats-server` (systemd — file-backed config, HUP refreshes content in place).
 4. **Deploy code.** `make deploy` — hub wires `announce_hub_ready()` on startup; adapters call `wait_for_hub()` instead of the legacy probe.
 
 If NATS is restarted before the code is deployed, adapters continue using the legacy probe path without error. If code is deployed before NATS is restarted, adapters degrade gracefully (JetStream unavailable → WARNING, adapter starts anyway).

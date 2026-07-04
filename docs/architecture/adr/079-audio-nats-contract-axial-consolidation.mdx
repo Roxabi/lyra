@@ -1,7 +1,7 @@
 ---
 title: "ADR-079: Hub is sole provisioner of the audio stream; adapter grants via shared ACL group"
 description: Closes N×M drift in FACTORY_OUTBOUND_AUDIO contracts by moving stream+KV provisioning to the hub (sole-provisioner), introducing ACL grant-groups, mandating a NullAudioConsumer sentinel, and adding a stream-keyed CI falsification gate.
-status: accepted
+status: amended
 date: 2026-05-30
 deciders: [Mickael, architect, axial-adr-review]
 supersedes: ADR-077
@@ -291,7 +291,7 @@ is isomorphic to `acl-matrix.json` — it would grow N×adapter, re-introducing
 platform-axis surface. A stream/KV-keyed manifest lists required subjects once per
 NATS resource (stream or KV bucket), then identifies the provisioner and consumer group.
 
-`deploy/nats/code-subjects.json`:
+`deploy/nats/code-subjects.json` *(2026-07-04: now embedded in scripts/check_grants.py RESOURCES structure — see scripts/check_grants.py:30)*:
 ```json
 {
   "version": "1",
@@ -382,7 +382,7 @@ Failure output: `FAIL: identity 'X' publish[] does not cover required subject 'Y
 Runs pre-push equivalent. Fails exit 1 with structured per-line errors.
 
 **Manifest maintenance.** When adding a new `$JS`/`$KV` subject to code: add it to
-`code-subjects.json` under the owning stream/KV entry. CI rejects any PR where
+`code-subjects.json` *(2026-07-04: now embedded in scripts/check_grants.py RESOURCES structure — see scripts/check_grants.py:30)* under the owning stream/KV entry. CI rejects any PR where
 code-subjects outstrips effective ACL grants.
 
 ## Consequences
@@ -411,7 +411,7 @@ code-subjects outstrips effective ACL grants.
 - `start_audio_consumer` return type changes from `JetStreamAudioConsumer` to
   `JetStreamAudioConsumer | NullAudioConsumer`. Pyright catches the gap at wire-up
   sites. The sentinel pattern avoids `None`-guard proliferation.
-- `code-subjects.json` is a manual manifest — it must be updated when code adds new
+- `code-subjects.json` *(2026-07-04: now embedded in scripts/check_grants.py RESOURCES structure — see scripts/check_grants.py:30)* is a manual manifest — it must be updated when code adds new
   `$JS`/`$KV` subjects. The CI gate enforces manifest → ACL coverage; the code →
   manifest direction relies on contributor discipline (a future AST scanner could
   close this fully, tracked as follow-up).
@@ -435,7 +435,7 @@ code-subjects outstrips effective ACL grants.
   CI gate catches before merge.
 - A future media type (video, document) requires durable delivery → follow ADR-077
   forward-compatible constraint: new subject family, new group, new consumer entry in
-  `code-subjects.json`. Do not extend `audio-consumer` to cover non-audio subjects.
+  `code-subjects.json` *(2026-07-04: now embedded in scripts/check_grants.py RESOURCES structure — see scripts/check_grants.py:30)*. Do not extend `audio-consumer` to cover non-audio subjects.
 - Hub startup latency increases measurably (>500 ms) due to JetStream provisioning →
   consider concurrent pre-announce provisioning or a cached stream-exists flag.
 - Hub `$JS.API.>` is tightened → add explicit stream+KV CREATE subjects to hub
@@ -458,5 +458,5 @@ code-subjects outstrips effective ACL grants.
 - Issue **#1521** — axial consolidation tracking issue (this ADR)
 - PR **#1520** — relief grants (superseded by slice S3 of implementation plan)
 - `deploy/nats/acl-matrix.json` — identity grants SSoT (v4 post-migration)
-- `deploy/nats/code-subjects.json` — code↔ACL manifest (new, this ADR, slice S5)
+- `deploy/nats/code-subjects.json` *(2026-07-04: now embedded in scripts/check_grants.py RESOURCES structure — see scripts/check_grants.py:30)* — code↔ACL manifest (new, this ADR, slice S5)
 - `git show eeeb288c2^:artifacts/plans/1521-audio-axial-migration.md` — implementation plan (S2–S5)

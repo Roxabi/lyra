@@ -1,7 +1,7 @@
 ---
 title: "ADR-091: Four observability planes — signal taxonomy & boundary rules"
 description: "Separate external events, internal jobs, internal infra state, and read models for the Sentinelle operational brain"
-status: accepted
+status: amended
 date: 2026-06-25
 deciders: [Mickael]
 related: [038, 076, 084, 088]
@@ -48,6 +48,8 @@ Lyra Sentinelle observes and acts across **four planes**. Each plane has one pri
 | **② Internal jobs** | `factory.job.<id>.*`, `factory.jobs.<name>` | Factory orchestrates observable work | Hub ingress, Sentinelle module, schedulers | Dispatch jobs to act; **do not** re-emit job lifecycle as events |
 | **③ Internal infra state** | HTTP health endpoints; future `factory.metric.<service>.<name>` | Runtime snapshot — « is the factory healthy? » | Hub, turn-writer, blobstore, external monitor | **V1: pull** (`/health/detail`, monitoring checks); **V2 (#1035): subscribe** `factory.metric.>` |
 | **④ Read models** | Off-bus stores | Enrichment lookups | turns.db, roxabi-live D1, obligations.toml, GCal | Point reads when an event or job needs context |
+
+*(2026-07-04: plane ① grammar amended by ADR-096 — ingress connectors use 4-segment `factory.event.{connector}.{tenant}.{kind}`; other sources remain 3-segment `factory.event.{service}.{kind}`)*
 
 ### Boundary rules (normative)
 

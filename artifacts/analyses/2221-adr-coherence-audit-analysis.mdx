@@ -1,0 +1,159 @@
+---
+title: "docs(lot2): audit cohérence 34 ADRs actifs ↔ domain pages ↔ code"
+description: "Matrice 34×verdict (workflow multi-agents wf_5e646859-d27, 17 agents, 0 high) + liens morts réconciliés + sweeps déterministes tables/relations"
+issue: 2221
+date: 2026-07-04
+---
+
+## Source
+
+Issue #2221 (lot 2 epic #2193) : « auditer les 34 ADRs actifs : échantillonner ses claims vérifiables contre (a) la domain page qui le résume, (b) le code » + « fixer les 18 liens morts artifacts/ ». Échelle d'arbitrage actée 2026-07-03 : code > domain page > ADR-pourquoi ; amender/banner, ¬réécrire l'histoire.
+
+## Problem
+
+Corps des 34 ADRs actifs jamais audités claim-par-claim ; liens morts prouvés depuis des ADRs actifs ; décompte « 18 » périmé (pré-#2218).
+
+## Outcome
+
+Matrice 34×verdict publiée (ce doc) ; liste réconciliée des liens morts avec retarget exact par site ; écarts classés amend-adr / fix-page, prêts à découper en PRs.
+
+## Appetite
+
+1 session pour les PRs d'alignement (l'audit — le gros du coût — est fait : run `wf_5e646859-d27`, 17 agents, ~1.19M tokens, 0 erreur).
+
+## Méthode
+
+15 agents cluster lecture-seule (clusters >3 ADRs scindés) + 1 retargeteur liens + 1 critique de complétude ; verify adversarial armé pour tout écart high/archive — **aucun n'a tiré (0 high, 0 archive)**. Les 3 gaps du critique ont été fermés par sweeps déterministes (bash) : validation de TOUTES les lignes des tables « ADR archive », champs `related:`/`supersedes:`, collisions de numéros.
+
+## Matrice — 34 ADRs actifs (HEAD `59d62150b`)
+
+Verdicts : **14 aligned · 14 amend-adr · 6 fix-page · 0 archive**. Lignes citées as-of `59d62150b` — HEAD a avancé depuis (commits d'artefacts), re-résoudre au moment de l'édition (ex. avéré : le plan 1331 mort est désormais adr/075:136, la :135 cite déjà la spec vivante → action DROP la ligne).
+
+| ADR | Page | Verdict | Écarts (sev) | Résumé de l'écart principal |
+|---|---|---|---|---|
+| 001 | messaging | amend-adr | 1 low | note #125 cite `Message.extract_scope_id()` inexistant (scope_id = calculé par l'adapter, `telegram_normalize._make_scope_id`) |
+| 065 | messaging | amend-adr | 2 med | §Deployment pré-rename : `lyra-nats` (unit réelle `factory-nats`), `lyra-jetstream.volume` / `~/.lyra/nats/jetstream` (réels `factory-jetstream.volume`, `~/.roxabi/factory/nats/jetstream`) |
+| 076 | messaging | amend-adr | 2 med 2 low | table plane Messages garde le préfixe `lyra.` (auto-incohérent avec sa propre note 035) ; `factory.progress.<job_id>` pré-#1793 |
+| 079 | messaging | amend-adr | 2 med + 2 liens | manifeste `deploy/nats/code-subjects.json` n'existe plus (→ liste `RESOURCES` embarquée dans `scripts/check_grants.py`) ; plan 1521 mort |
+| 008 | storage | fix-page | 2 med | row table « Accepted » vs frontmatter `amended` ; framing L1/L2/L4-deferred rendu historique par ADR-087 |
+| 067 | storage | aligned | — | — |
+| 068 | storage | amend-adr | 2 med | Application Map : `lyra-blobstore.container` sur `lyra-hub` (réels `factory-blobstore.container` / `factory-hub`) ; row table « Accepted » vs `amended` |
+| 075 | storage | fix-page | 1 med 1 low + 1 lien | storage.md:312 « Superseded by ADR-078 » — FAUX (075 accepted, en vigueur ; 078 le désavoue lui-même :19) ; plan 1331 mort |
+| 078 | storage | aligned | — | — |
+| 087 | storage | fix-page | 2 med + 1 lien | banner → storage.md mais la page n'a NI row 087 NI mention cortex/`roxabi.memory.query.assemble` — le hand-off long-terme est invisible du SSoT quotidien |
+| 091 | observability | amend-adr | 1 med | grammaire plane ① 3-segments sans note de l'amendement ADR-096 (ingress = 4-segments `factory.event.{connector}.{tenant}.{kind}`) |
+| 092 | observability | amend-adr | 1 med | banner « pre-engine state » périmé : trace engine v1 (factory-otel) + log engine (loki+promtail) déployés |
+| 094 | observability | aligned | 1 low | — |
+| 096 | observability | aligned | — | — |
+| 098 | observability | aligned | — | — |
+| 045 | contracts | aligned | — | — |
+| 049 | contracts | aligned | — | (mais row job-model.md:337 « Accepted » vs `amended` → porté par 084/fix-page) |
+| 052 | contracts | amend-adr | 1 med 1 low | subject per-worker image sans segment `generate` (réel `factory.image.generate.request.<worker_id>`) |
+| 046 | security-routing | amend-adr | 2 med | secrets `lyra-nats-<role>` (réels `factory-nats-<role>`) ; page delegate « IDENTITIES dans gen-nkeys.sh » — script supprimé (réel `scripts/gen_nkeys.py` / `factory-acl genkeys`) |
+| 051 | security-routing | fix-page | 2 med | page : `_INBOX.<identity>` MAJUSCULE + roster avec tts/stt-adapter — code = `_inbox.` minuscule, roster réel 19 identités sans tts/stt |
+| 090 | security-routing | aligned | — | (page sans table ADR archive — voir sweeps) |
+| 073 | adapters | fix-page | 1 med 1 low | row adapters.md:229 « Accepted » vs `amended` + résumé réducteur (« outbound pivot » vs LA décision d'axe système) |
+| 083 | adapters | amend-adr | 2 med 1 low | `LYRA_MAX_AUDIO_BYTES` mort (réel `FACTORY_MAX_AUDIO_BYTES`) ; pas de row 083 dans la table adapters.md |
+| 059 | eng-standards | amend-adr | 1 med 1 low | table Update 2026-05-09 : P1-6/P1-7 « (verify) » alors que la migration ports est terminée (`factory.core.ports`) |
+| 089 | eng-standards | aligned | 1 low | — |
+| 099 | llm-streaming | aligned | — | — |
+| 100 | llm-streaming | aligned | — | — |
+| 010 | workers-tooling | aligned | — | — |
+| 071 | workers-tooling | amend-adr | 2 med 1 low + 1 lien | `lyra-clipool.container` + secret `lyra-claude-oauth` (réels `factory-clipool.container` / `factory-claude-oauth`) ; consensus 1105 mort |
+| 084 | job-model | fix-page | (critique) | job-model.md:10,324,338 présentent 075 « superseded by 078 » (faux ×3) + row 049 « Accepted » vs `amended` |
+| 055 | deployment | amend-adr | 2 med + 5 liens | publish.yml décrit comme réutilisable `Roxabi/.github` — réel : bake pipeline self-contained ; 5× `docs/PROD-MIGRATION-STRATEGY.md` → `docs/history/` |
+| 086 | meta (ARCHITECTURE.md) | aligned | 1 low | — |
+| 093 | meta (runbooks/operator-log) | aligned | 1 low | — |
+| 101 | meta (brand/) | amend-adr | 1 med | index.css importe `brand/core.css` (layer brand) + `brand/reset.css`, PAS `brand/styles.css` |
+
+Raw stats du run : 15/14/5 — le critique a requalifié 084 aligned→fix-page (job-model.md:10,324,338 présentent 075 « superseded by 078 », faux ×3).
+
+**Motif dominant (11 des 26 med)** : résidus pré-rename `lyra→factory` dans des sections opératoires (commandes systemctl, units Quadlet, secrets, env vars, subjects) — exactement la classe « un opérateur qui suit l'ADR échoue ». ¬déprioriser comme « juste med » : la conséquence est un échec opératoire à l'exécution, le label med tient seulement au banner qui coiffe chaque ADR.
+
+**Traçabilité acceptance** : AC1 (matrice 34) = ce doc. AC2 : les domain pages ont été scannées pour liens `artifacts/` morts → **0** (vérifié 2×, scan + reviewer indépendant) ; le solde vit dans les ADRs et hors docs/. AC3 (« écarts high résolus ») : **satisfait par vacuité** — 0 high trouvé (verify adversarial armé, jamais déclenché) ; les 26 med sont fixés quand même via Shape A, en bonus au-delà du critère strict.
+
+## Page findings (page ≠ code, découverts en passant)
+
+| Page | Sev | Constat |
+|---|---|---|
+| messaging.md:28 | med | `Message.extract_scope_id()` inexistant (idem ADR-001) |
+| messaging.md:65 | med | producers Persistence « hub, telegram-adapter, discord-adapter » — hub est seul publisher de `factory.turns.write` (dual-write #1331 jamais implémenté, grants retirés #1821) |
+| messaging.md:66,102 | low | plane Typing « future (T1 #1376) » alors que `factory.typing.*` publie aujourd'hui |
+| storage.md:158-159 | med | `lyra blobstore serve` (CLI réel `factory`) ; data dir `blobs/` (réel `~/.roxabi/factory/blobstore/`) |
+| storage.md (§memory) | med | aucune mention roxabi-cortex/ADR-087 — un lecteur croit la mémoire long-terme in-factory |
+| storage.md:10,30,40,113,164 | low | header stale 2026-05-24 ; `blob_grants` (réel `agent_grants`) ; chemin L2 épisodique périmé |
+| security-routing.md:175-210 | med ×4 | §nats-infra : gen-nkeys.sh (supprimé), `_INBOX.` majuscule, roster tts/stt, `check-request-reply-flows.sh` (réel `factory-check-flows` / `scripts/_loader.py`) |
+| adapters.md:10-11,157 | low | header/Source ADRs stale ; attribution no-store à `attachment_ingest.py` (no-op si store=None) |
+| deployment.md | med | **pas de table « ADR archive »** (doctrine v2) |
+| security-routing.md | low | idem — pas de table formelle |
+| ARCHITECTURE.md | low | ne mentionne pas son rôle de cible « current truth » d'ADR-086 |
+
+## Sweeps déterministes (fermeture des gaps du critique)
+
+**Tables « ADR archive » (toutes lignes × frontmatter)** — constats à normaliser (au-delà des rows déjà cités) :
+- adapters.md:222-228 : rows 003/013/014/015/020/023/039 affichent « Accepted » alors que tous sont `superseded` (archivés) — la table n'indexe pas leur sort.
+- storage.md:307-314 : idem rows 024/029/063/082 « Accepted » (archivés).
+- Rows statut ≠ frontmatter `amended` : storage.md:305 (008), adapters.md:229 (073), messaging.md:302 (076), job-model.md:337 (049).
+- ADRs actifs absents de toute table : 046/051/090 + 055 (pages sans table), 083 (row manquante), 087 (row manquante), 086/101 (méta — banners hors docs/architecture, acceptable, à trancher).
+
+**Collision de numéro** : `068` désigne DEUX décisions différentes — actif `068-shared-state-nats-mediated-host-invisible` ET archive `068-selinux-z-label-quadlet-bind-volume-policy`. Unicité du contrat « titre = slug » cassée ; à trancher (renuméroter l'archivé ou documenter).
+
+**Relations frontmatter** : toutes les cibles `supersedes:`/`related:` existent ; seuls 094 (`related: 1977`) et 098 (`related: 1760`) mélangent numéros d'ISSUES aux numéros d'ADR (low, format à clarifier).
+
+## Liens morts — liste réconciliée (scan + retargeteur, litiges tranchés)
+
+Faux positifs retirés : `artifacts/quality-debt-report` (le fichier est `…report.json` — 6× debt-tracking.md + adr/073:187 PAS morts) ; gh-key-rotation.md:21 (déjà au format tombstone `git show`) ; tools/AGENTS.md:77 (placeholder `YYYY-MM`).
+
+| # | Site | Cible morte | Retarget proposé |
+|---|---|---|---|
+| 1 | adr/071:48 | analyses/1105-claude-oauth-injection-consensus | tombstone `git show artifacts-archive/2026-06:…` |
+| 2 | adr/075:135 | plans/1331-turnstore-alpha-refactor-plan | `artifacts/specs/1331-turnstore-alpha-refactor-spec.mdx` (vivant) |
+| 3 | adr/079:462 | plans/1521-audio-axial-migration | tombstone 2026-06 (ou issue #1521) |
+| 4 | adr/087:17 | analyses/architecture-critical-review-2026-06-09 | tombstone (purge f5fd4bd0b/eeeb288c2) |
+| 5 | adr/079:461 | `deploy/nats/code-subjects.json` (non-artifacts) | `scripts/check_grants.py` (`RESOURCES`) |
+| 6-10 | adr/055:16,44,111,173,432 | `docs/PROD-MIGRATION-STRATEGY.md` (non-artifacts) | `docs/history/PROD-MIGRATION-STRATEGY.md` |
+| 11-13 | adr/archive/003:43 · 028:25 · 032:62 | plans/29, analyses/320, analyses/371 (pré-tombstone 2026-04) | `git show cc05650ee^:…` |
+| 14-16 | adr/archive/044:223 · 050:29 · 050:283 | specs/658, specs/754 ×2 | `git show cc05650ee^:…` |
+| 17-19 | adr/archive/066:28 · 066:207 · 066:208 | analyses/1016, frames/1016 | `git show 84423dacb^:…` |
+| 20-21 | adr/archive/085:26 · 085:63 | frames/1719 | tombstone `git show artifacts-archive/2026-06:…` |
+| 22 | adr/archive/070:141 | analyses/1100-toolcall-cli-instrumentation | DROP + reformulation (« Slice 3 requiert une sous-analyse ») |
+| 23 | docs/runbooks/gh-key-rotation.md:164 | plans/1078-github-app-identity-plan | tombstone 2026-06 |
+| 24 | deploy/omp/README.md:122 | spikes/1807/omp_rpc_poc.py | tombstone 2026-06 |
+| 25 | scripts/smoke/image-request.py:10-11 | `artifacts/rollout-evidence/` (output-path de docstring, ¬lien) | ajuster la docstring → `artifacts/evidence/` (seul dossier evidence existant) ; la cible `754-image-smoke.txt` proposée par le retargeteur N'EXISTE PAS (réfuté par l'architect) — convention-only, plus bas prio |
+| 26 | packages/roxabi-contracts/src/roxabi_contracts/voice/models.py:7 | specs/763-port-voice-domain-spec | `docs/architecture/contracts.md` + ADR-084 |
+| 27-29 | tests/runbooks/v4_provision_idempo.md:207,209 ; tests/nats/test_gen_nkeys_acls.sh:167 | plans/1078, specs/754 | tombstones (hors périmètre issue, trouvés par le sweep — inclure, coût nul) |
+
+## Shapes
+
+### Shape A : 3 PRs par nature de fix
+
+1. **PR liens** — les ~29 retargets (mécanique, zéro jugement, tout le repo).
+2. **PR amend-adr** — 14 ADRs actifs : corrections lyra→factory en sections opératoires, notes d'amendement courtes (096→091, engines→092), code-subjects.json→RESOURCES, extract_scope_id, generate-segment, brand/core.css.
+3. **PR pages+tables** — 6 pages : messaging/storage/security-routing/adapters/job-model (+ rows normalisées partout), création des 2 tables manquantes (deployment, security-routing), rows 083/087 ajoutées, arbitrage 068 + format `related:`.
+
+**Trade-offs :** Pro — review par nature de changement, risque doc_drift isolé par lot. Con — 3 cycles CI/review ; 3 ADRs partagés PR1∩PR2 (071, 079, 055 : liens ET amends dans le même fichier) ⇒ ordre de merge imposé PR1→PR2 (rebase), pas d'indépendance totale.
+**Affectation (architect)** : `code-subjects.json` apparaît 5× dans adr/079 (:294,385,414,438,461) — le remplacement `→ RESOURCES` va ENTIER en PR2 (y compris la :461), un changement logique ne se scinde pas entre 2 PRs.
+**Rough scope :** M (≈45 fichiers au total, ~90 % d'éditions ≤5 lignes).
+**Gates (vérifié par l'architect)** : `check_doc_drift.py` ne regarde que les refs backtickées src/-anchored (baseline-grandfathered) et le grep legacy exclut `docs/architecture/` — aucun des 3 lots ne déclenche de rouge structurel ; pas de couplage CI entre les PRs.
+
+### Shape B : 1 PR unique
+
+Tout l'alignement en un diff. **Pro :** 1 cycle. **Con :** ~45 fichiers hétérogènes (ADRs+pages+code-comments+tests), review indigeste, un rouge doc_drift bloque tout. **Scope :** M.
+
+### Shape C : PR par cluster (11 PRs)
+
+**Pro :** granularité max. **Con :** overhead review/CI ×11 pour des diffs de 2-6 fichiers ; les fixes transverses (rename lyra→factory) se dupliquent. **Scope :** L (overhead).
+
+## Fit Check
+
+**Shape A.** Les 3 natures ont des profils de risque distincts (mécanique / historiographie ADR / SSoT quotidien) — c'est la granularité de review utile. Le rename lyra→factory traverse ADRs ET pages mais chaque PR reste cohérente en relecture. Shape B refusée (review indigeste = écarts qui passent), Shape C refusée (overhead sans gain de sûreté).
+
+Ordre : PR liens d'abord (zéro dépendance), puis amend-adr, puis pages+tables (peut absorber les arbitrages restants : 068, format related, tables méta).
+
+**Décisions à trancher au spec** (aucune ne bloque la Shape) :
+1. Collision 068 : renuméroter l'ADR archivé (ex. 068b/102) ou note de désambiguïsation dans les deux fichiers ?
+2. Rows archive « Accepted » (11 rows adapters/storage) : normaliser en « Superseded by ADR-N — archived » (pattern messaging.md) ?
+3. 086/101 hors table : créer une mini-table dans ARCHITECTURE.md ou statu quo documenté ?
+
+---
+*Audit : workflow `wf_5e646859-d27` (17 agents Explore lecture-seule, 1 190 857 tokens, 264 tool-uses, 14 min). Critique de complétude : coverage_ok=false → 3 gaps fermés par sweeps déterministes (ce doc). Détail brut : `journal.jsonl` du run + `scratchpad/audit-result.json`.*

@@ -7,6 +7,7 @@
 #   scripts/qg run --stage ci
 #   scripts/qg run --profile local
 #   scripts/qg run [--stage STAGE] GATE_NAME
+#   scripts/qg plan --stage ci [--format json|github] [--output PATH]
 #
 # Requires: yq (https://github.com/mikefarah/yq) — checked in tools/dev-setup.sh
 #
@@ -18,7 +19,8 @@
 #   fails (bad ref, shallow clone), the runner FAILS OPEN: all gates run.
 set -euo pipefail
 
-REPO_ROOT="${QG_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+QG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${QG_REPO_ROOT:-$(cd "${QG_SCRIPT_DIR}/.." && pwd)}"
 STACK="${QG_STACK:-${REPO_ROOT}/.claude/stack.yml}"
 
 # 1 only when a CI changed-files list was successfully computed (QG_DIFF_RANGE
@@ -26,6 +28,9 @@ STACK="${QG_STACK:-${REPO_ROOT}/.claude/stack.yml}"
 # nothing matches → filtered gates skip) from "diff unavailable" (fail open:
 # run everything). Never fail-closed — a broken diff must not skip checks.
 CI_FILTER_ACTIVE=0
+QG_FAIL_OPEN=0
+QG_TRIPWIRE_HIT=0
+QG_TAXONOMY=()
 
 # Gates invoke `uv run <tool>`; without no-sync, uv re-resolves and rewrites
 # uv.lock / bakes worktree paths into the shared symlinked .venv when a gate
@@ -42,6 +47,7 @@ Usage:
   scripts/qg run --stage pre-commit|pre-push|ci
   scripts/qg run --profile NAME
   scripts/qg run [--stage STAGE] GATE_NAME
+  scripts/qg plan --stage ci [--format json|github] [--output PATH]
 EOF
 }
 
@@ -146,6 +152,177 @@ should_run_gate() {
     return 1
   fi
   files_match_pattern "$pattern" "$@"
+}
+
+# Populate CI_FILTER_ACTIVE and the changed-files array for the ci stage.
+# Sets QG_FAIL_OPEN=1 when the diff range is absent or git diff failed.
+load_ci_changed() {
+  local -n _out_changed=$1
+  CI_FILTER_ACTIVE=0
+  QG_FAIL_OPEN=0
+  _out_changed=()
+
+  if [[ -z "${QG_DIFF_RANGE:-}" ]]; then
+    QG_FAIL_OPEN=1
+    return 0
+  fi
+
+  local difftmp errtmp git_err
+  difftmp=$(mktemp)
+  errtmp=$(mktemp)
+  if git -C "$REPO_ROOT" diff --name-only -z --no-renames "$QG_DIFF_RANGE" >"$difftmp" 2>"$errtmp"; then
+    CI_FILTER_ACTIVE=1
+    mapfile -d '' -t _out_changed <"$difftmp"
+  else
+    git_err=$(tr '\n' ' ' <"$errtmp")
+    echo "::warning::qg: git diff '${QG_DIFF_RANGE}' failed (${git_err:-no stderr}) — files: filters disabled, running ALL ci gates (fail-open)" >&2
+    QG_FAIL_OPEN=1
+  fi
+  rm -f "$difftmp" "$errtmp"
+}
+
+change_class_names() {
+  yq_read '.qg.change_classes | keys | .[]?' 2>/dev/null || true
+}
+
+change_class_pattern() {
+  local class="$1"
+  yq_read ".qg.change_classes[\"${class}\"].paths // \"\""
+}
+
+tripwire_patterns() {
+  yq_read '.qg.tripwires[]?' 2>/dev/null || true
+}
+
+# Sets QG_TAXONOMY (sorted unique class names) and QG_TRIPWIRE_HIT (0|1).
+classify_changed_files() {
+  local -a changed=("$@")
+  local -a taxonomy=()
+  QG_TRIPWIRE_HIT=0
+
+  local class pattern tw f match_rc
+  while IFS= read -r class; do
+    [[ -n "$class" ]] || continue
+    pattern=$(change_class_pattern "$class")
+    [[ -n "$pattern" && "$pattern" != "null" ]] || continue
+    for f in "${changed[@]}"; do
+      [[ -n "$f" ]] || continue
+      set +e
+      [[ "$f" =~ $pattern ]]
+      match_rc=$?
+      set -e
+      if [[ "$match_rc" -eq 2 ]]; then
+        echo "::error::invalid change_classes.${class} regex: ${pattern}" >&2
+        return 2
+      fi
+      if [[ "$match_rc" -eq 0 ]]; then
+        taxonomy+=("$class")
+        break
+      fi
+    done
+  done < <(change_class_names)
+
+  if [[ ${#taxonomy[@]} -gt 0 ]]; then
+    mapfile -t QG_TAXONOMY < <(printf '%s\n' "${taxonomy[@]}" | LC_ALL=C sort -u)
+  else
+    QG_TAXONOMY=()
+  fi
+
+  while IFS= read -r tw; do
+    [[ -n "$tw" && "$tw" != "null" ]] || continue
+    for f in "${changed[@]}"; do
+      [[ -n "$f" ]] || continue
+      set +e
+      [[ "$f" =~ $tw ]]
+      match_rc=$?
+      set -e
+      if [[ "$match_rc" -eq 2 ]]; then
+        echo "::error::invalid tripwire regex: ${tw}" >&2
+        return 2
+      fi
+      if [[ "$match_rc" -eq 0 ]]; then
+        QG_TRIPWIRE_HIT=1
+        return 0
+      fi
+    done
+  done < <(tripwire_patterns)
+
+  return 0
+}
+
+plan_gate_decision() {
+  local gate="$1" stage="$2"
+  shift 2
+  local -a changed=("$@")
+
+  if [[ "$gate" == "doc_drift_bundle" ]]; then
+    if [[ "$QG_FAIL_OPEN" -eq 1 ]]; then
+      printf '%s' "run|fail_open"
+      return 0
+    fi
+    if [[ "$QG_TRIPWIRE_HIT" -eq 1 ]]; then
+      printf '%s' "run|tripwire"
+      return 0
+    fi
+    local c
+    for c in "${QG_TAXONOMY[@]}"; do
+      if [[ "$c" == "docs" ]]; then
+        printf '%s' "run|taxonomy_docs"
+        return 0
+      fi
+    done
+    printf '%s' "run|always_on"
+    return 0
+  fi
+
+  if ! gate_enabled "$gate"; then
+    printf '%s' "skip|disabled"
+    return 0
+  fi
+
+  if [[ -n "$stage" ]] && ! gate_has_stage "$gate" "$stage"; then
+    printf '%s' "skip|not_in_stage"
+    return 0
+  fi
+
+  if [[ "$QG_FAIL_OPEN" -eq 1 ]]; then
+    printf '%s' "run|fail_open"
+    return 0
+  fi
+
+  if [[ "$QG_TRIPWIRE_HIT" -eq 1 ]]; then
+    printf '%s' "run|tripwire"
+    return 0
+  fi
+
+  local pattern
+  pattern=$(gate_field "$gate" 'files // ""')
+  if [[ -z "$pattern" || "$pattern" == "null" ]]; then
+    printf '%s' "run|no_files_filter"
+    return 0
+  fi
+
+  if [[ "$CI_FILTER_ACTIVE" -ne 1 ]]; then
+    printf '%s' "run|fail_open"
+    return 0
+  fi
+
+  if [[ ${#changed[@]} -eq 0 ]]; then
+    printf '%s' "skip|no_matching_files"
+    return 0
+  fi
+
+  local run_decision=0
+  should_run_gate "$gate" "$stage" "${changed[@]}"
+  run_decision=$?
+  if [[ "$run_decision" -eq 2 ]]; then
+    return 2
+  fi
+  if [[ "$run_decision" -eq 0 ]]; then
+    printf '%s' "run|matching_files"
+  else
+    printf '%s' "skip|no_matching_files"
+  fi
 }
 
 default_script() {
@@ -359,26 +536,8 @@ cmd_run() {
     return 2
   fi
 
-  # CI stage: compute the PR merge-base diff when ci.yml provided a range.
-  # Triple-dot includes deletions and --no-renames splits a move into D+A —
-  # deliberate: deleting or moving a file OUT of a filtered tree must still
-  # trigger its gates. -z (NUL-delimited) keeps non-ASCII/control-char paths
-  # intact — default core.quotePath C-quotes them ("caf\303\251.ts"), which
-  # would never match a files: regex and silently skip gates. Any git failure
-  # (bad ref, shallow clone) → fail OPEN with a warning: CI_FILTER_ACTIVE
-  # stays 0 and every gate runs.
-  if [[ "$stage" == "ci" && -n "${QG_DIFF_RANGE:-}" ]]; then
-    local difftmp errtmp git_err
-    difftmp=$(mktemp)
-    errtmp=$(mktemp)
-    if git -C "$REPO_ROOT" diff --name-only -z --no-renames "$QG_DIFF_RANGE" >"$difftmp" 2>"$errtmp"; then
-      CI_FILTER_ACTIVE=1
-      mapfile -d '' -t changed <"$difftmp"
-    else
-      git_err=$(tr '\n' ' ' <"$errtmp")
-      echo "::warning::qg: git diff '${QG_DIFF_RANGE}' failed (${git_err:-no stderr}) — files: filters disabled, running ALL ci gates (fail-open)" >&2
-    fi
-    rm -f "$difftmp" "$errtmp"
+  if [[ "$stage" == "ci" ]]; then
+    load_ci_changed changed
   fi
 
   local failed=0 rc=0 n
@@ -398,9 +557,115 @@ cmd_run() {
   return "$failed"
 }
 
+cmd_plan() {
+  local stage="" format="json" output_path=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stage)
+        stage="$2"
+        shift 2
+        ;;
+      --format)
+        format="$2"
+        shift 2
+        ;;
+      --output)
+        output_path="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        return 0
+        ;;
+      plan)
+        shift
+        ;;
+      -*)
+        echo "::error::unknown option $1" >&2
+        usage >&2
+        return 2
+        ;;
+      *)
+        echo "::error::unexpected argument $1" >&2
+        return 2
+        ;;
+    esac
+  done
+
+  require_yq
+  [[ -f "$STACK" ]] || { echo "::error::missing ${STACK}" >&2; return 2; }
+  [[ "$stage" == "ci" ]] || { echo "::error::plan requires --stage ci" >&2; return 2; }
+  case "$format" in
+    json | github) ;;
+    *)
+      echo "::error::unknown format ${format}" >&2
+      return 2
+      ;;
+  esac
+
+  local -a changed=()
+  local -a names=()
+  QG_FAIL_OPEN=0
+  QG_TRIPWIRE_HIT=0
+  QG_TAXONOMY=()
+
+  load_ci_changed changed
+  classify_changed_files "${changed[@]}" || return $?
+
+  mapfile -t names < <(ordered_gates stage "$stage") || return $?
+
+  local -a gate_lines=()
+  local n decision rc=0
+  for n in "${names[@]}"; do
+    [[ -n "$n" ]] || continue
+    decision=$(plan_gate_decision "$n" "$stage" "${changed[@]}") || rc=$?
+    if [[ "$rc" -eq 2 ]]; then
+      return 2
+    fi
+    gate_lines+=("${n}|${decision}")
+  done
+
+  local -a changed_json=()
+  local f
+  for f in "${changed[@]}"; do
+    [[ -n "$f" ]] || continue
+    changed_json+=("$f")
+  done
+
+  local meta_json
+  meta_json=$(
+    QG_DIFF_RANGE="${QG_DIFF_RANGE:-}" \
+    QG_STAGE="$stage" \
+    QG_FORMAT="$format" \
+    QG_OUTPUT="$output_path" \
+    QG_FILTER_ACTIVE="$CI_FILTER_ACTIVE" \
+    QG_FAIL_OPEN="$QG_FAIL_OPEN" \
+    QG_TRIPWIRE_HIT="$QG_TRIPWIRE_HIT" \
+    QG_TAXONOMY_JSON="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${QG_TAXONOMY[@]}")" \
+    QG_CHANGED_JSON="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${changed_json[@]}")" \
+    python3 - <<'PY'
+import json, os
+print(json.dumps({
+    "stage": os.environ["QG_STAGE"],
+    "format": os.environ["QG_FORMAT"],
+    "output_path": os.environ.get("QG_OUTPUT") or "",
+    "filter_active": os.environ.get("QG_FILTER_ACTIVE") == "1",
+    "fail_open": os.environ.get("QG_FAIL_OPEN") == "1",
+    "tripwire_hit": os.environ.get("QG_TRIPWIRE_HIT") == "1",
+    "diff_range": os.environ.get("QG_DIFF_RANGE") or "",
+    "changed_files": json.loads(os.environ.get("QG_CHANGED_JSON") or "[]"),
+    "taxonomy": json.loads(os.environ.get("QG_TAXONOMY_JSON") or "[]"),
+}))
+PY
+  )
+
+  printf '%s\n' "${gate_lines[@]}" | python3 "${QG_SCRIPT_DIR}/qg_plan_emit.py" "$meta_json"
+}
+
 main() {
   case "${1:-}" in
     run) shift; cmd_run "$@" ;;
+    plan) shift; cmd_plan "$@" ;;
     -h|--help|"") usage ;;
     *) usage >&2; exit 2 ;;
   esac

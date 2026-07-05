@@ -315,7 +315,15 @@ class TestRegenerateMode:
     def test_regenerate_restores_on_provision_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """seeds_dir is restored from backup if _mode_full_provision raises."""
+        """Covers the "backup exists, seeds_dir absent" branch of _restore_on_failure.
+
+        _mode_full_provision is mocked away entirely here, so seeds_dir is
+        never recreated after _backup_seeds wipes it — this test alone would
+        pass even against the old dead guard, since seeds_dir.exists() is
+        False either way. See test_regenerate_restores_on_genuine_mid_loop_failure
+        below for the complementary "backup exists, seeds_dir re-populated"
+        branch, which this full mock cannot exercise.
+        """
         import argparse
         from unittest.mock import patch
 
@@ -349,6 +357,153 @@ class TestRegenerateMode:
         )
         assert (seeds_dir / "hub.seed").read_bytes() == b"original-seed", (
             "Seed file content must match the pre-wipe backup"
+        )
+
+    def test_regenerate_restores_on_genuine_mid_loop_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """seeds_dir is restored even when the failure is genuinely mid-loop.
+
+        Regression for #2258: the test above (`test_regenerate_restores_on_
+        provision_failure`) mocks `_mode_full_provision` away entirely, so it
+        never touches the filesystem and seeds_dir stays absent — that's why
+        it passed even with the original buggy guard
+        (`not seeds_dir.exists()`). A REAL mid-loop failure is different:
+        `_mode_full_provision` recreates seeds_dir and writes seeds
+        identity-by-identity, so by the time a later identity fails,
+        seeds_dir already exists again (partially populated) — the old guard
+        skipped restoration in exactly this case.
+
+        This test drives a provider that succeeds for the first active
+        identity and raises on the second, so seeds_dir genuinely contains
+        one freshly-written (partial) seed file at the moment
+        `_restore_on_failure` runs.
+        """
+        import argparse
+
+        from scripts._modes import _mode_regenerate
+
+        class _FailsOnSecondCall:
+            def __init__(self) -> None:
+                self._calls = 0
+
+            def ensure_available(self) -> None:
+                return None
+
+            def gen_seed(self, name: str) -> bytes:
+                self._calls += 1
+                if self._calls >= 2:
+                    raise RuntimeError("simulated nk failure mid-loop")
+                return name.encode()
+
+            def pubkey_from_seed(self, seed: bytes) -> str:
+                return FakeNkeyProvider().pubkey_from_seed(seed)
+
+        # Arrange: seeds_dir with pre-existing (backup-era) seed + auth.conf.
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir()
+        seeds_dir.mkdir()
+        (seeds_dir / "hub.seed").write_bytes(b"original-hub-seed")
+        (seeds_dir / "hub.seed").chmod(0o600)
+        (seeds_dir / "auth.conf").write_text("original-auth-conf")
+
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setattr(_modes, "_provider_factory", _FailsOnSecondCall)
+
+        args = argparse.Namespace(yes=True, matrix=_MATRIX_FIXTURE)
+
+        with pytest.raises(RuntimeError, match="simulated nk failure mid-loop"):
+            _mode_regenerate(args)
+
+        # Assert: seeds_dir must match the pre-regen backup exactly — not the
+        # partial write (first identity's freshly-generated seed) left behind
+        # by the failed mid-loop attempt.
+        assert seeds_dir.exists(), (
+            "seeds_dir must be restored from backup after a genuine mid-loop failure"
+        )
+        assert (seeds_dir / "hub.seed").read_bytes() == b"original-hub-seed", (
+            "hub.seed must match the pre-regen backup, not the partial write"
+            " from the failed mid-loop attempt"
+        )
+        assert (seeds_dir / "auth.conf").read_text() == "original-auth-conf", (
+            "auth.conf must match the pre-regen backup after a mid-loop failure"
+        )
+        assert (seeds_dir / "hub.seed").stat().st_mode & 0o777 == 0o600, (
+            "restored seed file must retain 0600 permissions (credential material)"
+        )
+
+    def test_regenerate_restores_etc_auth_on_genuine_mid_loop_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """auth_dir/auth.conf is restored even when a new one was already written.
+
+        Regression for #2258 review follow-up: `_restore_on_failure`'s
+        write_etc branch (scripts/_modes.py:436-441) mirrors the same dead-guard
+        fix as the seeds_dir branch, but had zero coverage. Simply enabling
+        FACTORY_ACL_WRITE_ETC_NATS on the seeds-focused mid-loop test above
+        would NOT falsify it: that test's failure fires during the seed-gen
+        loop (_mode_full_provision:587-593), which runs BEFORE the system
+        auth.conf is (re)written at line 603 — so at restore time
+        auth_conf.exists() is False regardless of the guard, and the old dead
+        guard (`not auth_conf.exists()`) would restore anyway by accident.
+
+        This test lets the seed-gen loop AND the system auth.conf write
+        (line 603) both succeed, then fails on the second `atomic_write` call
+        (the seeds_dir auth.conf write, line 611) — so a freshly-written
+        system auth.conf genuinely exists at restore time. That is the only
+        shape that exercises the guard: the old code would see
+        auth_conf.exists() and skip restoring, leaving the new (mid-failure)
+        auth.conf in place instead of the pre-regen backup.
+        """
+        import argparse
+
+        from scripts._modes import _mode_regenerate
+
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir()
+        seeds_dir.mkdir()
+        (seeds_dir / "hub.seed").write_bytes(b"original-hub-seed")
+        (seeds_dir / "auth.conf").write_text("original-auth-conf")
+        (auth_dir / "auth.conf").write_text("original-etc-auth-conf")
+
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("FACTORY_ACL_WRITE_ETC_NATS", "1")
+        monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
+
+        # Let every seed-file write (line 591, one per identity) and the
+        # system auth.conf write (line 603, auth_dir/auth.conf) succeed for
+        # real; fail only on the LAST write (line 611, seeds_dir/auth.conf) —
+        # this is order-independent (doesn't matter how many active
+        # identities the matrix fixture has) and guarantees the failure lands
+        # strictly after line 603.
+        real_atomic_write = _modes.atomic_write
+        user_conf_path = seeds_dir / "auth.conf"
+
+        def _fails_on_user_conf_write(path: Path, content: str, mode: int) -> None:
+            if path == user_conf_path:
+                raise RuntimeError("simulated failure after system auth.conf write")
+            real_atomic_write(path, content, mode)
+
+        monkeypatch.setattr(_modes, "atomic_write", _fails_on_user_conf_write)
+
+        args = argparse.Namespace(yes=True, matrix=_MATRIX_FIXTURE)
+
+        with pytest.raises(
+            RuntimeError, match="simulated failure after system auth.conf write"
+        ):
+            _mode_regenerate(args)
+
+        # The system auth.conf (line 603) was written before the induced
+        # failure — confirms the dead-guard scenario is genuinely exercised,
+        # not accidentally absent like the seeds-focused mid-loop test above.
+        assert (auth_dir / "auth.conf").exists()
+        assert (auth_dir / "auth.conf").read_text() == "original-etc-auth-conf", (
+            "auth_dir/auth.conf must be restored to the pre-regen backup, not"
+            " the freshly-written content produced before the induced failure"
         )
 
 

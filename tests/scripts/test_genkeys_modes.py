@@ -351,6 +351,77 @@ class TestRegenerateMode:
             "Seed file content must match the pre-wipe backup"
         )
 
+    def test_regenerate_restores_on_genuine_mid_loop_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """seeds_dir is restored even when the failure is genuinely mid-loop.
+
+        Regression for #2258: the test above (`test_regenerate_restores_on_
+        provision_failure`) mocks `_mode_full_provision` away entirely, so it
+        never touches the filesystem and seeds_dir stays absent — that's why
+        it passed even with the original buggy guard
+        (`not seeds_dir.exists()`). A REAL mid-loop failure is different:
+        `_mode_full_provision` recreates seeds_dir and writes seeds
+        identity-by-identity, so by the time a later identity fails,
+        seeds_dir already exists again (partially populated) — the old guard
+        skipped restoration in exactly this case.
+
+        This test drives a provider that succeeds for the first active
+        identity and raises on the second, so seeds_dir genuinely contains
+        one freshly-written (partial) seed file at the moment
+        `_restore_on_failure` runs.
+        """
+        import argparse
+
+        from scripts._modes import _mode_regenerate
+
+        class _FailsOnSecondCall:
+            def __init__(self) -> None:
+                self._calls = 0
+
+            def ensure_available(self) -> None:
+                return None
+
+            def gen_seed(self, name: str) -> bytes:
+                self._calls += 1
+                if self._calls >= 2:
+                    raise RuntimeError("simulated nk failure mid-loop")
+                return name.encode()
+
+            def pubkey_from_seed(self, seed: bytes) -> str:
+                return FakeNkeyProvider().pubkey_from_seed(seed)
+
+        # Arrange: seeds_dir with pre-existing (backup-era) seed + auth.conf.
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir()
+        seeds_dir.mkdir()
+        (seeds_dir / "hub.seed").write_bytes(b"original-hub-seed")
+        (seeds_dir / "auth.conf").write_text("original-auth-conf")
+
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setattr(_modes, "_provider_factory", _FailsOnSecondCall)
+
+        args = argparse.Namespace(yes=True, matrix=_MATRIX_FIXTURE)
+
+        with pytest.raises(RuntimeError, match="simulated nk failure mid-loop"):
+            _mode_regenerate(args)
+
+        # Assert: seeds_dir must match the pre-regen backup exactly — not the
+        # partial write (first identity's freshly-generated seed) left behind
+        # by the failed mid-loop attempt.
+        assert seeds_dir.exists(), (
+            "seeds_dir must be restored from backup after a genuine mid-loop failure"
+        )
+        assert (seeds_dir / "hub.seed").read_bytes() == b"original-hub-seed", (
+            "hub.seed must match the pre-regen backup, not the partial write"
+            " from the failed mid-loop attempt"
+        )
+        assert (seeds_dir / "auth.conf").read_text() == "original-auth-conf", (
+            "auth.conf must match the pre-regen backup after a mid-loop failure"
+        )
+
 
 # ── T19.5 — --show rootless reads seeds_dir + opt-in requires root ───────────
 

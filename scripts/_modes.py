@@ -421,12 +421,23 @@ def _restore_on_failure(
     backup_auth: str | None,
     write_etc: bool,
 ) -> None:
-    """Restore backups after a failed provision attempt."""
-    if backup_seeds and Path(backup_seeds).exists() and not seeds_dir.exists():
+    """Restore backups after a failed provision attempt.
+
+    Unconditionally restores whenever a backup exists. A mid-loop failure in
+    _mode_full_provision can leave seeds_dir/auth.conf partially repopulated
+    before raising, so "already exists" must not be read as "already
+    restored, skip" — any partial state is wiped first, then the backup is
+    copied back in.
+    """
+    if backup_seeds and Path(backup_seeds).exists():
+        if seeds_dir.exists():
+            shutil.rmtree(seeds_dir)
         shutil.copytree(backup_seeds, str(seeds_dir))
     if write_etc and backup_auth:
         auth_conf = _auth_dir() / "auth.conf"
-        if Path(backup_auth).exists() and not auth_conf.exists():
+        if Path(backup_auth).exists():
+            if auth_conf.exists():
+                auth_conf.unlink()
             shutil.copy2(backup_auth, str(auth_conf))
 
 

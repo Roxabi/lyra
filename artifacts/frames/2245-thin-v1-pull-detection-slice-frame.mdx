@@ -1,0 +1,106 @@
+---
+title: "chore(monitoring): thin V1-pull detection slice — re-arm NATS ACL/log alerting without reviving the frozen host-timer"
+issue: 2245
+status: approved
+tier: F-lite
+date: 2026-07-05
+---
+
+## Problem
+
+The 2026-04-27 NATS ACL incident took 2h44m to detect — zero alerts fired, found only
+by a human manually reading container logs. The alerting logic that would have caught
+it (`check_nats_log_errors` in `src/factory/monitoring/checks_log.py`, scans container
+logs for "permissions violation", escalates via `src/factory/monitoring/escalation.py`
+→ Telegram) already exists and was marked done in the original postmortem. Its
+scheduler — the host-side `deploy/lyra-monitor.{service,timer}` systemd timer — was
+removed in `deploy/provision.sh` ("superseded by Monitoring v2, tracked in #1035").
+#1035 (Monitoring v2 — NATS event stream + Tauri dashboard) closed without shipping
+that replacement (no `lyra.event.*`/`lyra.metric.*` producers in `src/`, no dashboard).
+ADR-091 (four observability planes) reframes monitoring a third time but also has zero
+shipped plane③ runtime today. Net: three generations of monitoring plans, zero shipped
+detection in production — the April 2h44m gap is still open.
+
+**Why now:** split out of #2203 (incident-response runbook) per architect/axial-drift/
+security/devops panel review (2026-07-04) — the runbook only defines process *after* a
+human notices; without this slice, detection stays manual. **Observable impact:** any
+repeat NATS ACL misconfiguration or hub `_dict_stream_gen` stall goes undetected until
+someone happens to read logs.
+
+## Who
+
+- **Primary:** Mickael (sole on-call operator) — needs a Telegram page instead of a
+  cold log read when a permissions-violation burst or hub stream-gen timeout occurs.
+- **Secondary:** future Sentinelle/Monitoring-v2 work (#1035) — this slice must not
+  foreclose the plane③ V2 subscribe-based design; it is explicitly the V1-pull
+  placeholder ADR-091 already prescribes.
+
+## Constraints
+
+- ADR-091 plane③ boundary rule: infra health is **state**, consumed via **V1: pull**
+  (`/health/detail`, monitoring checks) until #1035's V2 (`factory.metric.*` subscribe)
+  ships — this slice is the V1-pull mechanism, nothing upstream of it.
+- Must **not** re-arm `deploy/lyra-monitor.{service,timer}` verbatim — #1035 explicitly
+  said "do not extend the host-timer monitor," and flagged its host-systemd-dependency
+  problems (`systemctl --user` service introspection via `check_process`, direct
+  `localhost:8443` HTTP assumption via `check_http_health`).
+- Must reuse the existing pure check functions (`check_nats_log_errors`,
+  `check_hub_dict_stream_gen_timeout` in `checks_log.py`) — they only shell out to
+  `podman logs <container>`, no host systemd coupling.
+- Must reuse the existing Telegram escalation path (`escalation.py`) — still
+  functional, no changes needed to its contract.
+- Interval ≤5 minutes (matches the acceptance criterion and the existing
+  `check_interval_minutes` default in `MonitoringConfig`).
+- `deploy/lyra-monitor.{service,timer}` stays retired/untouched — no file changes there.
+- Depends on #2203 (incident-response runbook) only for a documentation cross-reference
+  (this issue's PR should point at the runbook path once it exists) — not a build
+  dependency; #2203 may land before or after this PR.
+- Size `F-lite`, `P1-high` — single domain (`src/factory/monitoring/` + one new
+  deploy surface), no new architecture, panel-reviewed scope.
+
+## Out of Scope
+
+- Reviving `deploy/lyra-monitor.{service,timer}` as-is, or any host-side `--user`
+  systemd timer that re-implements `check_process`'s `systemctl --user is-active`
+  introspection or `check_http_health`'s `localhost:8443` assumption.
+- Monitoring v2 / full Sentinelle (`factory.metric.*` JetStream producers/subscribers,
+  Tauri dashboard, event-bus plane③) — that is #1035, explicitly future work.
+- Any other check beyond the two named log checks (disk, blobstore, audio-lag,
+  process-liveness, queue-depth, etc. from the full `run_checks()` pipeline) — those
+  stay on their current path (or unmonitored) and are not this issue's concern.
+- Writing #2203's incident-response runbook content — this issue only references it.
+- New alert channels beyond Telegram (Discord, PagerDuty, etc.).
+
+## Premise Validity
+
+**Success in 6 months:** a periodic, container-native check (≤5 min interval) runs
+`check_nats_log_errors` (and `check_hub_dict_stream_gen_timeout`) against the
+NATS/hub containers with no host-timer/`systemctl --user` dependency; on a real
+anomaly a Telegram alert fires via `escalation.py` within one check interval — a
+repeat of an April-2026-class incident is caught by an automated alert, not by a
+human reading logs.
+
+**Failure in 6 months (falsifiable):** at ≥6 months (2027-01), a NATS
+permissions-violation burst or hub `_dict_stream_gen` stall occurs in production logs
+but zero Telegram alert is found in the corresponding window — i.e. the periodic
+check silently stopped running, was never wired into the deploy surface, or its
+escalation path was broken — verified by diffing incident log timestamps against
+Telegram alert history.
+
+**Simplest alternative:** re-enable `deploy/lyra-monitor.{service,timer}` unchanged.
+**Why not simplest:** it re-introduces exactly the host-systemd-dependency problems
+(`systemctl --user` introspection of other services, `localhost:8443` host-network
+assumption) that #1035 flagged when retiring it, and reviving it verbatim directly
+contradicts that closed epic's own directive ("do not extend the host-timer
+monitor") — it does not fit the now fully-containerized (Quadlet) deployment model
+this repo has since standardized on.
+
+## Complexity
+
+**Tier: F-lite** — label `size:F-lite`; single domain (`src/factory/monitoring/` +
+one new small deploy/scheduling surface), clear panel-reviewed scope, no new
+architecture pattern beyond picking a container-native scheduling mechanism among the
+two options ADR-091/the issue already names (Quadlet timer vs. in-process scheduler
+with scoped podman-socket mount) — that choice is deferred to `/spec` + `/plan`.
+
+Signals: clear scope ∨ single domain ∨ issue label F-lite — all present.

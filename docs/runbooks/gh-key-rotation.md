@@ -10,8 +10,8 @@ This runbook does **not** cover changing the GitHub App ID or installation ID �
 
 ## When to Rotate
 
-- **Compromise suspected** — PEM leaked in logs, visible in a build artifact, exfiltrated from disk, or accessible to an unauthorized party.
-- **Scheduled rotation** — recommended cadence: every 90 days for prod (M₁), every 180 days for dev (M₂). These are operational heuristics, not a policy requirement.
+- **Compromise suspected** — PEM leaked in logs, visible in a build artifact, exfiltrated from disk, or accessible to an unauthorized party. Rotate immediately — see the event-triggered rules in [secrets-rotation.md § Rotation policy & schedule](secrets-rotation.md#rotation-policy--schedule), which apply to this credential too.
+- **Scheduled rotation** — cadence: every 90 days for prod (M₁), matching the max-seed-age policy in [secrets-rotation.md § Rotation policy & schedule](secrets-rotation.md#rotation-policy--schedule); every 180 days for dev (M₂) as an intentional relaxation for the non-prod host. Not yet machine-enforced for either host — see that section's "Enforcement status."
 - **Operator key change** — the GitHub App "Generate a private key" action on github.com invalidates the previous key; rotation must follow immediately.
 
 ---
@@ -167,3 +167,4 @@ Record the rotation in your operations journal:
 - [`deploy/provision.sh`](../../deploy/provision.sh) — section "Lyra GitHub App PEM (Podman secret)" for first-time bootstrap
 - [`docs/runbooks/clipool-uid-model.md`](clipool-uid-model.md) — clipool git behavior + UID trust model (SSH rewrite, identity, `safe.directory`)
 - [`docs/runbooks/nkey-rotation.md`](nkey-rotation.md) — sibling runbook for NATS nkey rotation
+- [secrets-rotation.md § Rotation policy & schedule](secrets-rotation.md#rotation-policy--schedule) — central max-seed-age policy, event triggers, rotation log format

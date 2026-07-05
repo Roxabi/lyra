@@ -18,6 +18,35 @@
 
 NATS `auth.conf` is an **inline bind mount**, not a Podman secret (ADR-085). Nkey seeds use `type=mount` (tmpfs). OAuth/LiteLLM use `type=env`.
 
+## Rotation policy & schedule
+
+Governs *when* a secret must rotate. The *how* is the per-secret procedures above and in the cross-referenced runbooks below.
+
+**Max seed age: 90 days.** Every identity in [`acl-matrix.json`](../../deploy/nats/acl-matrix.json) must not exceed 90 days since its last rotation (per the P2 recommendation in [nats-acl-inbox-case-postmortem.md](../history/nats-acl-inbox-case-postmortem.md)).
+
+**Event-triggered rotation — rotate immediately, regardless of the quarterly cadence:**
+
+- Suspected compromise (seed exfiltrated, exposed in a backup, etc.) — procedure: [nkey-rotation.md](nkey-rotation.md).
+- Personnel change with prod (M₁) access — an operator loses (or no longer needs) prod access.
+- A seed observed somewhere it shouldn't be — logs, a build artifact, a screen share.
+
+**Scheduled rotation.** Absent an event trigger, rotate every identity on a quarterly calendar reminder (~90 days). Rotating an identity resets its own clock only — it does not reset the age of any other identity.
+
+**Rotation log.** Every rotation — scheduled or event-triggered — gets one entry in `~/.roxabi/factory/rotation-log.md` (created on first write; see [operator-log.md](operator-log.md) for the full audit-log map). Entry format, written by `rotation_log_append()` in [`deploy/lib/operator-log.sh`](../../deploy/lib/operator-log.sh):
+
+```
+YYYY-MM-DD | secret:<identity> | reason:<reason> | by:<operator> | trigger:<manual|scheduled|compromise|...> | host:<hostname>
+```
+
+If a rotation runs outside an instrumented script (raw `podman secret create`, manual seed swap), append the entry by hand — see "Manual operations" in [operator-log.md](operator-log.md).
+
+**Enforcement status: not yet wired.** Today this is operator discipline, not a machine-checked control:
+
+- `rotation_log_append()` is only called from the disaster-recovery path ([`secrets_reset.py`](../../src/factory/cli/secrets_reset.py)) — routine per-identity rotation via [nkey-rotation.md](nkey-rotation.md) Path A/B does not yet log, so the rotation log is not a complete age source for every identity.
+- There is no `make check-seed-age` (or equivalent) target — nothing currently reads the log and fails a stale identity.
+
+Wiring the routine path and adding an age-check target is tracked in [#2246](https://github.com/Roxabi/roxabi-factory/issues/2246); until it ships, treat the 90-day max as a calendar reminder to act on, not a gate that will catch a missed rotation.
+
 ## Rotate one nkey
 
 ```bash

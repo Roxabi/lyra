@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 from factory.obs.hub_tracer import hub_ingress_span
@@ -17,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 class TraceMiddleware:
-    """Stage 0: generate a per-turn trace_id and store it in contextvars (#270)."""
+    """Stage 0: mint per-turn trace_id on message + TraceContext (#270, #2069)."""
 
     async def __call__(
         self,
@@ -25,7 +26,9 @@ class TraceMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        token = TraceContext.set_trace_id(TraceContext.generate())
+        trace_id = TraceContext.generate()
+        msg = dataclasses.replace(msg, trace_id=trace_id)
+        token = TraceContext.set_trace_id(trace_id)
         try:
             with hub_ingress_span(
                 platform=msg.platform,

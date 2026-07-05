@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from contextvars import copy_context
 from unittest.mock import AsyncMock, MagicMock
@@ -14,6 +15,7 @@ from factory.core.hub.middleware.middleware_stages import (
     TraceMiddleware,
 )
 from factory.core.hub.pipeline.message_pipeline import Action, PipelineResult
+from factory.core.messaging.message import InboundMessage
 from factory.core.trace import TraceContext, TraceIdFilter
 from tests.core.conftest import _make_hub, make_inbound_message
 
@@ -204,6 +206,26 @@ class TestTraceMiddleware:
         next_fn.assert_awaited_once()
         assert result == _PASS
 
+    async def test_stamps_trace_id_on_message(self) -> None:
+        """trace_id must survive pool.submit after TraceContext reset."""
+        stamped: list[str | None] = []
+
+        async def _capturing_next(
+            msg: InboundMessage, *_args: object
+        ) -> PipelineResult:
+            del _args
+            stamped.append(msg.trace_id)
+            return _PASS
+
+        mw = TraceMiddleware()
+        msg = make_inbound_message()
+
+        await mw(msg, _make_ctx(), _capturing_next)
+
+        assert len(stamped) == 1
+        assert stamped[0] is not None
+        assert len(stamped[0]) == 36
+
 
 # ──────────────────────────────────────────────────────────────────────
 # MessagePrepMiddleware — pool_id ContextVar
@@ -364,6 +386,89 @@ class TestGuardedProcessOneAgentName:
         await guarded_process_one(msg, agent, pool)
 
         assert TraceContext.get_agent_name() is None
+
+
+class TestGuardedProcessOneTraceHydration:
+    @pytest.mark.no_default_trace
+    async def test_hydrates_trace_from_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Pool worker must restore TraceContext from stamped msg.trace_id."""
+        from factory.core.pool.pool_processor_exec import guarded_process_one
+
+        captured: list[str | None] = []
+
+        async def _fake_process(*_args: object) -> None:
+            del _args
+            captured.append(TraceContext.get_trace_id())
+
+        pool = MagicMock()
+        pool.agent_name = "test-agent"
+        pool.pool_id = "telegram:main:chat:1"
+        pool._turn_timeout = None
+        pool.typing_publisher = None
+        pool._msg = MagicMock(return_value="reply")
+        pool._ctx = MagicMock()
+        pool._ctx.record_circuit_failure = MagicMock()
+
+        agent = MagicMock()
+        agent.is_backend_alive = MagicMock(return_value=True)
+        agent.reset_backend = AsyncMock()
+
+        msg = dataclasses.replace(
+            make_inbound_message(),
+            trace_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        )
+
+        monkeypatch.setattr(
+            "factory.core.pool.pool_processor_exec.process_one", _fake_process
+        )
+        await guarded_process_one(msg, agent, pool)
+
+        assert captured == ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
+        assert TraceContext.get_trace_id() is None
+
+    @pytest.mark.no_default_trace
+    async def test_hydrates_root_job_id_for_envelope_mint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from factory.core.envelope_fields import mint_work_envelope_fields
+        from factory.core.pool.pool_processor_exec import guarded_process_one
+
+        captured_job: list[str | None] = []
+
+        async def _fake_process(*_args: object) -> None:
+            del _args
+            fields = mint_work_envelope_fields(pool_id="telegram:main:chat:1")
+            captured_job.append(fields.job_id)
+
+        pool = MagicMock()
+        pool.agent_name = "test-agent"
+        pool.pool_id = "telegram:main:chat:1"
+        pool._turn_timeout = None
+        pool.typing_publisher = None
+        pool._msg = MagicMock(return_value="reply")
+        pool._ctx = MagicMock()
+        pool._ctx.record_circuit_failure = MagicMock()
+
+        agent = MagicMock()
+        agent.is_backend_alive = MagicMock(return_value=True)
+        agent.reset_backend = AsyncMock()
+
+        root_job = "a" * 32
+        msg = dataclasses.replace(
+            make_inbound_message(),
+            trace_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            root_job_id=root_job,
+        )
+
+        monkeypatch.setattr(
+            "factory.core.pool.pool_processor_exec.process_one", _fake_process
+        )
+        await guarded_process_one(msg, agent, pool)
+
+        assert captured_job == [root_job]
+        assert TraceContext.get_root_job_id() is None
 
 
 # ──────────────────────────────────────────────────────────────────────

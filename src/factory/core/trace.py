@@ -22,6 +22,7 @@ from typing import Protocol, cast
 
 _trace_id: ContextVar[str] = ContextVar("trace_id")
 _pool_id: ContextVar[str] = ContextVar("pool_id")
+_root_job_id: ContextVar[str] = ContextVar("root_job_id")
 _agent_name: ContextVar[str] = ContextVar("agent_name")
 
 
@@ -69,6 +70,18 @@ class TraceContext:
     @staticmethod
     def reset_pool_id(token: Token[str]) -> None:
         _pool_id.reset(token)
+
+    @staticmethod
+    def get_root_job_id() -> str | None:
+        return _root_job_id.get(None)
+
+    @staticmethod
+    def set_root_job_id(value: str) -> Token[str]:
+        return _root_job_id.set(value)
+
+    @staticmethod
+    def reset_root_job_id(token: Token[str]) -> None:
+        _root_job_id.reset(token)
 
     @staticmethod
     def get_agent_name() -> str | None:

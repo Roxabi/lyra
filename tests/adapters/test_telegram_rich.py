@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiogram.types import ReplyParameters
 
 from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 from factory.adapters.telegram.telegram_rich import (
@@ -162,6 +163,6 @@ async def test_private_streaming_uses_draft_then_persist(
     bot.send_rich_message.assert_awaited_once_with(
         chat_id=123,
         rich_message=build_rich_message("final answer"),
-        reply_to_message_id=77,
+        reply_parameters=ReplyParameters(message_id=77),
     )
     assert ph.message_id == sent.message_id

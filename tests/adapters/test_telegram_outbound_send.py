@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiogram.exceptions import TelegramAPIError
+from aiogram.types import ReplyParameters
 
 from factory.adapters.telegram.telegram_rich import (
     TelegramPlaceholder,
@@ -79,7 +80,7 @@ async def test_send_calls_bot_send_message() -> None:
     bot.send_rich_message.assert_awaited_once_with(
         chat_id=123,
         rich_message=build_rich_message("reply"),
-        reply_to_message_id=99,
+        reply_parameters=ReplyParameters(message_id=99),
     )
 
 
@@ -183,7 +184,7 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
     bot.send_rich_message.assert_awaited_once_with(
         chat_id=123,
         rich_message=build_rich_message("reply"),
-        reply_to_message_id=777,
+        reply_parameters=ReplyParameters(message_id=777),
     )
     assert outbound.metadata["reply_message_id"] == sent_msg.message_id
 
@@ -326,12 +327,14 @@ async def test_streaming_send_placeholder_with_reply() -> None:
     # Assert
     adapter.bot.send_rich_message.assert_awaited_once()
     call_kwargs = adapter.bot.send_rich_message.call_args.kwargs
-    assert call_kwargs.get("reply_to_message_id") == 77
+    reply_params = call_kwargs.get("reply_parameters")
+    assert isinstance(reply_params, ReplyParameters)
+    assert reply_params.message_id == 77
 
 
 @pytest.mark.asyncio
 async def test_streaming_send_placeholder_no_reply() -> None:
-    """TelegramFormatter.send_placeholder sends without reply_to_message_id
+    """TelegramFormatter.send_placeholder sends without reply_parameters
     when reply_to is None.
     """
     from factory.adapters.telegram.telegram_formatter import TelegramFormatter
@@ -351,9 +354,9 @@ async def test_streaming_send_placeholder_no_reply() -> None:
     # Act
     await formatter.send_placeholder()
 
-    # Assert — no reply_to_message_id kwarg
+    # Assert — no reply_parameters kwarg
     call_kwargs = adapter.bot.send_rich_message.call_args.kwargs
-    assert "reply_to_message_id" not in call_kwargs
+    assert "reply_parameters" not in call_kwargs
 
 
 @pytest.mark.asyncio
@@ -514,7 +517,7 @@ async def test_send_intermediate_starts_typing() -> None:
 
 @pytest.mark.asyncio
 async def test_send_no_reply_to() -> None:
-    """When message_id=None in platform_meta, reply_to_message_id not passed.
+    """When message_id=None in platform_meta, reply_parameters not passed.
     Covers L139-140.
     """
     from factory.adapters.telegram.telegram_outbound import send
@@ -547,9 +550,9 @@ async def test_send_no_reply_to() -> None:
     # Act
     await send(adapter, original_msg, outbound)
 
-    # Assert — no reply_to_message_id kwarg
+    # Assert — no reply_parameters kwarg
     call_kwargs = adapter.bot.send_rich_message.call_args.kwargs
-    assert "reply_to_message_id" not in call_kwargs
+    assert "reply_parameters" not in call_kwargs
 
 
 @pytest.mark.asyncio

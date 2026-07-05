@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import InputRichMessage
+from aiogram.types import InputRichMessage, ReplyParameters
 
 from factory.adapters.shared._shared import chunk_text
 from factory.adapters.telegram.telegram_formatting import (
@@ -87,10 +87,18 @@ class TelegramPlaceholder:
     use_draft: bool = False
 
 
-def _thread_kwargs(reply_to: int | None, topic_id: int | None) -> dict[str, Any]:
+def _thread_kwargs(
+    reply_to: int | None,
+    topic_id: int | None,
+    *,
+    rich: bool = False,
+) -> dict[str, Any]:
     kw: dict[str, Any] = {}
     if reply_to is not None:
-        kw["reply_to_message_id"] = reply_to
+        if rich:
+            kw["reply_parameters"] = ReplyParameters(message_id=reply_to)
+        else:
+            kw["reply_to_message_id"] = reply_to
     if topic_id is not None:
         kw["message_thread_id"] = topic_id
     return kw
@@ -118,7 +126,7 @@ async def send_rich_text(  # noqa: PLR0913 — mirrors Telegram send kwargs surf
     kwargs: dict[str, Any] = {
         "chat_id": chat_id,
         "rich_message": build_rich_message(text),
-        **_thread_kwargs(reply_to, topic_id),
+        **_thread_kwargs(reply_to, topic_id, rich=True),
     }
     if reply_markup is not None:
         kwargs["reply_markup"] = reply_markup
@@ -226,7 +234,7 @@ async def send_thinking_with_fallback(  # noqa: PLR0913 — mirrors Telegram sen
         kwargs: dict[str, Any] = {
             "chat_id": chat_id,
             "rich_message": build_thinking_message(text),
-            **_thread_kwargs(reply_to, topic_id),
+            **_thread_kwargs(reply_to, topic_id, rich=True),
         }
         if reply_markup is not None:
             kwargs["reply_markup"] = reply_markup

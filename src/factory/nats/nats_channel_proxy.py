@@ -27,6 +27,7 @@ from factory.core.messaging.message import (
     Platform,
 )
 from factory.core.messaging.render_events import RenderEvent
+from factory.core.messaging.utils.wire import wire_inbound, wire_outbound
 from factory.nats.audio_publish import (
     notify_audio_publish_failed,
     publish_audio_with_retry,
@@ -92,6 +93,10 @@ class NatsChannelProxy:
         self._active_streams: set[str] = set()
 
     def _to_json(self, obj: Any) -> Any:
+        if isinstance(obj, InboundMessage):
+            obj = wire_inbound(obj)
+        elif isinstance(obj, OutboundMessage):
+            obj = wire_outbound(obj)
         return json.loads(serialize(obj, resolver=self._resolver).decode("utf-8"))
 
     # ------------------------------------------------------------------
@@ -194,10 +199,11 @@ class NatsChannelProxy:
                 )
             except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: nats-publish — streaming publish failure drains iterator; type sanitized
                 log.warning(
-                    "NatsChannelProxy: NATS publish failed during streaming,"
-                    " stream_id=%r type=%s — draining iterator",
+                    "NatsChannelProxy: streaming publish failed stream_id=%r"
+                    " type=%s msg=%s — draining iterator",
                     original_msg.id,
                     type(exc).__name__,
+                    str(exc)[:200],
                 )
                 await publish_stream_error(self._nc, subject, original_msg.id)
                 async for _ in events:

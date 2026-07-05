@@ -24,7 +24,8 @@ from roxabi_contracts.jobs.subjects import jobs_steer
 from ..messaging.message import Response
 from ..ports.active_jobs import ActiveJobEntry, RegistryConflictError
 from .pool_observer import _TURN_PERSIST_ERRORS
-from .pool_processor_exec import _safe_dispatch, guarded_process_one
+from .pool_processor_dispatch import safe_dispatch
+from .pool_processor_exec import guarded_process_one
 
 log = logging.getLogger(__name__)
 
@@ -170,7 +171,7 @@ class PoolProcessor:
             if _last_msg is not None:
                 _reply = pool._msg("cancelled", "Request cancelled.")
                 await asyncio.shield(
-                    _safe_dispatch(_last_msg, Response(content=_reply), pool)
+                    safe_dispatch(_last_msg, Response(content=_reply), pool)
                 )
             raise
         finally:

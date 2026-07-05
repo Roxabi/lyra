@@ -41,6 +41,16 @@ class TestMintWorkEnvelopeFields:
             TraceContext.reset_pool_id(tok_p)
             TraceContext.reset_trace_id(tok_t)
 
+    def test_reads_root_job_id_from_trace_context(self) -> None:
+        tok_t = TraceContext.set_trace_id(_TRACE)
+        tok_j = TraceContext.set_root_job_id(_JOB)
+        try:
+            fields = mint_work_envelope_fields()
+            assert fields.job_id == _JOB
+        finally:
+            TraceContext.reset_root_job_id(tok_j)
+            TraceContext.reset_trace_id(tok_t)
+
     def test_missing_trace_raises(self, _default_trace_context) -> None:
         TraceContext.reset_trace_id(_default_trace_context)
         with pytest.raises(ValueError, match="trace_id required"):

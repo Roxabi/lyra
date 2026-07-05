@@ -29,6 +29,7 @@ from factory.core.messaging.render_events import (
     TextDeltaRenderEvent,
     ToolCallStartRenderEvent,
 )
+from factory.core.messaging.utils.callbacks import TrustedCallback
 from factory.nats.nats_channel_proxy import NatsChannelProxy
 from tests.helpers.messages import make_test_blobref
 
@@ -162,6 +163,31 @@ async def test_send_subject_uses_platform_value() -> None:
 # ---------------------------------------------------------------------------
 # send_streaming()
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_streaming_stream_start_strips_hub_local_metadata() -> None:
+    """stream_start must publish when outbound carries _on_dispatched callback."""
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound("msg-hub-meta")
+    outbound = OutboundMessage.from_text("")
+
+    async def _on_dispatched(_ob: OutboundMessage) -> None:
+        pass
+
+    outbound.metadata["_on_dispatched"] = TrustedCallback(_on_dispatched)
+
+    await proxy.send_streaming(
+        inbound,
+        _async_iter(TextDeltaRenderEvent(message_id="msg-hub-meta", delta="hi")),
+        outbound=outbound,
+    )
+
+    header = json.loads(nc.publish.call_args_list[0].args[1].decode("utf-8"))
+    assert header["type"] == "stream_start"
+    assert "_on_dispatched" not in header["outbound"].get("metadata", {})
+    assert nc.publish.await_count >= 2
 
 
 @pytest.mark.asyncio

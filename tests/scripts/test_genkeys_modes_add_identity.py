@@ -142,7 +142,12 @@ def test_add_identity_writes_only_new_seed(tmp_path: Path) -> None:
     # Act
     result = _run_genkeys(
         ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
-        env={"SEEDS_DIR": str(seeds_dir), "AUTH_DIR": str(auth_dir)},
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+            "OPERATOR_LOG": str(tmp_path / "operator.log"),
+        },
     )
 
     # Assert — exit 0 and STATE=added on stdout
@@ -181,6 +186,143 @@ def test_add_identity_writes_only_new_seed(tmp_path: Path) -> None:
         "auth.conf must contain telegram-adapter block"
     )
     assert "turn-writer" in content, "auth.conf must contain turn-writer block"
+
+
+# ── N1/N10 — rotation-log wiring (RED, #2246) ──────────────────────────────────
+
+
+def test_add_identity_rotation_log_entry_only_on_added(tmp_path: Path) -> None:
+    """rotation-log.md gains one secret:<name> line on state==added; none on
+    noop/repaired.
+
+    Spec trace: SC1 (N1, N10).
+    RED (#2246): rotation_log_append() is not called from _mode_add_identity yet
+    — the log file is never created/appended, so the added-case assertion fails
+    with 0 matching lines instead of the expected 1.
+    """
+    from scripts._loader import load_matrix
+    from scripts._renderer import render_auth_conf
+
+    from tests.fakes.nkey_provider import FakeNkeyProvider
+
+    # ── added: turn-writer is new (no seed pre-written) ──────────────────────
+    added_dir = tmp_path / "added"
+    seeds_dir = added_dir / "nkeys"
+    auth_dir = added_dir / "etc-nats"
+    auth_dir.mkdir(parents=True)
+    matrix_path = _write_matrix(added_dir, _TINY_MATRIX)
+    _write_fake_seeds(seeds_dir, ["hub", "telegram-adapter"])
+    rotation_log = added_dir / "rotation-log.md"
+
+    result = _run_genkeys(
+        ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(rotation_log),
+            "OPERATOR_LOG": str(added_dir / "operator.log"),
+        },
+    )
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "STATE=added" in result.stdout, (
+        f"Expected STATE=added in stdout; got: {result.stdout!r}"
+    )
+    added_lines = (
+        [
+            ln
+            for ln in rotation_log.read_text().splitlines()
+            if "secret:turn-writer" in ln
+        ]
+        if rotation_log.exists()
+        else []
+    )
+    assert len(added_lines) == 1, (
+        "expected exactly one 'secret:turn-writer' line in rotation-log.md on"
+        f" state==added; got {added_lines!r}"
+        f" (rotation_log.exists()={rotation_log.exists()})"
+    )
+
+    # ── noop: all 3 seeds present + auth.conf already complete ───────────────
+    noop_dir = tmp_path / "noop"
+    seeds_dir = noop_dir / "nkeys"
+    auth_dir = noop_dir / "etc-nats"
+    auth_dir.mkdir(parents=True)
+    matrix_path = _write_matrix(noop_dir, _TINY_MATRIX)
+    _write_fake_seeds(seeds_dir, ["hub", "telegram-adapter", "turn-writer"])
+
+    matrix = load_matrix(matrix_path)
+    provider = FakeNkeyProvider()
+    pubkeys = {
+        name: provider.pubkey_from_seed((seeds_dir / f"{name}.seed").read_bytes())
+        for name in ("hub", "telegram-adapter", "turn-writer")
+    }
+    noop_auth_conf = seeds_dir / "auth.conf"
+    noop_auth_conf.write_text(render_auth_conf(matrix, pubkeys))
+    noop_auth_conf.chmod(0o600)
+    rotation_log = noop_dir / "rotation-log.md"
+
+    result = _run_genkeys(
+        ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(rotation_log),
+            "OPERATOR_LOG": str(noop_dir / "operator.log"),
+        },
+    )
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "STATE=noop" in result.stdout, (
+        f"Expected STATE=noop in stdout; got: {result.stdout!r}"
+    )
+    assert (
+        not rotation_log.exists()
+        or "secret:turn-writer" not in rotation_log.read_text()
+    ), "rotation-log.md must gain NO 'secret:turn-writer' line on state==noop"
+
+    # ── repaired: seed exists, auth.conf missing the turn-writer block ───────
+    repaired_dir = tmp_path / "repaired"
+    seeds_dir = repaired_dir / "nkeys"
+    auth_dir = repaired_dir / "etc-nats"
+    auth_dir.mkdir(parents=True)
+    matrix_path = _write_matrix(repaired_dir, _TINY_MATRIX)
+    _write_fake_seeds(seeds_dir, ["hub", "telegram-adapter", "turn-writer"])
+    partial_auth_conf = seeds_dir / "auth.conf"
+    partial_auth_conf.write_text(
+        "authorization {\n"
+        "  # hub\n"
+        "  # telegram-adapter\n"
+        "  (no turn-writer block here)\n"
+        "}\n"
+    )
+    partial_auth_conf.chmod(0o600)
+    rotation_log = repaired_dir / "rotation-log.md"
+
+    result = _run_genkeys(
+        ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(rotation_log),
+            "OPERATOR_LOG": str(repaired_dir / "operator.log"),
+        },
+    )
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "STATE=repaired" in result.stdout, (
+        f"Expected STATE=repaired in stdout; got: {result.stdout!r}"
+    )
+    assert (
+        not rotation_log.exists()
+        or "secret:turn-writer" not in rotation_log.read_text()
+    ), "rotation-log.md must gain NO 'secret:turn-writer' line on state==repaired"
 
 
 # ── T2 — STATE=noop AND STATE=repaired ────────────────────────────────────────
@@ -224,7 +366,12 @@ def test_add_identity_noop_when_full_consistency(tmp_path: Path) -> None:
     # Act
     result = _run_genkeys(
         ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
-        env={"SEEDS_DIR": str(seeds_dir), "AUTH_DIR": str(auth_dir)},
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+            "OPERATOR_LOG": str(tmp_path / "operator.log"),
+        },
     )
 
     # Assert — exit 0, STATE=noop, NO mtime changes
@@ -281,7 +428,12 @@ def test_add_identity_repairs_when_seed_present_but_block_missing(
     # Act
     result = _run_genkeys(
         ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
-        env={"SEEDS_DIR": str(seeds_dir), "AUTH_DIR": str(auth_dir)},
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+            "OPERATOR_LOG": str(tmp_path / "operator.log"),
+        },
     )
 
     # Assert — exit 0, STATE=repaired
@@ -330,7 +482,12 @@ def test_add_identity_unknown_name_in_matrix_fails(tmp_path: Path) -> None:
     # Act — request an identity that does not exist in the matrix
     result = _run_genkeys(
         ["--add-identity", "ghost-identity", "--matrix", str(matrix_path)],
-        env={"SEEDS_DIR": str(seeds_dir), "AUTH_DIR": str(auth_dir)},
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+            "OPERATOR_LOG": str(tmp_path / "operator.log"),
+        },
     )
 
     # Assert — non-zero, no seed file, stderr references the matrix
@@ -361,7 +518,12 @@ def test_add_identity_retired_identity_fails(tmp_path: Path) -> None:
     # Act
     result = _run_genkeys(
         ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
-        env={"SEEDS_DIR": str(seeds_dir), "AUTH_DIR": str(auth_dir)},
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+            "OPERATOR_LOG": str(tmp_path / "operator.log"),
+        },
     )
 
     # Assert — non-zero, no seed, stderr mentions the status
@@ -397,7 +559,12 @@ def test_add_identity_missing_other_seed_fails_no_orphan(tmp_path: Path) -> None
     # Act
     result = _run_genkeys(
         ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
-        env={"SEEDS_DIR": str(seeds_dir), "AUTH_DIR": str(auth_dir)},
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+            "OPERATOR_LOG": str(tmp_path / "operator.log"),
+        },
     )
 
     # Assert — exact exit 1 (controlled sys.exit, not a crash).
@@ -443,7 +610,12 @@ def test_add_identity_runs_as_non_root(tmp_path: Path) -> None:
     # Act — run without any sudo, as current user
     result = _run_genkeys(
         ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
-        env={"SEEDS_DIR": str(seeds_dir), "AUTH_DIR": str(auth_dir)},
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+            "OPERATOR_LOG": str(tmp_path / "operator.log"),
+        },
     )
 
     # Assert — must exit 0 (rootless) and NOT fail with root-required message
@@ -485,7 +657,12 @@ def test_add_identity_does_not_touch_system_path(tmp_path: Path) -> None:
     # Act
     result = _run_genkeys(
         ["--add-identity", "turn-writer", "--matrix", str(matrix_path)],
-        env={"SEEDS_DIR": str(seeds_dir), "AUTH_DIR": str(auth_dir)},
+        env={
+            "SEEDS_DIR": str(seeds_dir),
+            "AUTH_DIR": str(auth_dir),
+            "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+            "OPERATOR_LOG": str(tmp_path / "operator.log"),
+        },
     )
 
     # Assert — invocation must succeed (exit 0)

@@ -202,8 +202,9 @@ All instances within caps — no forced split required.
 
 #### Task 7: RED — write failing tests for `check_seed_age.run()` [P] → tester
 - **File:** `tests/scripts/test_check_seed_age.py` (new)
-- **Snippet:** parametrized boundary cases — 74d ok, 75d warn, 89d warn, 90d fail, 91d fail (all with a real log entry); zero log entries → always ok (grace) regardless of mtime, including a synthetic mtime that would be >90d if it were gating; no log entry + no seed file → grace, no informational hint; malformed line skipped; non-active `secret:` ignored
-- **Verify:** `uv run pytest tests/scripts/test_check_seed_age.py -q` (expected: FAIL — module doesn't exist)
+- **Contract (pin this — do not deviate):** `run(matrix, rotation_log_path, seeds_dir, *, today=None) -> tuple[list[str], list[str], list[str]]` returning `(warnings, failures, notes)`. Pure function — it **returns** strings, it never prints; printing `WARN:`/`FAIL:`/`NOTE:` to stderr is the CLI's job (Task 9, `scripts/gen_nkeys.py`), not this module's.
+- **Snippet:** parametrized boundary cases — 74d ok (empty warnings/failures/notes), 75d → 1 warning, 89d → 1 warning, 90d → 1 failure, 91d → 1 failure (all with a real log entry); zero log entries → always ok (empty warnings/failures) regardless of mtime, including a synthetic mtime that would be >90d if it were gating — a `NOTE:`-style string for that identity appears in `notes` only; no log entry + no seed file → grace, `notes` empty for that identity too (nothing to report); malformed line skipped; non-active `secret:` ignored
+- **Verify:** `UV_NO_SYNC=1 uv run --frozen pytest tests/scripts/test_check_seed_age.py -q` (expected: FAIL — module doesn't exist)
 - **Expected:** collection/import error or explicit failures, confirming no implementation yet
 - **Time:** 10 min | **Difficulty:** 4
 - **Traces:** SC (warn/fail boundaries, grace, informational-mtime-never-gates) (N4, N11) | **Phase:** RED
@@ -214,16 +215,17 @@ All instances within caps — no forced split required.
 
 #### Task 8: GREEN — implement `scripts/check_seed_age.py` → backend-dev
 - **File:** `scripts/check_seed_age.py` (new, mirrors `scripts/check_grants.py` shape)
-- **Snippet:** `WARN_DAYS = 75`, `FAIL_DAYS = 90`; `def run(matrix, rotation_log_path, seeds_dir, *, today=None) -> tuple[list[str], list[str]]`; `today` defaults to `datetime.now(timezone.utc).date()`; parse `rotation-log.md` via regex matching `operator-log.sh:77`'s exact format, skip header/malformed lines, keep latest date per `secret:`, ignore non-active identities; identity with a log entry → real age gates warn/fail; identity with no entry → grace (always ok), read `{name}.seed` mtime if present and return/print as an informational `NOTE:` that never affects the return value's warn/fail lists
-- **Verify:** `uv run pytest tests/scripts/test_check_seed_age.py -q` (expected: PASS)
+- **Contract (pin this — do not deviate, matches T7's tests exactly):** `WARN_DAYS = 75`, `FAIL_DAYS = 90`; `def run(matrix, rotation_log_path, seeds_dir, *, today=None) -> tuple[list[str], list[str], list[str]]` returning `(warnings, failures, notes)`; `today` defaults to `datetime.now(timezone.utc).date()`. **Pure — returns strings, never prints.** Printing is Task 9's job (CLI layer).
+- **Snippet:** parse `rotation-log.md` via regex matching `operator-log.sh:77`'s exact format, skip header/malformed lines, keep latest date per `secret:`, ignore non-active identities; identity with a log entry → real age gates into `warnings`/`failures`; identity with no entry → grace (never appended to `warnings`/`failures`), read `{name}.seed` mtime if present and append an informational string to `notes` (e.g. `"telegram-adapter has no rotation-log entry; seed mtime is 75d old (informational, not policy-enforced — bootstrap grace applies)"`) — `notes` entries never feed `warnings`/`failures`
+- **Verify:** `UV_NO_SYNC=1 uv run --frozen pytest tests/scripts/test_check_seed_age.py -q` (expected: PASS)
 - **Expected:** all T7 cases pass
 - **Time:** 15 min | **Difficulty:** 4
 - **Traces:** SC (N4, N11) | **Phase:** GREEN
 
 #### Task 9: GREEN — wire `factory-acl check seed-age` CLI → backend-dev
 - **File:** `scripts/gen_nkeys.py`
-- **Snippet:** `_cmd_check_seed_age(args)` (mirrors `_cmd_check_grants`) lazily imports `scripts.check_seed_age.run`; `ck_seed_age = ck_sub.add_parser("seed-age", ...)` with `--matrix` arg; reads `ROTATION_LOG` env (default `~/.roxabi/factory/rotation-log.md`) and `scripts._modes._seeds_dir()`; prints `WARN:`/`FAIL:`/`NOTE:` to stderr, `sys.exit(1)` iff any failure
-- **Verify:** `uv run factory-acl check seed-age --help` exits 0; `grep -q '"seed-age"' scripts/gen_nkeys.py`
+- **Snippet:** `_cmd_check_seed_age(args)` (mirrors `_cmd_check_grants`) lazily imports `scripts.check_seed_age.run`; `ck_seed_age = ck_sub.add_parser("seed-age", ...)` with `--matrix` arg; reads `ROTATION_LOG` env (default `~/.roxabi/factory/rotation-log.md`) and `scripts._modes._seeds_dir()`; unpacks `(warnings, failures, notes) = run(...)`; **CLI owns all printing**: prints each `notes` entry prefixed `NOTE:`, each `warnings` entry prefixed `WARN:`, each `failures` entry prefixed `FAIL:`, all to stderr; `sys.exit(1)` iff `failures` non-empty, else `sys.exit(0)`
+- **Verify:** `UV_NO_SYNC=1 uv run --frozen factory-acl check seed-age --help` exits 0; `grep -q '"seed-age"' scripts/gen_nkeys.py`
 - **Expected:** subcommand registered and callable
 - **Time:** 8 min | **Difficulty:** 2
 - **Traces:** SC (N5) | **Phase:** GREEN

@@ -258,6 +258,8 @@ class TestRegenerateMode:
             env={
                 "SEEDS_DIR": str(seeds_dir),
                 "AUTH_DIR": str(auth_dir),
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -301,6 +303,8 @@ class TestRegenerateMode:
                 "SEEDS_DIR": str(seeds_dir),
                 # AUTH_DIR deliberately NOT set — _require_root() checks real uid
                 "FACTORY_ACL_WRITE_ETC_NATS": "1",
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -340,6 +344,8 @@ class TestRegenerateMode:
         # Use env overrides so _require_root is skipped and paths redirect to tmp_path
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
 
         args = argparse.Namespace(yes=True, matrix=_MATRIX_FIXTURE)
 
@@ -613,6 +619,8 @@ class TestDefaultModeWrite:
             env={
                 "SEEDS_DIR": str(user_seeds_dir),
                 "AUTH_DIR": str(system_auth_dir),
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -662,6 +670,8 @@ class TestDefaultModeWrite:
                 "SEEDS_DIR": str(user_seeds_dir),
                 "AUTH_DIR": str(system_auth_dir),
                 "FACTORY_ACL_WRITE_ETC_NATS": "1",
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -852,6 +862,8 @@ class TestExternalFailLoud:
         auth_dir.mkdir(parents=True)
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 
         # No externals → []
@@ -914,6 +926,8 @@ class TestExternalFailLoud:
             env={
                 "SEEDS_DIR": str(seeds_dir),
                 "AUTH_DIR": str(auth_dir),
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -968,6 +982,8 @@ class TestExternalFailLoud:
             env={
                 "SEEDS_DIR": str(seeds_dir),
                 "AUTH_DIR": str(auth_dir),
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -1088,6 +1104,8 @@ class TestExternalFailLoud:
 
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 
         args = argparse.Namespace(
@@ -1184,3 +1202,53 @@ class TestExternalFailLoud:
         # But manifest still prints (operator visibility)
         captured = capsys.readouterr()
         assert "External seeds require manual fan-out" in captured.err
+
+
+# ── N2/N10 — rotation-log wiring (RED, #2246) ──────────────────────────────────
+
+
+class TestRotationLogWiring:
+    """RED (#2246): _mode_full_provision does not yet call rotation_log_append()."""
+
+    def test_full_provision_writes_one_rotation_log_line_per_active_identity(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """rotation-log.md gains exactly K lines for K active identities.
+
+        Spec trace: SC2 (N2, N10).
+        RED (#2246): rotation_log_append() is not called from _mode_full_provision
+        yet — rotation-log.md is never created, so this fails with 0 matching
+        lines for each active identity instead of the expected 1 each.
+        """
+        import argparse
+
+        from scripts._modes import _mode_full_provision
+
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir(parents=True)
+        rotation_log = tmp_path / "rotation-log.md"
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(rotation_log))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
+        monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
+
+        # K=2 active identities (hub, clipool-worker) — no externals needed.
+        matrix_path = _make_matrix(tmp_path, with_external=False)
+        active_names = {"hub", "clipool-worker"}
+        args = argparse.Namespace(
+            matrix=matrix_path, yes=True, ack_external_distribution=False
+        )
+
+        # Act
+        _mode_full_provision(args)
+
+        # Assert — exactly one secret:<name> line per active identity
+        content = rotation_log.read_text() if rotation_log.exists() else ""
+        for name in active_names:
+            matching = [ln for ln in content.splitlines() if f"secret:{name}" in ln]
+            assert len(matching) == 1, (
+                f"expected exactly one 'secret:{name}' line in rotation-log.md;"
+                f" got {matching!r} (rotation_log.exists()={rotation_log.exists()})"
+            )

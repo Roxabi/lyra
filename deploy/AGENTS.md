@@ -201,7 +201,7 @@ Deploy scripts record imperative operator actions separately from container stdo
 | Channel | Path | Contents |
 |---|---|---|
 | Operator JSONL | `~/.local/state/factory/logs/operator.log` | `install.sh`, `make converge` (via `deploy/lib/operator-log.sh`) |
-| Rotation narrative | `~/.roxabi/factory/rotation-log.md` | Voluntary credential changes (`--force-regen-blobstore`, future nkey rotations) |
+| Rotation narrative | `~/.roxabi/factory/rotation-log.md` | Voluntary credential changes (`--force-regen-blobstore`, routine nkey rotations via `_mode_add_identity` or `_mode_full_provision`) |
 | Container runtime | journald `--user` | Quadlet stdout/stderr — unchanged |
 
 **Incident triage:**

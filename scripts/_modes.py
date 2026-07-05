@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Callable, cast
 
+from factory.operator_audit import rotation_log_append
 from factory.paths import factory_data_dir
 from scripts._acl_models import ExternalDeploy, LoadedMatrix
 from scripts._loader import load_matrix
@@ -78,6 +79,11 @@ def _auth_dir() -> Path:
     if env:
         return Path(env)
     return Path("/etc/nats/nkeys")
+
+
+def _repo_root() -> Path:
+    """Return repo root (mirrors ``gen_nkeys.py``'s ``_REPO_ROOT``)."""
+    return Path(__file__).resolve().parents[1]
 
 
 def _etc_nats_write_enabled() -> bool:
@@ -314,6 +320,11 @@ def _mode_add_identity(args: argparse.Namespace) -> None:
         return
 
     _add_identity_write(name, state, seeds_dir, matrix, provider)
+
+    if state == "added":
+        rotation_log_append(
+            _repo_root(), name, "seed-generated", trigger="factory-acl-add-identity"
+        )
 
     if state == "repaired":
         print(
@@ -591,6 +602,9 @@ def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDe
         atomic_write(seed_file, seed_str, 0o600)
         os.chown(seed_file, uid, gid)
         pubkeys[name] = provider.pubkey_from_seed(seed)
+        rotation_log_append(
+            _repo_root(), name, "seed-generated", trigger="factory-acl-genkeys"
+        )
 
     content = render_auth_conf(matrix, pubkeys)
 

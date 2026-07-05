@@ -1,0 +1,10 @@
+[Unit]
+Description=factory nkey seed-age check timer (daily)
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=factory-check-seed-age.service
+
+[Install]
+WantedBy=timers.target

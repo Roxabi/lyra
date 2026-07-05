@@ -1,0 +1,12 @@
+[Unit]
+Description=factory nkey seed-age check — warn/fail on stale rotation-log entries
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/make check-seed-age
+WorkingDirectory=%h/projects/roxabi-factory
+Environment="PATH=%h/projects/roxabi-factory/.venv/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+StandardOutput=journal
+StandardError=journal

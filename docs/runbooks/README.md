@@ -48,6 +48,7 @@ complement the generic user guide in [DEPLOYMENT.md](../DEPLOYMENT.md).
 
 | Runbook | When to use |
 |---------|-------------|
+| [incident-response.md](incident-response.md) | P0 trigger criteria, ownership, user notification templates, post-incident gate (detection is currently manual — see the runbook) |
 | [operator-log.md](operator-log.md) | Operator audit — which log for which incident |
 | [loki-query.md](loki-query.md) | Central log search — LogQL recipes (Loki + Promtail) |
 | [otel-traces.md](otel-traces.md) | OpenTelemetry trace inspection |

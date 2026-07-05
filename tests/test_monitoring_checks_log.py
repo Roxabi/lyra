@@ -13,12 +13,17 @@ style replacement of the module under test.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 
 from factory.monitoring.checks_log import (
+    LogFetchError,
+    LokiLogFetcher,
+    SubprocessLogFetcher,
     check_hub_dict_stream_gen_timeout,
     check_nats_log_errors,
 )
@@ -302,3 +307,194 @@ class TestSubprocessInvocationShape:
         assert kwargs["capture_output"] is True
         assert kwargs["text"] is True
         assert kwargs["timeout"] == 15
+
+
+# ---------------------------------------------------------------------------
+# T4 (issue #2245, plan task T4) — tests against the POST-refactor
+# LogFetcher seam. These import symbols (`LogFetchError`, `LokiLogFetcher`,
+# `SubprocessLogFetcher`) that did not exist before this issue's T1-T3
+# refactor, so — unlike T0 above — this is a genuine RED-GATE against the
+# refactor itself, not just a characterization of pre-existing behavior.
+# ---------------------------------------------------------------------------
+
+
+class TestFetcherSeam:
+    """Prove the injectable `fetcher` seam actually decouples log-fetch from
+    the counting logic: an injected fetcher's `.fetch()` receives the right
+    args, and `subprocess.run` is never touched when it is used."""
+
+    def test_check_nats_log_errors_uses_injected_fetcher(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _fail_if_called(*args, **kwargs):
+            raise AssertionError(
+                "subprocess.run must not be called when a fetcher is injected"
+            )
+
+        monkeypatch.setattr(
+            "factory.monitoring.checks_log.subprocess.run", _fail_if_called
+        )
+
+        fake_fetcher = MagicMock()
+        fake_fetcher.fetch.return_value = "all quiet\n"
+
+        result = check_nats_log_errors("factory-nats", 10, fetcher=fake_fetcher)
+
+        fake_fetcher.fetch.assert_called_once_with(
+            "factory-nats", 10, pattern="permissions violation"
+        )
+        assert result.passed is True
+
+    def test_check_hub_dict_stream_gen_timeout_uses_injected_fetcher(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _fail_if_called(*args, **kwargs):
+            raise AssertionError(
+                "subprocess.run must not be called when a fetcher is injected"
+            )
+
+        monkeypatch.setattr(
+            "factory.monitoring.checks_log.subprocess.run", _fail_if_called
+        )
+
+        fake_fetcher = MagicMock()
+        fake_fetcher.fetch.return_value = ""
+
+        result = check_hub_dict_stream_gen_timeout(
+            "factory-hub", 10, threshold=1, fetcher=fake_fetcher
+        )
+
+        fake_fetcher.fetch.assert_called_once_with(
+            "factory-hub", 10, pattern="_dict_stream_gen timeout"
+        )
+        assert result.passed is True
+
+
+class TestLokiLogFetcher:
+    """`LokiLogFetcher.fetch` talks to Loki via module-level `httpx.get`
+    (not `httpx.Client`) — mock target is
+    `factory.monitoring.checks_log.httpx.get`."""
+
+    def test_fetch_returns_joined_log_lines_on_success(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": {
+                "result": [
+                    {
+                        "values": [
+                            [
+                                "1700000000000000000",
+                                "permissions violation on subject foo",
+                            ],
+                            [
+                                "1700000001000000000",
+                                "permissions violation on subject bar",
+                            ],
+                        ]
+                    }
+                ]
+            }
+        }
+        mock_get = MagicMock(return_value=mock_response)
+        monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
+
+        result = LokiLogFetcher().fetch(
+            "factory-nats", 10, pattern="permissions violation"
+        )
+
+        assert result == (
+            "permissions violation on subject foo\n"
+            "permissions violation on subject bar"
+        )
+
+    def test_fetch_raises_log_fetch_error_on_malformed_json(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Missing expected keys (`data`/`result`/`values`) must surface as
+        `LogFetchError`, not a raw KeyError/ValueError escaping the fetcher."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"unexpected": "shape"}
+        mock_get = MagicMock(return_value=mock_response)
+        monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
+
+        with pytest.raises(LogFetchError):
+            LokiLogFetcher().fetch(
+                "factory-nats", 10, pattern="permissions violation"
+            )
+
+    def test_fetch_raises_log_fetch_error_on_http_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "500 Internal Server Error",
+            request=MagicMock(),
+            response=MagicMock(),
+        )
+        mock_get = MagicMock(return_value=mock_response)
+        monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
+
+        with pytest.raises(LogFetchError):
+            LokiLogFetcher().fetch(
+                "factory-nats", 10, pattern="permissions violation"
+            )
+
+    def test_fetch_query_param_includes_case_insensitive_regex_filter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression guard for the truncation-risk fix: the server-side
+        `|~ "(?i)<escaped-pattern>"` LogQL filter must survive future edits.
+        Without it, Loki's `limit`-capped, newest-first `query_range`
+        response on a busy container could silently drop true violations
+        under load (see checks_log.py's comment on LokiLogFetcher.fetch)."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": {"result": []}}
+        mock_get = MagicMock(return_value=mock_response)
+        monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
+
+        LokiLogFetcher().fetch("factory-nats", 10, pattern="permissions violation")
+
+        mock_get.assert_called_once()
+        _, kwargs = mock_get.call_args
+        query = kwargs["params"]["query"]
+        escaped = re.escape("permissions violation")
+        assert f'|~ "(?i){escaped}"' in query
+
+
+class TestSubprocessLogFetcherIgnoresPattern:
+    """`pattern` is accepted for `LogFetcher` protocol conformance but has
+    no effect on the local subprocess fetch — a deliberate design choice
+    (podman's `--since` has no line-count cap, so there is no truncation
+    risk to filter against locally), not an oversight."""
+
+    def test_fetch_ignores_pattern_argument(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[tuple[tuple, dict]] = []
+
+        def mock_run(*args, **kwargs):
+            calls.append((args, kwargs))
+            return MagicMock(
+                returncode=0, stdout="stdout content\n", stderr="stderr content\n"
+            )
+
+        monkeypatch.setattr("factory.monitoring.checks_log.subprocess.run", mock_run)
+
+        result_a = SubprocessLogFetcher().fetch("c", 5, pattern="anything")
+        result_b = SubprocessLogFetcher().fetch("c", 5, pattern="permissions violation")
+
+        assert result_a == "stdout content\nstderr content\n"
+        assert result_b == "stdout content\nstderr content\n"
+        # The command passed to subprocess.run must be identical regardless
+        # of `pattern` — proving it is truly not threaded into the command.
+        assert len(calls) == 2
+        args_a, _ = calls[0]
+        args_b, _ = calls[1]
+        assert args_a[0] == args_b[0] == ["podman", "logs", "--since", "5m", "c"]
+        assert "anything" not in args_a[0]
+        assert "permissions violation" not in args_b[0]

@@ -14,7 +14,7 @@ type = layers
 layers =
     factory.bootstrap
     factory.adapters | factory.blobstore
-    factory.outbound
+    factory.inbound | factory.outbound
     factory.infrastructure
     factory.llm | factory.nats
     factory.core
@@ -42,28 +42,68 @@ forbidden_modules =
     sqlite3
 allow_indirect_imports = true
 
-[importlinter:contract:commands-no-infra]
-name = Commands must not import Infrastructure directly
+[importlinter:contract:core-ports-purity]
+name = core/ports must contain only pure Protocol definitions with zero outer-layer or I/O imports (port purity, ADR-059 / engineering-standards). Foundational; not generalized further as kernel invariant (ties to stage-purity consumers via ports).
+type = forbidden
+source_modules =
+    factory.core.ports
+forbidden_modules =
+    factory.infrastructure
+    factory.adapters
+    factory.bootstrap
+    factory.llm
+    factory.nats
+    factory.inbound
+    factory.outbound
+    factory.streaming
+    factory.transport
+    factory.dashboard
+    aiosqlite
+    sqlite3
+allow_indirect_imports = true
+
+[importlinter:contract:application-no-direct-infra]
+name = Application layers (commands, agents) must not import Infrastructure or Composition Root directly (ADR-059)
 type = forbidden
 source_modules =
     factory.commands
-forbidden_modules =
-    factory.infrastructure
-allow_indirect_imports = true
-
-[importlinter:contract:agents-no-bootstrap]
-name = Agents must not import Composition Root
-type = forbidden
-source_modules =
     factory.agents
 forbidden_modules =
+    factory.infrastructure
     factory.bootstrap
 ignore_imports =
     # Transitional: TYPE_CHECKING import pending protocol extraction (ADR-059 V9) — DEBT:importlinter-adr048-transition
     factory.agents.simple_agent -> factory.infrastructure.stores.registry.agent_store
+allow_indirect_imports = true
+# Generalized from commands-no-infra + agents-no-bootstrap. Only Composition Root may wire ports + concretions. Part of broader application layer isolation (see stage-purity).
+
+[importlinter:contract:composition-root-isolation]
+name = Only entry points (CLI/__main__) and bootstrap internals may reach Composition Root (enforce ADR-059 / engineering-standards). Foundational Composition Root isolation; slightly extended comments for axial (ADR-073) consistency with stage-purity.
+type = forbidden
+source_modules =
+    factory.core
+    factory.agents
+    factory.inbound
+    factory.outbound
+    factory.streaming
+    factory.transport
+    factory.nats
+    factory.llm
+    factory.dashboard
+    factory.infrastructure
+    factory.integrations
+    factory.obs
+    factory.errors
+    factory.config
+    factory.monitoring
+    factory.agent_cmd
+    factory.commands
+forbidden_modules =
+    factory.bootstrap
+allow_indirect_imports = true
 
 [importlinter:contract:shared-modules-independence]
-name = Shared floating modules must not import each other (peer isolation)
+name = Shared floating modules and pipeline stages must not import each other (peer isolation; generalized cross-part-stage-helpers-isolation)
 type = independence
 modules =
     factory.obs
@@ -72,6 +112,9 @@ modules =
     factory.integrations
     factory.monitoring
     factory.agent_cmd
+    factory.inbound
+    factory.outbound
+    factory.streaming
 ignore_imports =
     # Transitive paths through factory.core — not peer coupling; importlinter's independence
     # contract traces all paths between listed modules, including through unlisted ones.
@@ -95,7 +138,7 @@ allow_indirect_imports = true
 # peer-layer service (own systemd unit + NATS attach, ADR-073), not a shared floating
 # module. See src/factory/blobstore/CLAUDE.md "peer-of-adapters" placement.
 [importlinter:contract:shared-modules-upper-boundary]
-name = Shared floating modules must not import bootstrap, adapters, or infrastructure
+name = Shared floating modules and pipeline stages must not import bootstrap, adapters, or infrastructure (upper-boundary + stages-upper-boundary generalization; ADR-073 / engineering-standards)
 type = forbidden
 source_modules =
     factory.obs
@@ -104,27 +147,24 @@ source_modules =
     factory.integrations
     factory.monitoring
     factory.agent_cmd
+    factory.inbound
+    factory.outbound
+    factory.streaming
+    factory.transport
+    factory.nats
 forbidden_modules =
     factory.bootstrap
     factory.adapters
     factory.infrastructure
 allow_indirect_imports = true
+# Generalizes previous narrow upper-boundary rules. Covers ADR-073 (stages do not reach outer layers) and ADR-059 (application/domain isolation from infra/CR).
 
-[importlinter:contract:no-streaming-emitter-shim]
-name = adapters must not re-introduce the legacy streaming-emitter shim (#1279 T28)
+[importlinter:contract:no-direct-bot-store]
+name = No direct BotStore imports (use BotStoreProtocol from core.stores only); generalized from adapters + inbound (axial symmetry, ADR-073 + engineering-standards port purity)
 type = forbidden
 source_modules =
     factory.adapters
-forbidden_modules =
-    factory.adapters.shared._shared_streaming_emitter
-    factory.adapters.shared._shared_streaming
-allow_indirect_imports = true
-
-[importlinter:contract:adapters-no-bot-store]
-name = Adapters must not import BotStore directly (use BotStoreProtocol instead)
-type = forbidden
-source_modules =
-    factory.adapters
+    factory.inbound
 forbidden_modules =
     factory.infrastructure.stores.registry.bot_store
 allow_indirect_imports = true
@@ -147,33 +187,17 @@ forbidden_modules =
     factory.inbound
 allow_indirect_imports = true
 
-[importlinter:contract:inbound-no-adapters]
-name = inbound stages must not import adapters (stage-axis invariant, ADR-073 / #1287)
-type = forbidden
-source_modules =
-    factory.inbound
-forbidden_modules =
-    factory.adapters
-allow_indirect_imports = true
-
-[importlinter:contract:adapters-no-persona]
-name = Adapters must not import core.persona directly
+[importlinter:contract:no-direct-persona]
+name = Outer layers (adapters, dashboard) must not import core.persona directly (port purity, ADR-059 / engineering-standards). Generalized from previous specific contracts.
 type = forbidden
 source_modules =
     factory.adapters
-forbidden_modules =
-    factory.core.persona
-allow_indirect_imports = true
-
-[importlinter:contract:dashboard-no-persona]
-name = Dashboard must not import core.persona or agent_db_loader
-type = forbidden
-source_modules =
     factory.dashboard
 forbidden_modules =
     factory.core.persona
     factory.core.agent.agent_db_loader
 allow_indirect_imports = true
+# Covers previous adapters-no-persona + dashboard-no-persona. One rule instead of two.
 
 [importlinter:contract:tests-fakes-isolation]
 name = Production code must not import tests.fakes
@@ -184,3 +208,109 @@ source_modules =
 forbidden_modules =
     tests
 allow_indirect_imports = true
+
+# === Per-part stage helpers isolation (generalized, stage-axis discipline per AGENTS.md) ===
+# AVOIDED PATCHWORK: consolidated from inbound-stages-entrypoints-only, cross-part-stage-helpers-isolation, outbound-per-part-helpers-local, streaming-primitives-local, adapters-no-legacy-stage-shims, transport-result-public-surface, etc.
+# One broad contract instead of many narrow ones.
+# Enforces: HELPERS per part (focused extract inside the stage, compose, no god modules or cross-duplication), public entrypoints only for adapters, local _* helpers.
+# Covers ADR-073 (stage as primary axis + thin adapters) + ADR-059 (port boundaries, no direct concretions in application layers).
+# Reduces contract count and maintenance. See root AGENTS.md Core for usage.
+
+[importlinter:contract:per-part-stage-helpers-isolation]
+name = Per-part stage helpers/entrypoints isolation (HELPERS per part): locals (_*, router etc) not bypassed or crossed; adapters/shared use public surfaces only (ADR-073 + AGENTS.md)
+type = forbidden
+source_modules =
+    factory.adapters.shared
+    factory.adapters.shared.inbound
+    factory.adapters.telegram
+    factory.adapters.discord
+    factory.adapters.web
+    factory.adapters.socialmedia
+    factory.adapters.omp
+    factory.adapters.clipool
+    factory.adapters.nats
+    factory.adapters
+    factory.core
+    factory.nats
+    factory.llm
+    factory.infrastructure
+    factory.bootstrap
+    factory.dashboard
+    factory.agents
+    factory.commands
+    factory.monitoring
+    factory.obs
+    factory.integrations
+forbidden_modules =
+    # inbound internals (bypass targets; public entrypoints like pipeline/attachment_ingest/prebuilt_parser/wire_* /context allowed for adapters)
+    factory.inbound.router
+    factory.inbound.session_builder
+    factory.inbound.dispatcher
+    # outbound per-part _helpers (must stay local)
+    factory.outbound._emitter_run
+    factory.outbound._placeholder_lifecycle
+    factory.outbound._reasoning_accum
+    factory.outbound._streaming_state
+    factory.outbound._tool_recap
+    # streaming primitives (compose at consumer sites only; no god usage)
+    factory.streaming.event_emitter
+    factory.streaming.state_machine
+    factory.streaming.parser
+    # legacy stage shims (adapters must not re-introduce; shims belong in stages)
+    factory.adapters.shared._shared_streaming_emitter
+    factory.adapters.shared._shared_streaming
+    # transport public surface (Result etc); consume only via factory.transport (not _result god module)
+    factory.transport._result
+ignore_imports =
+    # Transitional / current composition sites for per-part helpers (to be drained via stage axis cleanup).
+    # These are the "bypass" or direct _/internal uses caught by the generalized contract.
+    # Debt tracked under axial review / quality-debt (consistent with ADR-048 transition ignores).
+    factory.adapters.shared.inbound.pipeline -> factory.inbound.dispatcher
+    factory.adapters.shared.inbound.pipeline -> factory.inbound.router
+    factory.adapters.shared.inbound.pipeline -> factory.inbound.session_builder
+    factory.adapters.discord.discord_formatter -> factory.outbound._reasoning_accum
+    factory.adapters.telegram.telegram_formatter -> factory.outbound._reasoning_accum
+    factory.core.cli.cli_streaming_parser -> factory.streaming.event_emitter
+    factory.core.cli.cli_streaming_parser -> factory.streaming.state_machine
+    factory.core.processors.stream_processor -> factory.streaming.event_emitter
+    factory.core.processors.stream_processor -> factory.streaming.state_machine
+    factory.core.processors.stream_close -> factory.streaming.state_machine
+    factory.core.processors.stream_text -> factory.streaming.state_machine
+    factory.core.processors.stream_tool -> factory.streaming.state_machine
+    # Only transport internals reach the private _result (public surface enforcement)
+    factory.transport.nats_request_response -> factory.transport._result
+    factory.transport.http_transport -> factory.transport._result
+    factory.transport.worker_pool_client -> factory.transport._result
+    # llm and nats codecs use Result via transport (transitional; prefer public import)
+    factory.llm.cli_nats_codec -> factory.transport._result
+    factory.llm.cli_pool_codec -> factory.transport._result
+    factory.llm.codec -> factory.transport._result
+    factory.nats.audio.nats_tts_codec -> factory.transport._result
+    factory.nats.image.nats_image_codec -> factory.transport._result
+    factory.nats.socialmedia.nats_socialmedia_codec -> factory.transport._result
+    factory.nats.stt.nats_stt_codec -> factory.transport._result
+    # adapters shared using outbound helper (legacy composition site)
+    factory.adapters.shared._shared -> factory.outbound._streaming_state
+allow_indirect_imports = true
+
+[importlinter:contract:stage-purity]
+name = Stage purity (inbound/outbound/streaming/transport/nats): no llm/nats/bootstrap bleed into stages + sqlite (outer infra/adapters/bootstrap covered by shared-modules-upper-boundary generalization). Enforces ADR-073 + engineering-standards. Consolidated from multiple purity contracts.
+type = forbidden
+source_modules =
+    factory.inbound
+    factory.outbound
+    factory.streaming
+    factory.transport
+    factory.nats
+forbidden_modules =
+    factory.llm
+    factory.bootstrap
+    aiosqlite
+    sqlite3
+ignore_imports =
+    # nats has direct sqlite for pipeline.db (legacy or specific); other stores use the no-sqlite contract. Transitional for stage-purity generalization.
+    factory.nats.pipeline.db -> sqlite3
+allow_indirect_imports = true
+# Covers ADR-073 (axial stage decomposition: stages as primary axis, thin adapters, no cross duplication) and parts of ADR-059 (inward dependencies for application layers).
+# Generalized from transport-plumbing-purity, outbound-stage-purity, streaming-primitives-purity, stages-no-infrastructure, etc. to avoid patchwork.
+# Outer bans in shared-modules-upper-boundary. Cross-stage in shared-modules-independence.

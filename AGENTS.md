@@ -23,7 +23,9 @@ Let:
 - New adapter → thin config only. **Never** duplicate parse/sanitize/route/emit per platform.
 - Signals of drift: `class.*Client.*Client`, parallel logic across adapters/, leaks between inbound/streaming/outbound.
 
-**Enforcement**: `.importlinter` (grep "stage-axis" or "inbound-no-adapters" contracts). Fails qg/CI.
+**Enforcement**: `.importlinter` (grep "stage-axis" or "stage-purity|per-part-stage-helpers-isolation|no-direct-bot-store|shared-modules-upper-boundary|shared-modules-independence|core-ports-purity|composition-root-isolation|application-no-direct-infra" contracts). Fails qg/CI.
+See `docs/architecture/engineering-standards.md` § Key invariants for how these generalized contracts cover ADR-059 (Clean/Hex + CR + ports) and ADR-073 (stage axis + HELPERS per part).
+AVOIDED PATCHWORK: prior low-consensus specifics (incl. commands-no-infra + agents-no-bootstrap) were generalized into broader contracts (stage-purity, per-part-stage-helpers-isolation, application-no-direct-infra, etc.). See .importlinter comments.
 
 **HELPERS per part**: focused extract inside the part (inbound/, streaming/, etc.). Compose, respect boundaries. No god modules or cross-duplication.
 

@@ -242,6 +242,13 @@ one runner — adding a check means declaring a gate in `stack.yml` and adding i
   factory); no factory selecting implementations may live in Domain or Application.
 - Layering is machine-enforced via `.importlinter`; new modules must be added to the
   contracts, not exempted.
+- Key ADR invariants are covered by generalized contracts (see .importlinter comments for details and anti-patchwork consolidation):
+  - ADR-059 (Hexagonal/Clean Architecture canonical model, Composition Root, ports): `clean-architecture-layers`, `core-ports-purity`, `composition-root-isolation`, `shared-modules-upper-boundary`, `per-part-stage-helpers-isolation`, `no-direct-*` rules, `application-no-direct-infra`.
+  - ADR-073 (Stage as primary axis of decomposition): `stage-purity`, `per-part-stage-helpers-isolation`, generalized `shared-modules-upper-boundary` + `shared-modules-independence`, `no-direct-bot-store`.
+  - Related absorbed: ADR-061 (independence/port imports), ADR-078 (store protocols via no-direct rules).
+  - commands-no-infra + agents-no-bootstrap merged into `application-no-direct-infra` (broader application layer isolation from infra/CR).
+- A user-visible error must have an explicit, typed catch site that replies via a
+  message-template key — no silent drops, no raw exception text shown to users.
 - A user-visible error must have an explicit, typed catch site that replies via a
   message-template key — no silent drops, no raw exception text shown to users.
 - LLM backends classify failures into structured `WorkerError` codes; presentation
@@ -263,6 +270,7 @@ one runner — adding a check means declaring a gate in `stack.yml` and adding i
 - Streaming pipeline (`StreamProcessor`, `RenderEvent` protocol) → `llm-streaming.md`
 - Messaging & NATS invariants → `messaging.md`
 - Deployment standards → `deployment.md`
+- Generalized contracts + ADR-059 (Clean/Hex) / ADR-073 (stage axis) coverage → `.importlinter` (with comments) and AGENTS.md Core section. (See "nettoyage" consolidation for reduced patchwork.)
 
 ## ADR archive
 

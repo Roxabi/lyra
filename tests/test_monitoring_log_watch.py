@@ -250,3 +250,41 @@ class TestRunForever:
             "Telegram alert delivery failed" in record.message
             for record in caplog.records
         )
+
+    async def test_run_forever_survives_unexpected_run_once_exception(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A single unexpected exception out of `run_once()` (e.g. a Loki
+        response-shape bug not caught anywhere below) must be logged and
+        skipped, not propagate and kill the loop — the `_StopLoop` sentinel
+        from the `asyncio.sleep` patch must still be the exception that
+        surfaces, proving the loop reached its next-tick sleep instead of
+        dying on the `run_once()` call."""
+        config = MonitoringConfig()
+        loop = LogMonitorLoop(config, fetcher=_FakeFetcher())
+
+        with (
+            patch.object(
+                loop, "run_once", new=AsyncMock(side_effect=RuntimeError("boom"))
+            ),
+            patch(
+                "factory.monitoring.log_watch.asyncio.sleep",
+                new=AsyncMock(side_effect=_StopLoop),
+            ),
+            patch(
+                "factory.monitoring.log_watch.escalation.send_telegram_raw_alert",
+                new=AsyncMock(),
+            ) as mock_alert,
+            caplog.at_level(logging.ERROR),
+        ):
+            # If the RuntimeError were NOT caught, it (not _StopLoop) would
+            # propagate here and pytest.raises would report the wrong
+            # exception type, failing the test.
+            with pytest.raises(_StopLoop):
+                await loop.run_forever()
+
+        mock_alert.assert_not_called()
+        assert any(
+            "run_once() failed unexpectedly" in record.message
+            for record in caplog.records
+        )

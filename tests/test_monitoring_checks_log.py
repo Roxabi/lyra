@@ -163,6 +163,25 @@ class TestCheckHubDictStreamGenTimeout:
         assert "3" in result.detail
         assert "threshold=3" in result.detail
 
+    def test_passes_at_threshold_minus_one_with_default_threshold(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Tight boundary at the realistic default threshold (3, per
+        MonitoringConfig): exactly threshold-1 occurrences must still pass."""
+        stdout = (
+            "_dict_stream_gen timeout on turn a\n"
+            "_dict_stream_gen timeout on turn b\n"
+        )
+        monkeypatch.setattr(
+            "factory.monitoring.checks_log.subprocess.run",
+            lambda *a, **kw: MagicMock(returncode=0, stdout=stdout, stderr=""),
+        )
+
+        result = check_hub_dict_stream_gen_timeout("factory-hub", 10, threshold=3)
+
+        assert result.passed is True
+        assert "2" in result.detail
+
     def test_fails_when_count_exceeds_threshold(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -422,6 +441,38 @@ class TestLokiLogFetcher:
         with pytest.raises(LogFetchError):
             LokiLogFetcher().fetch("factory-nats", 10, pattern="permissions violation")
 
+    def test_fetch_raises_log_fetch_error_on_null_data_field(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`data["data"]` being `None` (a real Loki degraded-response shape)
+        raises `TypeError` on subscript — must surface as `LogFetchError`,
+        not escape the fetcher raw and kill the caller."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": None}
+        mock_get = MagicMock(return_value=mock_response)
+        monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
+
+        with pytest.raises(LogFetchError):
+            LokiLogFetcher().fetch("factory-nats", 10, pattern="permissions violation")
+
+    def test_fetch_raises_log_fetch_error_on_short_values_entry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A `values` entry with fewer than 2 elements raises `IndexError` on
+        `value[1]` — must surface as `LogFetchError`, not escape the fetcher
+        raw and kill the caller."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": {"result": [{"values": [["1700000000000000000"]]}]}
+        }
+        mock_get = MagicMock(return_value=mock_response)
+        monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
+
+        with pytest.raises(LogFetchError):
+            LokiLogFetcher().fetch("factory-nats", 10, pattern="permissions violation")
+
     def test_fetch_raises_log_fetch_error_on_http_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -458,6 +509,48 @@ class TestLokiLogFetcher:
         query = kwargs["params"]["query"]
         escaped = re.escape("permissions violation")
         assert f'|~ "(?i){escaped}"' in query
+
+    def test_fetch_returns_empty_string_on_zero_matching_streams(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A well-formed response with zero matching streams (`"result": []`)
+        must return `""` directly — not raise, not `None`, exact empty
+        string, so `splitlines()` on the caller side sees zero lines."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": {"result": []}}
+        mock_get = MagicMock(return_value=mock_response)
+        monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
+
+        result = LokiLogFetcher().fetch(
+            "factory-nats", 10, pattern="permissions violation"
+        )
+
+        assert result == ""
+
+    def test_fetch_query_params_include_limit_and_time_window(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`limit` is called out in checks_log.py's own comment as
+        load-bearing (Loki caps + truncates newest-first without it); `start`/
+        `end` must bound the query to the requested `since_minutes` window."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": {"result": []}}
+        mock_get = MagicMock(return_value=mock_response)
+        monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
+
+        LokiLogFetcher().fetch("factory-nats", 10, pattern="permissions violation")
+
+        mock_get.assert_called_once()
+        _, kwargs = mock_get.call_args
+        params = kwargs["params"]
+        assert params["limit"] == 5000
+        assert isinstance(params["start"], int)
+        assert isinstance(params["end"], int)
+        assert params["end"] > params["start"]
+        # 10 minutes, in nanoseconds.
+        assert params["end"] - params["start"] == 10 * 60 * 1_000_000_000
 
 
 class TestSubprocessLogFetcherIgnoresPattern:

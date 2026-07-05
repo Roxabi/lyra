@@ -10,6 +10,7 @@ from typing import Protocol
 
 import httpx
 
+from ._errors import _MONITORING_HTTP_ERRORS
 from .models import CheckResult
 
 _LOG_EXCEPTIONS = (
@@ -17,6 +18,16 @@ _LOG_EXCEPTIONS = (
     FileNotFoundError,
     subprocess.CalledProcessError,
 )
+
+# Loki's query_range response is untrusted JSON shape, not just untrusted
+# transport: beyond the shared HTTP/parse errors (_MONITORING_HTTP_ERRORS —
+# httpx.HTTPError, ValueError incl. JSONDecodeError, TypeError, OSError),
+# a malformed-but-200-OK body can also raise KeyError (missing "data"/
+# "result"/"values" keys) or IndexError (a "values" entry with < 2 elements).
+# All of these must become LogFetchError, never escape raw — an unhandled
+# exception here kills LogMonitorLoop.run_once() and, on a deterministic
+# response shape, exhausts systemd's Restart=on-failure burst limit.
+_LOKI_FETCH_ERRORS = (*_MONITORING_HTTP_ERRORS, KeyError, IndexError)
 
 
 class LogFetchError(Exception):
@@ -83,7 +94,7 @@ class LokiLogFetcher:
                 for result in data["data"]["result"]
                 for value in result["values"]
             ]
-        except (httpx.HTTPError, KeyError, ValueError) as e:
+        except _LOKI_FETCH_ERRORS as e:
             raise LogFetchError(str(e)) from e
         return "\n".join(lines)
 

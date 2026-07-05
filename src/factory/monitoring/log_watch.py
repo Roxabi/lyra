@@ -65,9 +65,27 @@ class LogMonitorLoop:
         )
 
     async def run_forever(self) -> None:
-        """Loop run_once() on config.check_interval_minutes, alerting on any failure."""
+        """Loop run_once() on config.check_interval_minutes, alerting on any failure.
+
+        `run_once()` itself is guarded: the underlying check functions already
+        translate expected fetch failures into a failing `CheckResult`, but a
+        genuinely unexpected exception (e.g. a Loki response shape neither
+        `checks_log.py` nor this code anticipated) must not be allowed to kill
+        this coroutine. A deterministic bug here would reproduce on every
+        restart and exhaust systemd's `Restart=on-failure` burst limit,
+        permanently disabling the safety net this loop exists to provide —
+        one bad tick must cost at most one missed cycle, never the process.
+        """
         while True:
-            report = await self.run_once()
+            try:
+                report = await self.run_once()
+            except Exception:
+                log.exception(
+                    "log-monitor: run_once() failed unexpectedly; skipping this tick"
+                )
+                await asyncio.sleep(self.config.check_interval_minutes * 60)
+                continue
+
             if not report.all_passed:
                 log.warning(
                     "log-monitor: %d/%d checks failed",

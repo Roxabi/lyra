@@ -85,6 +85,19 @@ class MonitoringConfig(BaseModel):
                 )
         return v
 
+    @field_validator("nats_container_name", "hub_container_name")
+    @classmethod
+    def _validate_container_name(cls, v: str) -> str:
+        # Same charset as service_names: both are operator-controlled
+        # identifiers that get interpolated into shell argv (podman/systemctl)
+        # and a LogQL label matcher (checks_log.py) — parity closes the one
+        # field left ungated when that seam was added.
+        if not _SERVICE_NAME_RE.match(v):
+            raise ValueError(
+                f"container name must match [a-zA-Z0-9_@.-]+, got {v!r}"
+            )
+        return v
+
     @field_validator("health_endpoint_url")
     @classmethod
     def _validate_health_endpoint_url(cls, v: str) -> str:

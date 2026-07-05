@@ -26,6 +26,38 @@ assertions are evidence about the source, not an artifact of import order.
 `test_live_v1_pull_modules_no_deprecation_warning` doesn't strictly need
 this (those modules never warn, cached or not) but uses the same helper for
 consistency and because the plan explicitly asks for reload-safety here.
+
+Parent-package eviction gotcha (verified empirically, see PR/task notes):
+`also_evict` must NOT `sys.modules.pop("factory.monitoring")` + plain
+reimport for the *parent package* itself. A pop+reimport swaps in a
+brand-new `factory.monitoring` module object; already-imported submodules
+that some *other* test file set as an attribute on the OLD object (e.g.
+`factory.monitoring.checks_varz`, imported by
+`tests/test_monitoring_escalation.py` on the same xdist worker) are never
+re-attached to the new object, because nothing re-imports them. Any later
+test on that worker that dotted-accesses such a submodule through the
+parent (e.g. `monkeypatch.setattr("factory.monitoring.checks_varz...")`)
+then gets a spurious `AttributeError` — reproduced: running
+`test_monitoring_deprecation.py` and `test_monitoring_escalation.py` on one
+worker turned 3 previously-passing escalation tests into setup errors.
+`importlib.reload()` re-executes a cached *package's* top-level code (still
+catching a regressed `warnings.warn()`) in place, preserving object
+identity and every already-set submodule attribute.
+
+Leaf-module eviction is the opposite case, and conflating the two is itself
+a trap (verified empirically): `test_dormant_modules_still_warn` evicts
+`factory.monitoring.checks` — a *leaf* module, not a package — ahead of
+re-importing `factory.monitoring.__main__`, specifically so `__main__`'s own
+`from .checks import run_checks` line is what re-triggers `checks.py`'s
+warning (proving the warning propagates *transitively*, not just when
+`checks.py` is imported directly). If a leaf target were reloaded instead
+of popped, `importlib.reload()` re-executes it immediately, inside the same
+`catch_warnings` block, regardless of whether `__main__` ever imports it —
+the assertion would then pass even if `__main__`'s import line were deleted
+entirely, silently testing nothing about `__main__`. So `also_evict`
+distinguishes the two by `hasattr(cached, "__path__")` (true only for
+packages): packages are reloaded in place; leaf modules are popped so the
+*importer's own import statement* is what's on the hook for re-execution.
 """
 
 from __future__ import annotations
@@ -47,12 +79,24 @@ def _fresh_import(
     module-level code even if it (or a module it transitively imports) is
     already cached in `sys.modules` from an earlier test's import.
 
+    `also_evict` names are handled per the module docstring's two gotchas:
+    a cached *package* (has `__path__`) is reloaded in place, so its
+    top-level code re-executes without losing sibling submodule attributes;
+    a cached *leaf* module is popped, so the caller's own import of
+    `module_name` is what's responsible for re-executing it transitively
+    (proving propagation, not just re-triggering it directly here).
+
     Returns the list of warnings recorded during the (re-)import.
     """
-    for name in (*also_evict, module_name):
-        sys.modules.pop(name, None)
+    sys.modules.pop(module_name, None)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
+        for name in also_evict:
+            cached = sys.modules.get(name)
+            if cached is not None and hasattr(cached, "__path__"):
+                importlib.reload(cached)
+            else:
+                sys.modules.pop(name, None)
         importlib.import_module(module_name)
     return caught
 
@@ -60,9 +104,23 @@ def _fresh_import(
 def test_live_v1_pull_modules_no_deprecation_warning():
     """checks_log.py and escalation.py never import .checks — importing (or
     re-importing) either must not emit the Layer-1-aggregate
-    DeprecationWarning (or any DeprecationWarning at all)."""
-    caught = _fresh_import("factory.monitoring.checks_log")
-    caught += _fresh_import("factory.monitoring.escalation")
+    DeprecationWarning (or any DeprecationWarning at all).
+
+    Both calls also evict the parent `factory.monitoring` package itself
+    (`also_evict`), not just the named submodule: a plain child-module
+    re-import does NOT re-execute the parent's already-cached `__init__.py`,
+    so without this eviction a future regression that moves the
+    `warnings.warn(...)` call (back) into `factory/monitoring/__init__.py`
+    would go undetected whenever an earlier test in the same worker session
+    already imported anything under `factory.monitoring` — which, under this
+    repo's real xdist collection, is effectively always.
+    """
+    caught = _fresh_import(
+        "factory.monitoring.checks_log", also_evict=("factory.monitoring",)
+    )
+    caught += _fresh_import(
+        "factory.monitoring.escalation", also_evict=("factory.monitoring",)
+    )
 
     deprecation_warnings = [
         w for w in caught if issubclass(w.category, DeprecationWarning)

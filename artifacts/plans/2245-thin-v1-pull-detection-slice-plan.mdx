@@ -131,8 +131,13 @@ flowchart LR
 | Agent | Instances | Task count | Files |
 |-------|-----------|------------|-------|
 | backend-dev | A, B | 6 (A: 3, B: 3) | `src/factory/monitoring/checks_log.py`, `src/factory/monitoring/log_watch.py` (new), `src/factory/monitoring/__init__.py`, `src/factory/bootstrap/standalone/worker_standalone.py`, `src/factory/cli/main.py` |
-| tester | A | 4 | `tests/test_monitoring_checks_log.py` (new), `tests/test_monitoring_log_watch.py` (new), `tests/bootstrap/test_log_monitor_standalone_paths.py` (new), `tests/test_monitoring_deprecation.py` (new) |
-| devops | A | 3 | `deploy/quadlet/factory-log-monitor.container` (new), `deploy/quadlet.toml` |
+| tester | A, B | 5 (A: 3, B: 2) | `tests/test_monitoring_checks_log.py` (new), `tests/test_monitoring_log_watch.py` (new), `tests/bootstrap/test_log_monitor_standalone_paths.py` (new), `tests/test_monitoring_deprecation.py` (new) |
+| devops | A | 3 | `deploy/quadlet/factory-log-monitor.container` (new), `deploy/quadlet.toml`, `deploy/secrets-policy.toml`, `docs/CONFIGURATION.md` |
+
+**Post-`/plan` correction (advisor review, pre-`/implement`):** the tester agent force-splits into
+A/B because Wave 0's new baseline task (T0, see below) pushes tester-A's task count to 5 (>4 cap).
+T0 + T4 + T6 → tester-A (checks_log/log_watch subject-chain); T13 + T8 → tester-B (deprecation +
+CLI-smoke subject-chain).
 
 No frontend-dev (no UI surface), no architect/security-auditor/doc-writer instance needed for
 implementation — architecture and security tradeoffs (Podman-socket rejection, Loki pivot) were
@@ -148,7 +153,7 @@ Every Success Criterion (SC1–SC10, SC3b) traces to ≥1 micro-task; every micr
 |----|-----------|
 | SC1 (≤5min interval, no systemctl/host-timer) | T5, T9 |
 | SC2 (Loki fetch, no Podman socket/CLI, no new image) | T2, T9 |
-| SC3 (default-fetcher behavior unchanged) | T1, T3, T4 |
+| SC3 (default-fetcher behavior unchanged) | T0, T1, T3 |
 | SC3b (unified `LogFetchError`) | T1, T2, T3, T4 |
 | SC4 (Telegram alert on failure) | T5, T6 |
 | SC5 (all-pass → zero Telegram calls) | T5, T6 |
@@ -158,11 +163,11 @@ Every Success Criterion (SC1–SC10, SC3b) traces to ≥1 micro-task; every micr
 | SC9 (`quadlet-lint` passes) | T9, T10, T11 |
 | SC10 (no event/metric bus producer) | T5, T7, T8 |
 
-Slices: SL1→T1–T4, SL2→T5–T6, SL3→T7–T8, SL4→T9–T11, SL5→T12–T13, SL6→exempted (PR-description
+Slices: SL1→T0–T4, SL2→T5–T6, SL3→T7–T8, SL4→T9–T11, SL5→T12–T13, SL6→exempted (PR-description
 deliverable, written during `/pr`, not a code micro-task — consistent with `/plan`'s "Tier F"
 process, which generates micro-tasks for code slices only).
 
-Covered: 11/11 SC · 6/6 slices (5 code slices → 13 tasks, 1 doc slice → PR-step). Uncovered: none.
+Covered: 11/11 SC · 6/6 slices (5 code slices → 14 tasks, 1 doc slice → PR-step). Uncovered: none.
 
 ## Reference Patterns (Step 3)
 
@@ -174,8 +179,47 @@ Covered: 11/11 SC · 6/6 slices (5 code slices → 13 tasks, 1 doc slice → PR-
   `asyncio.run(coro_factory(raw_config))`. Not NATS-specific; safe to reuse for a non-NATS loop.
 - Quadlet unit conventions: `deploy/quadlet/factory-turn-writer.container` (hardening flags,
   `UserNS=keep-id`, `Secret=...,type=mount,...` for nkey) and `deploy/quadlet/factory-clipool.container`
-  (`Secret=<name>,type=env,target=<VAR>` — the pattern to mirror for `TELEGRAM_TOKEN`/
-  `TELEGRAM_ADMIN_CHAT_ID`).
+  (`Secret=factory-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_TOKEN` — the exact pattern to
+  mirror for `TELEGRAM_TOKEN`/`TELEGRAM_ADMIN_CHAT_ID`).
+- **Resolved (post-`/plan` investigation, do not re-derive at `/implement`): no existing Podman
+  secret carries a bare Telegram bot API token.** `factory-nats-telegram` (used by
+  `factory-telegram.container`) is a NATS NKey seed, not a bot token; the conversational multi-bot
+  tokens live in `secret-class.bot-token` (`factory-bot-{platform}-{bot_id}`, policy
+  `bot-provisioned`, sourced from `~/.roxabi/factory/config.db` via `BotStore` — a different
+  credential entirely, for a different Telegram bot). `MonitoringConfig`
+  (`src/factory/monitoring/config.py::load_monitoring_config`) hard-requires bare
+  `TELEGRAM_TOKEN`/`TELEGRAM_ADMIN_CHAT_ID` env vars (raises `ValueError` if absent) — this is
+  pre-existing, unchanged by this slice. The retired `deploy/lyra-monitor.service` supplied them via
+  a host-side `EnvironmentFile=%h/projects/lyra/.env` (plaintext), which is exactly the
+  host-dependency model this issue must not reproduce. **T9 must mint two new `policy = "optional"`
+  secrets** in `deploy/secrets-policy.toml` — `factory-telegram-monitor-token` (source
+  `telegram-monitor-token.tok`) and `factory-telegram-monitor-chat-id` (source
+  `telegram-monitor-chat-id.tok`) — wired via `Secret=factory-telegram-monitor-token,type=env,target=TELEGRAM_TOKEN`
+  / `Secret=factory-telegram-monitor-chat-id,type=env,target=TELEGRAM_ADMIN_CHAT_ID`, with a
+  `# Bootstrap: podman secret create factory-telegram-monitor-token - <<< "<token>"`-style comment
+  mirroring `factory-clipool.container`'s `# Bootstrap: claude setup-token | podman secret create
+  factory-claude-oauth -` convention. `policy = "optional"` is safe pre-provisioning — confirmed via
+  `deploy/install.sh:255` and `tools/check_secrets_drift.sh` (optional secrets are skipped, never
+  fail validation/drift-check); the new container will crash-loop (`Restart=on-failure`) until the
+  operator provisions the actual token post-merge — an expected, documented rollout step, not a
+  converge-breaking regression. `docs/CONFIGURATION.md:440,442` currently documents
+  `TELEGRAM_TOKEN`/`TELEGRAM_ADMIN_CHAT_ID` as "legacy single-bot path only... see #1035" — this is
+  now stale once this slice ships (they become the live credential path for
+  `factory-log-monitor`); T9 must update that table row.
+- **Resolved (post-`/plan` investigation): unfiltered Loki fetch risks silent truncation under load.**
+  `GET /loki/api/v1/query_range` returns at most `limit` lines, newest-first, within the query
+  window — unlike `podman logs --since`, which has no such cap. On a container emitting >5000 lines
+  in the check window, older violation lines could fall outside an unfiltered fetch and go
+  uncounted — defeating detection at exactly the load where an incident is likely. Fix: the
+  `LogFetcher` protocol's `fetch()` gains a required `pattern: str` parameter (the check functions'
+  own search string — `"permissions violation"` / `"_dict_stream_gen timeout"`).
+  `SubprocessLogFetcher.fetch()` accepts `pattern` for protocol conformance but ignores it (full
+  fetch, behavior byte-for-byte unchanged — no truncation risk locally, `podman logs --since` has no
+  line cap). `LokiLogFetcher.fetch()` uses `pattern` to build a server-side LogQL filter:
+  `{{systemd_unit="<container>.service"}} |~ "(?i)<re.escape(pattern)>"` — case-insensitive regex
+  match (a safe superset of both checks' needs) applied *before* Loki's `limit`, so the exact
+  client-side counting logic downstream (unchanged from today) never sees a truncated window. `T1`,
+  `T2`, `T3` below are updated accordingly.
 - `deploy/quadlet.toml`: 20 `[component.*]` entries already present (e.g. `[component.turn-writer]`
   at line 42) — add `[component.log-monitor]` following the same shape.
 - Test precedent: `tests/bootstrap/test_turn_writer_standalone_paths.py` — mirror for
@@ -183,9 +227,16 @@ Covered: 11/11 SC · 6/6 slices (5 code slices → 13 tasks, 1 doc slice → PR-
 - **Verified via grep: no existing tests reference `check_nats_log_errors` or
   `check_hub_dict_stream_gen_timeout` anywhere in the tree today** (only `checks_log.py` and
   `checks.py` itself reference the symbols). SC3's "all pre-existing tests... pass without
-  modification" is vacuously true — but this means T4 must **write new regression/baseline tests**
-  for current default-fetcher behavior (not just add Loki-fetcher tests), so the refactor has any
-  coverage at all. Folded into T4 below.
+  modification" is vacuously true — this means a characterization/baseline test must be authored
+  **before** the refactor touches `checks_log.py`, or SC3 can never be falsified (there is nothing
+  to prove "unchanged" against). **Post-`/plan` correction (advisor review): T4 originally combined
+  baseline + Loki tests and was scheduled entirely after T1–T3 (test-after) — that proves nothing
+  about behavior preservation.** Split into `T0` (new — Wave 0, before T1: write the
+  characterization tests against the *current*, unmodified `checks_log.py` signature, confirm GREEN
+  now) and `T4` (Loki-fetcher + fetcher-seam tests only, Wave 2 after T3, genuine RED-GATE — these
+  import symbols that don't exist yet). T0's tests are re-run unmodified after T3 (Wave 2) as the
+  actual SC3 falsification: still-GREEN proves the refactor preserved behavior; a regression turns
+  them RED.
 - Quadlet CI gate: `.github/workflows/quadlet-lint.yml` — `podman quadlet --dryrun --user` (env
   `QUADLET_UNIT_DIRS=deploy/quadlet`) + `HealthCmd=` double-quote grep + inline-`#`-comment grep +
   `tools/check_quadlet_template_purity.sh`. Requires Podman ≥5 (not guaranteed on the local dev
@@ -196,45 +247,54 @@ Covered: 11/11 SC · 6/6 slices (5 code slices → 13 tasks, 1 doc slice → PR-
 
 ## Wave Structure
 
-3 waves, max 3 parallel agent instances. Elapsed ~3 sequential stages vs 13 tasks fully serial —
-roughly 4-5x parallelism inside Wave 1.
+4 waves, max 3 parallel agent instances. Wave 0 is a hard ordering gate (advisor-driven correction,
+see Reference Patterns): T0's characterization tests must be authored and confirmed GREEN against
+the *unmodified* `checks_log.py` before T1 starts editing it — otherwise SC3 ("default-fetcher
+behavior unchanged") has nothing to prove "unchanged" against.
 
 | Wave | Trigger | Agents | Tasks |
 |------|---------|--------|-------|
-| 1 | start | 3 ∥ | backend-dev-A: T1→T2→T3 · backend-dev-B: T12 · devops-A: T9→T10→T11 |
-| 2 | Wave 1 done | 2 ∥ | backend-dev-B: T5→T7 · tester-A: T4, T13 |
-| 3 | Wave 2 done | 1 | tester-A: T6, T8 |
+| 0 | start | 3 ∥ | tester-A: T0 · backend-dev-B: T12 · devops-A: T9→T10→T11 |
+| 1 | T0 done | 2 ∥ | backend-dev-A: T1→T2→T3 · tester-B: T13 |
+| 2 | Wave 1 done | 2 ∥ | backend-dev-B: T5→T7 · tester-A: T4 |
+| 3 | Wave 2 done | 2 ∥ | tester-A: T6 · tester-B: T8 |
+
+T12/T9–T11 have no dependency on T0 and run in Wave 0 alongside it; T13 only depends on T12
+(Wave 0) so it starts in Wave 1 rather than waiting for T3.
 
 ### Budget — per task
 
 | Task | Items | Class | Est. ops | Split? |
 |------|-------|-------|----------|--------|
+| T0 — baseline characterization tests (current behavior) | 2 | judgmental | 5 | — |
 | T1 — LogFetcher protocol + LogFetchError + SubprocessLogFetcher | 1 | judgmental | 5 | — |
-| T2 — LokiLogFetcher | 1 | judgmental | 5 | — |
-| T3 — wire `fetcher` param into both check functions | 2 | bounded | 3 | — |
-| T4 — regression + Loki-fetcher tests | 3 | judgmental | 6 | — |
+| T2 — LokiLogFetcher (pattern-filtered LogQL) | 1 | judgmental | 6 | — |
+| T3 — wire `fetcher`+`pattern` param into both check functions | 2 | bounded | 4 | — |
+| T4 — Loki-fetcher + fetcher-seam tests | 2 | judgmental | 4 | — |
 | T5 — LogMonitorLoop | 1 | judgmental | 6 | — |
 | T6 — LogMonitorLoop tests | 3 | judgmental | 5 | — |
 | T7 — bootstrap fn + CLI command registration | 2 | bounded | 4 | — |
 | T8 — CLI/bootstrap smoke test + bus-producer grep check | 2 | bounded | 3 | — |
-| T9 — `factory-log-monitor.container` unit | 1 | bounded | 4 | — |
+| T9 — `factory-log-monitor.container` unit + secrets + doc fix | 3 | judgmental | 6 | — |
 | T10 — `[component.log-monitor]` in `quadlet.toml` | 1 | trivial | 2 | — |
 | T11 — quadlet-lint local run + fixups | 1 | trivial | 2 | — |
 | T12 — narrow `DeprecationWarning` + `pyproject.toml` filter | 2 | bounded | 3 | — |
 | T13 — deprecation-warning test | 1 | bounded | 3 | — |
 
-**Total estimated ops: 51**
+**Total estimated ops: 58**
 
 ### Budget — per agent instance
 
 | Instance | Tasks | Σ ops | Subjects | Split? |
 |----------|-------|-------|----------|--------|
-| backend-dev-A | T1, T2, T3 | 13 | monitoring | — |
+| backend-dev-A | T1, T2, T3 | 15 | monitoring | — |
 | backend-dev-B | T5, T7, T12 | 13 | monitoring | — |
-| tester-A | T4, T6, T8, T13 | 17 | monitoring | — |
-| devops-A | T9, T10, T11 | 8 | deploy | — |
+| tester-A | T0, T4, T6 | 14 | monitoring | — |
+| tester-B | T13, T8 | 6 | monitoring | — |
+| devops-A | T9, T10, T11 | 10 | deploy | — |
 
-No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each.
+No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each. (tester force-split
+into A/B is itself the fix for the pre-correction budget violation — see Agents table note.)
 
 ## Task Seeding Blueprint
 
@@ -245,17 +305,27 @@ No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each
      so parallel tasks map to distinct spawned agents.
      Seed in wave order; within a wave all rows are parallel (∥). -->
 
-### Wave 1 — no deps, 3 agents ∥
+### Wave 0 — no deps, 3 agents ∥
+
+<!-- T0 gates T1 (see Wave Structure) — /implement must confirm T0's tests are authored and
+     GREEN against the unmodified checks_log.py before spawning backend-dev-A for T1. -->
 
 | Task | Agent instance | blockedBy | Subject |
 |------|---------------|-----------|---------|
-| T1 | backend-dev-A | — | monitoring |
-| T2 | backend-dev-A | T1 | monitoring |
-| T3 | backend-dev-A | T2 | monitoring |
+| T0 | tester-A | — | monitoring |
 | T12 | backend-dev-B | — | monitoring |
 | T9 | devops-A | — | deploy |
 | T10 | devops-A | T9 | deploy |
 | T11 | devops-A | T10 | deploy |
+
+### Wave 1 — after T0, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | backend-dev-A | T0 | monitoring |
+| T2 | backend-dev-A | T1 | monitoring |
+| T3 | backend-dev-A | T2 | monitoring |
+| T13 | tester-B | T12 | monitoring |
 
 ### Wave 2 — after Wave 1, 2 agents ∥
 
@@ -264,28 +334,54 @@ No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each
 | T5 | backend-dev-B | T3 | monitoring |
 | T7 | backend-dev-B | T5 | monitoring |
 | T4 | tester-A | T3 | monitoring |
-| T13 | tester-A | T12 | monitoring |
 
-### Wave 3 — after Wave 2, 1 agent
+### Wave 3 — after Wave 2, 2 agents ∥
 
 | Task | Agent instance | blockedBy | Subject |
 |------|---------------|-----------|---------|
 | T6 | tester-A | T5 | monitoring |
-| T8 | tester-A | T7 | monitoring |
+| T8 | tester-B | T7 | monitoring |
 
 ## Micro-Tasks
 
 ### Slice SL1 — Injectable log-fetch seam (`checks_log.py`)
 
+#### T0 — Baseline characterization tests (current behavior) [Wave 0 — gates T1]
+
+- **Description:** Create `tests/test_monitoring_checks_log.py` **against the current, unmodified**
+  `check_nats_log_errors(container_name, max_age_minutes)` /
+  `check_hub_dict_stream_gen_timeout(container_name, max_age_minutes, threshold)` signatures — no
+  `fetcher` param exists yet. Mock `subprocess.run` to return known log text and assert: correct
+  pass/fail + count for "permissions violation" substring matching; correct pass/fail + count for
+  `_dict_stream_gen timeout` case-insensitive matching vs `threshold`; all three
+  `_LOG_EXCEPTIONS` (`TimeoutExpired`, `FileNotFoundError`, `CalledProcessError`) surface as a
+  failing `CheckResult` (current behavior, pre-`LogFetchError`). **Run pytest now, before T1
+  touches the file, and confirm every test is GREEN** — this is the "current" baseline; T4 will
+  re-run this exact file unmodified after T3 (Wave 2) to prove the refactor didn't silently change
+  counting behavior (SC3's actual falsification). This task must complete before T1 starts (Wave 0
+  → Wave 1 gate) — if T1 edits `checks_log.py` first, there is nothing left to characterize
+  "before."
+- **File:** `tests/test_monitoring_checks_log.py` (new)
+- **Verify:** `.venv/bin/pytest tests/test_monitoring_checks_log.py -v`
+- **Expected:** all tests pass **against today's `checks_log.py`, unmodified**.
+- **Time:** 12 min · **Difficulty:** 3 · **Trace:** SC3 · **Slice:** SL1 · **Phase:** BASELINE
+  (GREEN now, re-verified GREEN again after T3 — not a RED-GATE in the traditional sense: it never
+  needs to fail, its failure *after* the refactor is the signal, not its failure before)
+
 #### T1 — Add `LogFetchError` + `LogFetcher` protocol + `SubprocessLogFetcher`
 
 - **Description:** In `src/factory/monitoring/checks_log.py`, add a `LogFetchError(Exception)`
-  class, a `LogFetcher` `Protocol` with `fetch(self, container_name: str, since_minutes: int) -> str`,
-  and a `SubprocessLogFetcher` class whose `fetch()` body is the current inline
+  class, a `LogFetcher` `Protocol` with
+  `fetch(self, container_name: str, since_minutes: int, pattern: str) -> str`, and a
+  `SubprocessLogFetcher` class whose `fetch()` body is the current inline
   `subprocess.run(["podman", "logs", "--since", f"{max_age_minutes}m", container_name], ...)` call,
   moved verbatim (same args, same timeout, same text decoding) so behavior is byte-for-byte
-  unchanged. Map the existing `_LOG_EXCEPTIONS` tuple (`subprocess.TimeoutExpired`,
-  `FileNotFoundError`, `subprocess.CalledProcessError`) to `raise LogFetchError(...) from e` inside
+  unchanged. **`pattern` is accepted for protocol conformance but ignored by
+  `SubprocessLogFetcher`** — `podman logs --since` has no line cap, so there is no truncation risk
+  to guard against locally, and ignoring it keeps this fetcher's behavior identical to today (see
+  Reference Patterns "truncation" note — the param exists for `LokiLogFetcher`, added in T2). Map
+  the existing `_LOG_EXCEPTIONS` tuple (`subprocess.TimeoutExpired`, `FileNotFoundError`,
+  `subprocess.CalledProcessError`) to `raise LogFetchError(...) from e` inside
   `SubprocessLogFetcher.fetch()`.
 - **File:** `src/factory/monitoring/checks_log.py`
 - **Snippet skeleton:**
@@ -294,10 +390,12 @@ No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each
       """Raised by any LogFetcher implementation on fetch failure."""
 
   class LogFetcher(Protocol):
-      def fetch(self, container_name: str, since_minutes: int) -> str: ...
+      def fetch(self, container_name: str, since_minutes: int, pattern: str) -> str: ...
 
   class SubprocessLogFetcher:
-      def fetch(self, container_name: str, since_minutes: int) -> str:
+      def fetch(self, container_name: str, since_minutes: int, pattern: str) -> str:
+          # pattern unused: no server-side filter needed for a local, uncapped `podman logs`
+          # fetch — kept for LogFetcher protocol conformance with LokiLogFetcher (T2).
           try:
               result = subprocess.run(
                   ["podman", "logs", "--since", f"{since_minutes}m", container_name],
@@ -314,13 +412,18 @@ No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each
 #### T2 — Add `LokiLogFetcher`
 
 - **Description:** Add a `LokiLogFetcher` class to `checks_log.py` with `loki_url: str` (default
-  `http://factory-loki:3100`) and a synchronous `fetch(container_name, since_minutes)` that issues
-  `GET {loki_url}/loki/api/v1/query_range` with LogQL query
-  `{{systemd_unit="{container_name}.service"}}` over a `since_minutes`-wide time window (epoch-ns
-  `start`/`end` params), using `httpx.Client` (sync, matching the sync `LogFetcher` protocol — no
-  `asyncio` inside this class). Concatenate matched log lines into a single string (same return
-  shape as `SubprocessLogFetcher.fetch`). On HTTP error, timeout, or malformed JSON response, raise
-  `LogFetchError`.
+  `http://factory-loki:3100`) and a synchronous `fetch(container_name, since_minutes, pattern)` that
+  issues `GET {loki_url}/loki/api/v1/query_range` with LogQL query
+  `{{systemd_unit="{container_name}.service"}} |~ "(?i){re.escape(pattern)}"` over a
+  `since_minutes`-wide time window (epoch-ns `start`/`end` params), using `httpx.Client` (sync,
+  matching the sync `LogFetcher` protocol — no `asyncio` inside this class). **The `|~ "(?i)..."`
+  server-side filter is load-bearing, not cosmetic** — without it, Loki returns only the newest
+  `limit` lines within the window (unlike `podman logs --since`, which has no cap); a busy container
+  could push true violations outside an unfiltered fetch and go uncounted (see Reference Patterns
+  "truncation" note). Case-insensitive regex is a safe superset for both checks — the exact
+  case-sensitive/insensitive counting still happens client-side afterward, unchanged. Concatenate
+  matched log lines into a single string (same return shape as `SubprocessLogFetcher.fetch`). On
+  HTTP error, timeout, or malformed JSON response, raise `LogFetchError`.
 - **File:** `src/factory/monitoring/checks_log.py`
 - **Snippet skeleton:**
   ```python
@@ -328,8 +431,8 @@ No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each
       def __init__(self, loki_url: str = "http://factory-loki:3100") -> None:
           self.loki_url = loki_url
 
-      def fetch(self, container_name: str, since_minutes: int) -> str:
-          query = f'{{systemd_unit="{container_name}.service"}}'
+      def fetch(self, container_name: str, since_minutes: int, pattern: str) -> str:
+          query = f'{{systemd_unit="{container_name}.service"}} |~ "(?i){re.escape(pattern)}"'
           try:
               resp = httpx.get(
                   f"{self.loki_url}/loki/api/v1/query_range",
@@ -346,40 +449,42 @@ No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each
 - **Expected:** instantiates without error; no network call at import/construction time.
 - **Time:** 10 min · **Difficulty:** 4 · **Trace:** SC2, SC3b · **Slice:** SL1 · **Phase:** GREEN
 
-#### T3 — Wire `fetcher` param into both check functions
+#### T3 — Wire `fetcher`+`pattern` param into both check functions
 
 - **Description:** Update `check_nats_log_errors(container_name, max_age_minutes, fetcher:
   LogFetcher = SubprocessLogFetcher())` and `check_hub_dict_stream_gen_timeout(container_name,
   max_age_minutes, threshold, fetcher: LogFetcher = SubprocessLogFetcher())` to call
-  `fetcher.fetch(container_name, max_age_minutes)` instead of the inline `subprocess.run` call, and
-  catch `LogFetchError` (replacing the old direct `_LOG_EXCEPTIONS` catch at the call site — the
-  exception mapping now lives inside the fetcher). Preserve exact counting/threshold logic
-  ("permissions violation" substring count; `_dict_stream_gen timeout` case-insensitive count vs
-  `threshold`) unchanged.
+  `fetcher.fetch(container_name, max_age_minutes, pattern="permissions violation")` and
+  `fetcher.fetch(container_name, max_age_minutes, pattern="_dict_stream_gen timeout")` respectively
+  instead of the inline `subprocess.run` call, and catch `LogFetchError` (replacing the old direct
+  `_LOG_EXCEPTIONS` catch at the call site — the exception mapping now lives inside the fetcher).
+  Preserve exact counting/threshold logic ("permissions violation" substring count;
+  `_dict_stream_gen timeout` case-insensitive count vs `threshold`) unchanged — the `pattern` arg
+  only feeds the fetcher's own (optional) server-side filter; client-side counting is untouched.
 - **File:** `src/factory/monitoring/checks_log.py`
 - **Verify:** `grep -n "fetcher: LogFetcher" src/factory/monitoring/checks_log.py | wc -l` → `2`
 - **Expected:** both function signatures show the new param; `grep -c "subprocess.run" src/factory/monitoring/checks_log.py` → `1` (only inside `SubprocessLogFetcher.fetch`, not duplicated at call sites).
 - **Time:** 6 min · **Difficulty:** 2 · **Trace:** SC1, SC3, SC3b · **Slice:** SL1 · **Phase:** GREEN
 
-#### T4 — Regression + Loki-fetcher tests [RED-GATE]
+#### T4 — Loki-fetcher + fetcher-seam tests [RED-GATE]
 
-- **Description:** Create `tests/test_monitoring_checks_log.py`. **No tests currently exist for
-  either check function (grep-confirmed empty) — this task establishes the baseline, not just new
-  coverage.** Cover: (a) `check_nats_log_errors`/`check_hub_dict_stream_gen_timeout` with the
-  default `SubprocessLogFetcher` — mock `subprocess.run` to return known log text, assert correct
-  pass/fail + counts (permissions-violation substring, `_dict_stream_gen timeout` case-insensitive
-  vs threshold); (b) same two functions with an injected fake/mock `LogFetcher` returning
-  controlled text, proving the fetcher seam actually decouples fetch from logic; (c)
-  `LokiLogFetcher.fetch` against a mocked `httpx` response — success (matched lines), malformed
-  JSON, and HTTP error → all three assert `LogFetchError` is raised where applicable; (d) confirm
-  `SubprocessLogFetcher` failure paths (`TimeoutExpired`, `FileNotFoundError`,
-  `CalledProcessError`) all surface as `LogFetchError`.
-- **File:** `tests/test_monitoring_checks_log.py` (new)
+- **Description:** Extend `tests/test_monitoring_checks_log.py` (created by T0). This task is a
+  genuine RED-GATE — unlike T0, these tests import symbols (`LokiLogFetcher`, the `fetcher=` kwarg)
+  that don't exist before T1–T3 land, so they fail/don't-collect beforehand and pass after. Cover:
+  (a) `check_nats_log_errors`/`check_hub_dict_stream_gen_timeout` with an injected fake/mock
+  `LogFetcher` returning controlled text, proving the fetcher seam actually decouples fetch from
+  logic; (b) `LokiLogFetcher.fetch` against a mocked `httpx` response — success (matched lines),
+  malformed JSON, and HTTP error → all three assert `LogFetchError` is raised where applicable; (c)
+  assert the LogQL query string sent to `httpx` includes the `|~ "(?i)..."` filter with the correct
+  escaped pattern (regression guard for the truncation fix — a future edit that silently drops the
+  filter must fail this test); (d) confirm `SubprocessLogFetcher` failure paths (`TimeoutExpired`,
+  `FileNotFoundError`, `CalledProcessError`) all surface as `LogFetchError`.
+- **File:** `tests/test_monitoring_checks_log.py` (extends T0's file)
 - **Verify:** `.venv/bin/pytest tests/test_monitoring_checks_log.py -v`
-- **Expected:** all new tests pass; this is the RED-GATE for SL1 — before T1–T3 exist, these tests
-  fail/don't-collect; after, they pass. Run once before T1 starts (RED) and again after T3
-  completes (GREEN) to falsify the refactor didn't silently change counting behavior.
-- **Time:** 15 min · **Difficulty:** 3 · **Trace:** SC3, SC3b · **Slice:** SL1 · **Phase:** RED-GATE
+- **Expected:** all tests pass (T0's baseline tests + T4's new tests, same file). RED before T1–T3
+  exist (import fails), GREEN after — **and T0's original assertions must still pass unmodified in
+  the same run**, which is the SC3 falsification proper.
+- **Time:** 12 min · **Difficulty:** 3 · **Trace:** SC3b · **Slice:** SL1 · **Phase:** RED-GATE
 
 ### Slice SL2 — `LogMonitorLoop` (`log_watch.py`)
 
@@ -449,7 +554,7 @@ No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each
 
 ### Slice SL4 — Quadlet unit + manifest entry
 
-#### T9 — `factory-log-monitor.container` Quadlet unit
+#### T9 — `factory-log-monitor.container` Quadlet unit + secrets + doc fix
 
 - **Description:** Create `deploy/quadlet/factory-log-monitor.container`, mirroring
   `factory-turn-writer.container`'s structure: `Image=ghcr.io/roxabi/factory:staging-svc` (reuse
@@ -457,18 +562,43 @@ No force-splits required — all instances ≤4 tasks, ≤50 ops, 1 subject each
   `After=factory-hub.service factory-nats.service factory-loki.service` (no `Requires=` — matches
   the "adapter pattern" the spec calls for, not a hard dependency), hardening flags
   (`NoNewPrivileges=true`, `ReadOnly=true`, `DropCapability=all`, `UserNS=keep-id:uid=1500,gid=1500`
-  per ADR-053/ADR-054), and Telegram secret wiring via `Secret=<name>,type=env,target=TELEGRAM_TOKEN`
-  / `Secret=<name>,type=env,target=TELEGRAM_ADMIN_CHAT_ID`, mirroring `factory-clipool.container`'s
-  `type=env` secret pattern. Resolve the exact secret name(s) against whatever already-provisioned
-  Telegram bot secret identity the existing `factory-telegram`/`factory-discord` components use
-  (grep `deploy/quadlet/factory-telegram.container` and `deploy/quadlet.toml`'s
-  `[component.telegram]` `required_secrets` for the established name) — do not mint a new bot
-  token unless none exists.
-- **File:** `deploy/quadlet/factory-log-monitor.container` (new)
+  per ADR-053/ADR-054). **Secret identity already resolved (see Reference Patterns — do not
+  re-derive):** no existing secret carries a bare Telegram bot token (`factory-nats-telegram` is an
+  NKey seed; the multi-bot tokens are a different credential in `config.db`). Add two new
+  `policy = "optional"` entries to `deploy/secrets-policy.toml`:
+  ```toml
+  [secret.factory-telegram-monitor-token]
+  policy = "optional"
+  source = "telegram-monitor-token.tok"
+
+  [secret.factory-telegram-monitor-chat-id]
+  policy = "optional"
+  source = "telegram-monitor-chat-id.tok"
+  ```
+  Wire them into the unit exactly like `factory-clipool.container`'s `type=env` pattern:
+  ```
+  # Bootstrap: podman secret create factory-telegram-monitor-token - <<< "<bot-token>"
+  Secret=factory-telegram-monitor-token,type=env,target=TELEGRAM_TOKEN
+  # Bootstrap: podman secret create factory-telegram-monitor-chat-id - <<< "<chat-id>"
+  Secret=factory-telegram-monitor-chat-id,type=env,target=TELEGRAM_ADMIN_CHAT_ID
+  ```
+  `policy = "optional"` means `deploy/install.sh` and `tools/check_secrets_drift.sh` skip these if
+  absent (confirmed — will not break `make converge` on M1); the container itself will
+  `Restart=on-failure`-loop until the operator provisions the real token post-merge — call this out
+  explicitly in the PR description, it is a rollout step, not a bug. Also fix the now-stale doc row
+  in `docs/CONFIGURATION.md` (~line 440/442): `TELEGRAM_TOKEN`/`TELEGRAM_ADMIN_CHAT_ID` are
+  currently documented as "legacy single-bot path only... see #1035" — once this slice ships they
+  are the live credential path for `factory-log-monitor`; update the "Required"/description column
+  accordingly.
+- **File:** `deploy/quadlet/factory-log-monitor.container` (new), `deploy/secrets-policy.toml`,
+  `docs/CONFIGURATION.md`
 - **Verify:** `grep -c "^Exec=factory log-monitor$" deploy/quadlet/factory-log-monitor.container` →
-  `1`; no inline `#` comment on any value line (`grep -P '^\s*[^#;].*[[:space:]]#'` → no match).
-- **Expected:** unit file present, passes the two greps above.
-- **Time:** 10 min · **Difficulty:** 3 · **Trace:** SC1, SC2, SC9 · **Slice:** SL4 · **Phase:** GREEN
+  `1`; no inline `#` comment on any value line (`grep -P '^\s*[^#;].*[[:space:]]#'` → no match);
+  `python3 -c "import tomllib; tomllib.load(open('deploy/secrets-policy.toml','rb'))"` — no
+  `TOMLDecodeError`.
+- **Expected:** unit file present, passes the greps above; secrets-policy.toml still parses;
+  `docs/CONFIGURATION.md` no longer calls these vars "legacy... see #1035".
+- **Time:** 14 min · **Difficulty:** 3 · **Trace:** SC1, SC2, SC9 · **Slice:** SL4 · **Phase:** GREEN
 
 #### T10 — `[component.log-monitor]` in `deploy/quadlet.toml`
 
@@ -532,6 +662,16 @@ availability residual-risk statement — content already drafted in spec §Expec
 SC6 (`lyra-monitor.*` zero diff) is verified the same way — by construction, since no task above
 touches that path; confirm via `git diff --stat origin/staging..HEAD -- deploy/lyra-monitor.*`
 returning empty at `/pr` time.
+
+**Post-`/plan` addition (advisor review):** the design note must also address one sentence ADR-091
+itself invites as an obvious review question: ADR-091 states Sentinelle is "a capability inside
+`factory-hub`, not a standalone container" (hub-module default). This slice ships
+`factory-log-monitor` as a **standalone** container instead. That's intentional, not a
+contradiction — ADR-091/ADR-038 preserve "external monitor = safety-net batch probe" as a distinct
+layer from Sentinelle's in-process hub capability (the same reasoning that already justified
+`deploy/lyra-monitor.*`'s original design, before it was frozen for a host-timer reason unrelated to
+in-process-vs-standalone). The PR description should say this in one sentence so a reviewer doesn't
+have to reconstruct it from ADR-091 alone.
 
 ## Task IDs
 

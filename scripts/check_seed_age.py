@@ -46,12 +46,16 @@ _LOG_LINE_RE = re.compile(
 def _latest_log_dates(rotation_log_path: Path) -> dict[str, date]:
     """Parse rotation_log_path, keeping the latest logged date per secret name.
 
-    Malformed/header lines are skipped defensively. Missing file -> empty dict.
+    Malformed/header lines are skipped defensively. Missing file -> empty dict
+    (intended bootstrap-grace path). Other OSError subclasses (permission
+    denied, I/O error) propagate — a broken read must surface loudly rather
+    than silently degrading to the same ungated grace as "file doesn't exist
+    yet", which would hide that the check itself is broken (#2246 review).
     """
     latest: dict[str, date] = {}
     try:
         text = rotation_log_path.read_text()
-    except OSError:
+    except FileNotFoundError:
         return latest
 
     for line in text.splitlines():
@@ -117,7 +121,7 @@ def run(
         seed_path = seeds_dir / f"{name}.seed"
         try:
             mtime = seed_path.stat().st_mtime
-        except OSError:
+        except FileNotFoundError:
             continue
 
         seed_age_days = (

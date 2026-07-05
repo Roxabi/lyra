@@ -244,6 +244,16 @@ def test_add_identity_rotation_log_entry_only_on_added(tmp_path: Path) -> None:
         f" state==added; got {added_lines!r}"
         f" (rotation_log.exists()={rotation_log.exists()})"
     )
+    # Pin reason/trigger to the add-identity call site — a name-only match
+    # would stay green even if the two trigger strings were swapped with
+    # _mode_full_provision's ("factory-acl-genkeys").
+    added_line = added_lines[0]
+    assert "reason:seed-generated" in added_line, (
+        f"expected 'reason:seed-generated' in line: {added_line!r}"
+    )
+    assert "trigger:factory-acl-add-identity" in added_line, (
+        f"expected 'trigger:factory-acl-add-identity' in line: {added_line!r}"
+    )
 
     # ── noop: all 3 seeds present + auth.conf already complete ───────────────
     noop_dir = tmp_path / "noop"

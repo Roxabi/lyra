@@ -236,6 +236,14 @@ When `make nats-add-identity` (Path A) or bare `factory-acl genkeys` (Path B) ru
 
 **Seed file mtime is surfaced only as informational.** When the rotation log has no entry for an identity, the checker prints the seed's mtime-derived age as a `NOTE:` (e.g., "seed mtime is 75d old — informational, not policy-enforced"), but this hint never gates the pass/fail verdict. The sole, authoritative age source is the rotation log.
 
+**Fail-open direction, by design.** Every gap in the logging path resolves toward *more* bootstrap grace, never toward a false FAIL:
+
+- The rotation-log append (`rotation_log_append`, via `deploy/lib/operator-log.sh`) is fail-soft — a failed write is swallowed (`|| true` in the shell, `check=False` + a hard timeout on the Python subprocess bridge in `src/factory/operator_audit.py`). If it silently fails for an identity, that identity simply stays in bootstrap grace (no gating verdict) rather than surfacing a "logging is broken" signal. There is currently no reconciliation/alert for this case — an operator auditing rotation coverage should not rely solely on `check-seed-age` being green; cross-check that every active identity in `acl-matrix.json` actually has a `rotation-log.md` entry.
+- `factory-acl genkeys` (full provision) buffers each identity's rotation-log entry and only appends it after **every** identity's seed and `auth.conf` are durably written — a mid-run failure (e.g. seed #7 of 18) writes **zero** log entries for that run, so a subsequent `--regenerate` rollback never leaves a false "freshly rotated" line for a seed that was actually reverted. The tradeoff: if you interrupt a full provision partway through and do *not* retry it, none of that run's identities (even ones whose seeds were already durably written before the interruption) get a rotation-log entry until you re-run `factory-acl genkeys` to completion — they read as bootstrap-grace, not as falsely fresh. Re-run to completion (`--regen-authconf` won't help here — it only re-derives `auth.conf`, it never logs).
+- `check_seed_age.py` only swallows a *missing* `rotation-log.md`/seed file (`FileNotFoundError`) as bootstrap grace. A genuine read failure (permissions, disk I/O) on either file propagates as an uncaught error instead of silently returning an all-clear — a broken check must be loud, not green.
+
+**`factory-check-seed-age.service` failing looks like `degraded`.** The unit is `Type=oneshot` with no `RemainAfterExit=`; a real stale-seed FAIL leaves it in `failed` state until the next daily timer run, which folds into `systemctl --user is-system-running` -> `degraded` on Machine 1. This is the intended escalation signal for a genuine credential-age violation — don't mistake it for unrelated drift during a future M1 triage; check `systemctl --user status factory-check-seed-age.service` first when `is-system-running` reports `degraded`.
+
 ---
 
 ## Rollback

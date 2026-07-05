@@ -132,7 +132,7 @@ class TestCheckHubDictStreamGenTimeout:
     def test_passes_when_count_below_threshold(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        stdout = "_dict_stream_gen timeout on turn abc\n" "unrelated line\n"
+        stdout = "_dict_stream_gen timeout on turn abc\nunrelated line\n"
         monkeypatch.setattr(
             "factory.monitoring.checks_log.subprocess.run",
             lambda *a, **kw: MagicMock(returncode=0, stdout=stdout, stderr=""),
@@ -182,8 +182,7 @@ class TestCheckHubDictStreamGenTimeout:
     ) -> None:
         """Upper/mixed-case occurrences ARE counted — check is case-insensitive."""
         stdout = (
-            "_DICT_STREAM_GEN TIMEOUT on turn a\n"
-            "_Dict_Stream_Gen Timeout on turn b\n"
+            "_DICT_STREAM_GEN TIMEOUT on turn a\n_Dict_Stream_Gen Timeout on turn b\n"
         )
         monkeypatch.setattr(
             "factory.monitoring.checks_log.subprocess.run",
@@ -406,8 +405,7 @@ class TestLokiLogFetcher:
         )
 
         assert result == (
-            "permissions violation on subject foo\n"
-            "permissions violation on subject bar"
+            "permissions violation on subject foo\npermissions violation on subject bar"
         )
 
     def test_fetch_raises_log_fetch_error_on_malformed_json(
@@ -422,9 +420,7 @@ class TestLokiLogFetcher:
         monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
 
         with pytest.raises(LogFetchError):
-            LokiLogFetcher().fetch(
-                "factory-nats", 10, pattern="permissions violation"
-            )
+            LokiLogFetcher().fetch("factory-nats", 10, pattern="permissions violation")
 
     def test_fetch_raises_log_fetch_error_on_http_error(
         self, monkeypatch: pytest.MonkeyPatch
@@ -439,9 +435,7 @@ class TestLokiLogFetcher:
         monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
 
         with pytest.raises(LogFetchError):
-            LokiLogFetcher().fetch(
-                "factory-nats", 10, pattern="permissions violation"
-            )
+            LokiLogFetcher().fetch("factory-nats", 10, pattern="permissions violation")
 
     def test_fetch_query_param_includes_case_insensitive_regex_filter(
         self, monkeypatch: pytest.MonkeyPatch

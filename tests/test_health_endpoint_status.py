@@ -546,7 +546,8 @@ class TestHealthReady:
         monkeypatch.setattr(health_module, "_READY_TIMEOUT_S", 0.05)
 
         async def _hang(*_args: object, **_kwargs: object) -> None:
-            await asyncio.sleep(10)
+            # Simulates a wedged coroutine for asyncio.timeout() to cancel.
+            await asyncio.sleep(10)  # event-based
 
         nc = MagicMock()
         nc.jetstream.return_value.key_value = AsyncMock(side_effect=_hang)

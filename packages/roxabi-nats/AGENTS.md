@@ -5,9 +5,7 @@
 `roxabi-nats` is a **standalone Python package** — not a factory module. It is the
 shared NATS transport SDK for the Roxabi plugin ecosystem (voiceCLI, imageCLI,
 roxabi-vault, and future services). It lives in the factory monorepo for colocation
-with the wire contract (ADR-044 (absorbed into ADR-049)/049) but is versioned independently.
-
-→ Architecture contract: `docs/architecture/adr/045-roxabi-nats-sdk-uv-workspace-extraction.mdx`
+with the wire contract (`docs/architecture/contracts.md`) but is versioned independently.
 
 ## Distribution
 
@@ -42,7 +40,7 @@ Defined by `__all__` in `src/roxabi_nats/__init__.py`. Run `grep __all__ src/rox
 `_`-prefixed submodules (`_serialize`, `_sanitize`, `_validate`, `_version_check`,
 `_tts_constants`, `_resolver`) are **internal**. External consumers MUST NOT import
 them. factory (as workspace host) may import them directly — that asymmetry is
-intentional and documented in ADR-045.
+intentional — see `docs/architecture/contracts.md` § roxabi-nats SDK.
 
 Testing doubles (`roxabi_nats.testing.*`) are available under the `[testing]`
 extra and are stable for test code only.

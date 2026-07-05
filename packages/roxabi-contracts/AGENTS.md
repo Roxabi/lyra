@@ -8,7 +8,7 @@ subscribers (voiceCLI, imageCLI, roxabi-vault, future services) import the same
 typed Pydantic v2 models — drift between producer and consumer becomes a
 type-check error, not a silent wire mismatch.
 
-→ ADR-049 (`docs/architecture/adr/049-roxabi-contracts-shared-schema-package.mdx`)
+→ `docs/architecture/contracts.md` § roxabi-contracts
 
 ## Boundary with `roxabi-nats`
 

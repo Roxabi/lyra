@@ -18,7 +18,8 @@ Runs on the production hub host (`factory-hub` role). Cross-host workers use `Ht
 ## Image
 
 `ghcr.io/roxabi/factory:staging-svc`. Three-strikes rule defers a dedicated
-`ghcr.io/roxabi/blobstore` image to ≥3 cross-repo consumers (#1334 + ADR-073).
+`ghcr.io/roxabi/blobstore` image to ≥3 cross-repo consumers (#1334; three-strikes rule in
+`docs/architecture/job-model.md` Key invariants).
 
 ## Boot order invariant
 
@@ -33,7 +34,7 @@ intentionally loud; re-provision deferred to next container restart.
 ## Token semantics
 
 - Bearer token read **once at startup** from `/run/secrets/factory_blobstore_token`
-  (Podman `type=mount` secret, ADR-054 (absorbed into ADR-055)).
+  (Podman `type=mount` secret — → `docs/architecture/deployment.md` § Key invariants).
 - Stored in memory for the process lifetime. Re-read requires container restart — NOT a
   `HUP`. Sending `SIGHUP` does NOT rotate the in-memory token.
 - `BearerAuthMiddleware` uses `hmac.compare_digest` (¬ `==` comparison — SC-Code-4).
@@ -95,7 +96,7 @@ Protocol signature uses `blob_ref_id`; HTTP wire identifier is `store_key`.
 
 ≤2 SELECTs total, 0 calls to `store.exists()` (consensus T3).
 
-## In-process consumers (ADR-082)
+## In-process consumers (→ `docs/architecture/storage.md` § BlobStorePort)
 
 In-process callers (audio paths, inbound attachment ingest) do NOT import this package directly. They consume the service through:
 
@@ -103,7 +104,7 @@ In-process callers (audio paths, inbound attachment ingest) do NOT import this p
 - Adapter: `infrastructure.blobstore_adapter.HttpBlobStoreAdapter` (injected by bootstrap)
 - Composition root: `init_blobstore()` in `bootstrap/factory/voice_overlay.py` (reads URL+token once; restart-not-HUP)
 
-The bare per-call `get_blobstore_client()` factory has been removed (ADR-082). `HttpBlobStoreAdapter` is the sole injection point; adapters and stages receive it as `BlobStorePort`.
+The bare per-call `get_blobstore_client()` factory has been removed. `HttpBlobStoreAdapter` is the sole injection point; adapters and stages receive it as `BlobStorePort`.
 
 ## Reference pointers
 

@@ -400,9 +400,10 @@ apply_gate_env() {
 }
 
 run_doc_drift_bundle() {
-  local doc sem
+  local doc sem agents_adr
   doc=$(gate_field "doc_drift" 'script // "tools/check_doc_drift.py"')
   sem=$(gate_field "doc_semantic_drift" 'script // "tools/check_doc_semantic_drift.py"')
+  agents_adr=$(gate_field "agents_no_adr_refs" 'script // "tools/check_agents_no_adr_refs.sh"')
   local cmd
   cmd=$(cat <<EOF
 set -euo pipefail
@@ -412,6 +413,7 @@ if find docs/ -name "*.md" ! -path "*/architecture/*" -print0 | xargs -0 grep -n
 fi
 uv run python ${doc}
 uv run python ${sem}
+bash ${agents_adr}
 EOF
 )
   run_shell_cmd "doc_drift_bundle" "$cmd"

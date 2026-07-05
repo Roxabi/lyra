@@ -44,7 +44,7 @@ No deferred-import block exists.
 
 `ToolDisplayConfig` (from `factory.core.messaging`) is injected via
 `OutboundAdapterBase.send_streaming` — the **single WRITE site** for
-`emitter.tool_display_config` (ADR-073). Concrete `_make_emitter` overrides MUST NOT
+`emitter.tool_display_config` (→ `docs/architecture/adapters.md` § Outbound stage composition). Concrete `_make_emitter` overrides MUST NOT
 assign this attribute; doing so re-introduces the target-axis-trap Phase B (#1336) removed.
 Thresholds (`bash_max_len`, `group_threshold`, `names_threshold`) are config-driven inside
 `ToolRecapAccumulator`; `_route()` gates via `config.show` for visibility control.
@@ -61,15 +61,8 @@ Outbound audio uses a separate durable JetStream path, NOT the text-chunk Core p
 Hub publishes and returns immediately (stateless, Model A). Adapter owns the ACK after
 platform API confirms. Text path (`factory.outbound.<platform>.<bot_id>`, Core) is unchanged.
 
-ACL and stream provisioning: T7 (ACL grants) and T14 (stream/consumer/KV bootstrap) — both provisioned, see ADR-079.
-
-→ ADR-077 — full decision record.
-
-## ADR pending — Phase 7
-
-The architectural-decision record for the stage-axis pivot is deferred to Phase 7
-(#1284, epic #1277 final cleanup phase). Until then, the SSoT is
-`artifacts/analyses/1277-stage-axis-refactor-strategy.mdx`.
+ACL and stream provisioning: T7 (ACL grants) and T14 (stream/consumer/KV bootstrap) — both
+provisioned by hub sole-provisioner (→ `docs/architecture/messaging.md` Key invariants).
 
 ## Enforcement: bus-bound str(exc) gate
 

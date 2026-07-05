@@ -16,7 +16,7 @@ then publishes per-job lifecycle events back to the bus.
 
 - **`tool_input` never bus-published** — `_on_tool_execution_start` receives the omp_rpc
   event but explicitly omits `tool_input` from the NATS `JobProgress` payload.
-  `tool_input` may contain credentials or file fragments (ADR-073).
+  `tool_input` may contain credentials or file fragments (stage-axis boundary).
 
 - **`_result_sent` double-publish guard** — boolean flag on `RpcBridge`; checked in both
   `run()` (success path) and `publish_error` (error path). Only the first caller publishes a
@@ -26,7 +26,8 @@ then publishes per-job lifecycle events back to the bus.
   returns on the event loop). `_on_agent_end` is store-only: it stores the event in
   `_last_agent_end_event` so `run()` can derive fallback text from `event.messages` if needed.
 
-- **ADR-073 SanitizedError discipline** — `_classify_exception` uses `type(exc).__name__`
+- **SanitizedError discipline** — `_classify_exception` uses `type(exc).__name__` (→
+  `docs/architecture/workers-tooling.md` Key invariants)
   only; never `str(exc)`, `f"{exc}"`, or `repr(exc)` in bus-bound fields.
 
 - **Config path** — `PI_CODING_AGENT_DIR` points to omp's agent dir

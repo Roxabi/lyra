@@ -1,4 +1,4 @@
-# factory.dashboard — control-plane BFF axis (ADR-094)
+# factory.dashboard — control-plane BFF axis (→ `docs/architecture/observability.md` § Control-plane dashboard)
 
 ## Two axes, one process
 

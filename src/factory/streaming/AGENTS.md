@@ -25,7 +25,7 @@ Three primitives, all composed (not inherited):
 - **SanitizedError boundary** — `EventEmitter` is the ONLY place in this package where exception
   data is translated to terminal events. Never construct `str(exc)` or `f"...{exc}"` here. Use
   `type(exc).__name__` for class-name surfacing (deterministic, no PII leakage). See
-  `src/factory/transport/AGENTS.md` and ADR-045/049.
+  `src/factory/transport/AGENTS.md` and `docs/architecture/contracts.md`.
 
 - **`error_translator` is per-consumer** — every `EventEmitter` instance is constructed with a
   translator lambda specific to its `OutT` (e.g.

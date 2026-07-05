@@ -1,8 +1,9 @@
 # src/factory/infrastructure/ — Persistence Layer
 
-## ADR-048 (absorbed into ADR-059) invariant
+## Store layer invariant
 
 Protocols → `factory.core.stores/` | Implementations → `factory.infrastructure.stores/`
+(→ `docs/architecture/engineering-standards.md`)
 
 Never place a SQLite or I/O implementation in `core/`; never place a Protocol in `infrastructure/`.
 Stores impl ⊂ infrastructure, protocols ⊂ core/stores. Past migration history in git log.

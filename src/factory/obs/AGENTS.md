@@ -10,7 +10,7 @@ Two concerns share this module:
    worker OTel hooks (`roxabi-otel`); `otlp_export` supplies the shared OTLP gRPC
    endpoint + bearer wiring that ships spans to `factory-otel`. Gated on
    `ROXABI_OTEL_ENABLED` — falls back to noop hooks / no exporter when disabled.
-   This is plane ① of ADR-091 (four observability planes); implementation #2069.
+   Live OTel tracing (→ `docs/architecture/observability.md`); implementation #2069.
 2. **`ObservabilityProvider` abstraction** (`base.py`, `noop.py`) — the
    Langfuse-shaped Protocol + dataclasses (`ObsTrace`, `ObsSpan`,
    `ObsCapabilities`, `GenerationKwargs`) with a `NoOpObsProvider` default. Still

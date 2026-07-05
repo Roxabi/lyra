@@ -10,7 +10,7 @@ structured error replies.
 
 | Owns | Does NOT own |
 |---|---|
-| BlobStore singleton (ADR-068 HTTP) | Whisper / Qwen / FLUX / LiteLLM |
+| BlobStore singleton (HTTP — → `docs/architecture/storage.md`) | Whisper / Qwen / FLUX / LiteLLM |
 | WorkEnvelope coercion | `NatsAdapterBase.handle()` business logic |
 | Voice STT/TTS ingress validation | Hub adapters (telegram, discord, …) |
 | `WorkerError` reply bytes | Model warmup / registry |

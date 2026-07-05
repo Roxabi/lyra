@@ -31,7 +31,7 @@ Defined by `__all__` in `src/roxabi_blobs/__init__.py`; run `grep __all__ packag
 ## Usage: ingest_bytes_to_blob_ref
 
 Shared eager-ingest helper for adapter code (Telegram #1065, Discord #1066, future Slack/CLI).
-Prevents N×M duplication by centralising the ingest path (ADR-073 three-strikes rule).
+Prevents N×M duplication by centralising the ingest path (→ `docs/architecture/job-model.md` Key invariants).
 
 ```python
 from roxabi_blobs import FsBlobStore, ingest_bytes_to_blob_ref
@@ -73,4 +73,4 @@ Retry-on-connect-error is not implemented; callers operating over Tailnet should
 - **`exists` is deterministic:** `ORDER BY ingested_at DESC LIMIT 1` returns the latest `BlobRef`; the supporting index `(content_hash, ingested_at DESC)` is bootstrapped in `_schema.py`.
 - **`delete` semantics:** removes one `blob_refs` row; unlinks file + drops `blobs` row only when no remaining refs to that hash. **Not called from production paths in V1** — interface exists so future retention policies don't require schema migration.
 - **`BlobRef` ownership:** the canonical envelope lives here. The mirror in `roxabi-contracts` (V2 / #1064) is a wire-side copy with identical field shape; `roxabi-blobs` does **not** import from `roxabi-contracts` (avoids storage ↔ transport cycle).
-- **Loss model:** single-host, no replication, loss tolerated (v1). Documented in ADR-067 §Negative.
+- **Loss model:** single-host, no replication, loss tolerated (v1). → `docs/architecture/storage.md` Key invariants.

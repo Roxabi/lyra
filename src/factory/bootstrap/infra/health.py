@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from factory.core.hub import Hub
 from factory.paths import factory_data_dir
@@ -82,6 +83,57 @@ def _probe_nats(nc: Any | None) -> str | None:
     except AttributeError as exc:
         log.debug("_probe_nats: unexpected exception from nc.is_connected: %s", exc)
         return "unreachable"
+
+
+# Bounded readiness probe — a live server reports its *current* state, it does
+# not block waiting for one (unlike roxabi_nats.readiness.wait_for_hub, which
+# is a boot-time barrier with retry + KV-watch fallback). Keeps the HTTP
+# handler fast even under a wedged NATS/JetStream backend (#2202).
+_READY_TIMEOUT_S = 5.0
+
+
+async def _probe_nats_ready(nc: Any | None) -> tuple[bool, str | None]:
+    """Round-trip through NATS/JetStream KV to prove the message plane is live.
+
+    Fetches ``hub.ready`` from the ``factory-state`` KV bucket — the same key
+    ``announce_hub_ready()`` writes on hub startup and ``wait_for_hub()``
+    (``roxabi_nats.readiness``) reads at adapter boot — but as a single
+    bounded attempt rather than a retry/watch loop.
+
+    This is a strictly stronger signal than ``_probe_nats``'s ``nc.is_connected``
+    check: that TCP flag stayed ``True`` throughout the 2026-04-27 incident
+    (hub alive, adapters unreachable for 3h15m) because it only reflects
+    socket state, not JetStream/ACL health (#2202).
+
+    Returns ``(ready, reason)`` — ``reason`` is ``None`` when ready, else a
+    short machine-readable explanation for the failure.
+    """
+    if nc is None:
+        return False, "nats client not configured"
+
+    import nats.errors
+    from nats.js.errors import BucketNotFoundError, KeyNotFoundError
+
+    try:
+        async with asyncio.timeout(_READY_TIMEOUT_S):
+            js = nc.jetstream()
+            kv = await js.key_value("factory-state")
+            entry = await kv.get("hub.ready")
+    except TimeoutError:
+        return False, "nats round-trip timed out"
+    except BucketNotFoundError:
+        return False, "factory-state bucket not provisioned"
+    except KeyNotFoundError:
+        return False, "hub.ready key not found"
+    except nats.errors.Error as exc:
+        return False, f"nats error: {exc}"
+    except Exception:
+        log.exception("_probe_nats_ready: unexpected error during KV round-trip")
+        return False, "unexpected error"
+
+    if entry.value != b"true":
+        return False, "hub.ready value unexpected"
+    return True, None
 
 
 def _collect_hub_detail(  # noqa: C901 — optional sections (nats/reaper/circuits)
@@ -246,6 +298,13 @@ def create_health_app(
     surfaces NATS reachability under the ``nats`` key and an overall
     ``status`` of ``ok``/``degraded``. When ``NATS_URL`` is unset both
     fields are omitted.
+
+    ``/health/ready`` (#2202) is a separate, unauthenticated readiness probe:
+    process liveness (``/health``) says nothing about whether the hub can
+    actually reach NATS/JetStream, so it round-trips a KV read instead of
+    trusting the passive ``nc.is_connected`` TCP flag. Deliberately **not**
+    wired into the Quadlet ``HealthCmd``/auto-restart — see the probe's
+    docstring and #2202 for the incident/ADR-065 rationale.
     """
     _secrets = secrets or Secrets()
     app = FastAPI(title="factory Hub")
@@ -253,6 +312,13 @@ def create_health_app(
     @app.get("/health")
     async def health() -> dict:
         return {"ok": True}
+
+    @app.get("/health/ready")
+    async def health_ready() -> JSONResponse:
+        ready, reason = await _probe_nats_ready(nc)
+        return JSONResponse(
+            {"ready": ready, "reason": reason}, status_code=200 if ready else 503
+        )
 
     @app.get("/health/detail")
     async def health_detail(authorization: str = Header(default="")) -> dict:

@@ -1,14 +1,17 @@
 """Tests for /health endpoint — status, authenticated detail, and hub timestamps.
 
-Covers: issue #111, SC-1, SC-2, SC-3, #207.
-Classes: TestHealthUnauthenticated, TestHealthEndpoint, TestHubTimestamps.
+Covers: issue #111, SC-1, SC-2, SC-3, #207, #2202.
+Classes: TestHealthUnauthenticated, TestHealthEndpoint, TestNatsHealthProbe,
+TestHealthReady, TestHubTimestamps.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 from datetime import datetime, timezone
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -389,6 +392,196 @@ class TestNatsHealthProbe:
             "_probe_nats" in r.getMessage()
             and r.name == "factory.bootstrap.infra.health"
             and r.levelno == _logging.DEBUG
+            for r in caplog.records
+        )
+
+
+# ---------------------------------------------------------------------------
+# T1c — /health/ready NATS/JetStream round-trip probe (#2202)
+# ---------------------------------------------------------------------------
+
+
+class TestHealthReady:
+    """#2202: /health/ready round-trips kv.get('hub.ready') on factory-state.
+
+    Unlike /health/detail, this endpoint requires no auth header (mirrors
+    /health) and is a liveness-independent readiness signal.
+    """
+
+    async def test_ready_no_auth_required(self, hub: Hub) -> None:
+        """/health/ready is unauthenticated, like /health (not /health/detail)."""
+        from factory.bootstrap.infra.health import create_health_app
+
+        nc = MagicMock()
+        nc.jetstream.return_value.key_value = AsyncMock(
+            return_value=MagicMock(get=AsyncMock(return_value=MagicMock(value=b"true")))
+        )
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/ready")
+
+        assert resp.status_code == 200
+
+    async def test_ready_true_when_kv_round_trip_succeeds(self, hub: Hub) -> None:
+        """200 + ready:true when hub.ready == b'true' in factory-state KV."""
+        from factory.bootstrap.infra.health import create_health_app
+
+        entry = MagicMock(value=b"true")
+        kv = MagicMock(get=AsyncMock(return_value=entry))
+        nc = MagicMock()
+        nc.jetstream.return_value.key_value = AsyncMock(return_value=kv)
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/ready")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"ready": True, "reason": None}
+
+    async def test_ready_false_when_nc_not_configured(self, hub: Hub) -> None:
+        """503 + reason when no NATS client was wired (nc=None)."""
+        from factory.bootstrap.infra.health import create_health_app
+
+        app = create_health_app(hub)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/ready")
+
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data["ready"] is False
+        assert data["reason"] == "nats client not configured"
+
+    async def test_ready_false_when_bucket_not_found(self, hub: Hub) -> None:
+        """503 when the factory-state KV bucket has not been provisioned."""
+        from nats.js.errors import BucketNotFoundError
+
+        from factory.bootstrap.infra.health import create_health_app
+
+        nc = MagicMock()
+        nc.jetstream.return_value.key_value = AsyncMock(side_effect=BucketNotFoundError)
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/ready")
+
+        assert resp.status_code == 503
+        assert resp.json() == {
+            "ready": False,
+            "reason": "factory-state bucket not provisioned",
+        }
+
+    async def test_ready_false_when_key_not_found(self, hub: Hub) -> None:
+        """503 when the hub.ready key is missing from the KV bucket."""
+        from nats.js.errors import KeyNotFoundError
+
+        from factory.bootstrap.infra.health import create_health_app
+
+        kv = MagicMock(get=AsyncMock(side_effect=KeyNotFoundError))
+        nc = MagicMock()
+        nc.jetstream.return_value.key_value = AsyncMock(return_value=kv)
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/ready")
+
+        assert resp.status_code == 503
+        assert resp.json() == {"ready": False, "reason": "hub.ready key not found"}
+
+    async def test_ready_false_when_value_not_true(self, hub: Hub) -> None:
+        """503 when the KV entry exists but does not hold b'true' (defensive)."""
+        from factory.bootstrap.infra.health import create_health_app
+
+        entry = MagicMock(value=b"false")
+        kv = MagicMock(get=AsyncMock(return_value=entry))
+        nc = MagicMock()
+        nc.jetstream.return_value.key_value = AsyncMock(return_value=kv)
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/ready")
+
+        assert resp.status_code == 503
+        assert resp.json() == {"ready": False, "reason": "hub.ready value unexpected"}
+
+    async def test_ready_false_on_nats_error(self, hub: Hub) -> None:
+        """503 when the round-trip raises a generic nats.errors.Error."""
+        import nats.errors
+
+        from factory.bootstrap.infra.health import create_health_app
+
+        nc = MagicMock()
+        nc.jetstream.return_value.key_value = AsyncMock(
+            side_effect=nats.errors.Error("no responders")
+        )
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/ready")
+
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data["ready"] is False
+        assert "no responders" in data["reason"]
+
+    async def test_ready_false_on_timeout(
+        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """503 when the round-trip exceeds the bounded probe timeout.
+
+        Timeout shrunk to keep the test fast — the probe must not block the
+        HTTP handler on a wedged JetStream backend (#2202: this is exactly
+        the April-incident failure mode _probe_nats couldn't detect).
+        """
+        import factory.bootstrap.infra.health as health_module
+        from factory.bootstrap.infra.health import create_health_app
+
+        monkeypatch.setattr(health_module, "_READY_TIMEOUT_S", 0.05)
+
+        async def _hang(*_args: object, **_kwargs: object) -> None:
+            await asyncio.sleep(10)
+
+        nc = MagicMock()
+        nc.jetstream.return_value.key_value = AsyncMock(side_effect=_hang)
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/ready")
+
+        assert resp.status_code == 503
+        assert resp.json() == {"ready": False, "reason": "nats round-trip timed out"}
+
+    async def test_ready_false_on_unexpected_error_logs_exception(
+        self, hub: Hub, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """503 + log.exception on an unanticipated error (graceful degradation)."""
+        from factory.bootstrap.infra.health import create_health_app
+
+        nc = MagicMock()
+        nc.jetstream.return_value.key_value = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        with caplog.at_level(logging.ERROR, logger="factory.bootstrap.infra.health"):
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                resp = await client.get("/health/ready")
+
+        assert resp.status_code == 503
+        assert resp.json() == {"ready": False, "reason": "unexpected error"}
+        assert any(
+            "_probe_nats_ready" in r.getMessage() and r.levelno == logging.ERROR
             for r in caplog.records
         )
 

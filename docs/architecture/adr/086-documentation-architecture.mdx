@@ -19,6 +19,8 @@ were dropped — they had no renderer, no gate, and drifted within weeks. ADR di
 decided — a reader with no index must not need to open the file), and (2) each domain page's
 "ADR archive" table (status + one-line summary), maintained where the context lives.
 
+Amended 2026-07-05: the **retrieval ladder** is now materialized as a reader-question → one-home table in `docs/ARCHITECTURE.md` (specified here since §47-54 but never shipped). Refinement of the two-tier model, from a multi-axis comprehension study (design rationale in `artifacts/analyses/2026-07-05-ccm-vs-spec-reconciliation.md` — L3, not current truth): the comprehension **axes** (glossary, topology, structure, behavior, dynamics, delta, procedure) are retrieval **intents** (query columns), never storage hierarchies — materializing them as parallel folders is the drift trap this ADR exists to prevent. Facts pin to the altitude whose freshness a gate can enforce (generated / intent / procedure / history); the domain-page section contract stays **optional-by-need** (ratify the existing `## Key invariants` heading; do not invent mandatory slots). This doc-knowledge decomposition axis is **distinct from** ADR-073's stage-of-pipeline code axis — same word "axial", different concept.
+
 ## Context
 
 Architecture knowledge in Lyra (and Roxabi repos generally) evolves faster than hand-maintained docs and issues can track, producing systemic silent documentation rot. A 2026-05-30 audit found a 67% live-reference hit-rate in `docs/architecture/`. The root cause is mixing three strata with different rot rates in one artifact:

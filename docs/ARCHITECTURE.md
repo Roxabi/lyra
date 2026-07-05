@@ -27,6 +27,27 @@
 
 ---
 
+## Retrieval ladder — one question, one hop, one home
+
+The single entry index (materializes ADR-086 §47-54). The comprehension **axes** below — glossary · topology · structure · behavior · dynamics · delta · procedure — are retrieval *intents* (query columns), **not** storage folders: each question resolves to exactly **one** home. Facts live at the **altitude** whose freshness a machine can enforce — generated (L0) → intent/invariant (L1) → procedure (L2) → history (L3). Never hand-copy a fact that already has a home elsewhere; link to it.
+
+| Your question | → one hop | Axis · altitude |
+|---|---|---|
+| Is this rule repo-local or org-wide? | org-wide → `~/projects/ssot/*.ssot.md`; repo-local → the domain pages above | routing |
+| What does a term mean / which sense? | grep the name in its owning domain page; homonyms (plane, event, axial) carry a "distinguish from" note | glossary · L1 |
+| What runs where / talks to whom? | [CURRENT.generated.md](architecture/CURRENT.generated.md) · `deploy/quadlet.toml` · `deploy/nats/acl-matrix.json` | topology · L0 |
+| Who **may** import whom / who **does**? | `.importlinter` (the rule) · CURRENT.generated.md layer map (the fact) | structure · L1/L0 |
+| What must always stay true here? | the owning domain page's **Key invariants** → follow to the enforcing gate in `.claude/stack.yml` | behavior · L1→gate |
+| What is the job/turn lifecycle or stream sequence? | [job-model.md](architecture/job-model.md) + [llm-streaming.md](architecture/llm-streaming.md) | dynamics · L1 |
+| What does my change endanger? | run the gates (`scripts/qg`) + the axial-review PR label; each invariant names its gate | delta · derived |
+| Where is the code for Y? | `ccc` (semantic) or grep (exact) — discovery, **no** normative doc home | — |
+| Why is it built this way? | the domain page's **ADR archive** table → the ADR | provenance · L3 |
+| How do I do X right now? | [runbooks/README.md](runbooks/README.md) | procedure · L2 |
+
+Design rationale: ADR-086 (this tree's meta-decision). "axial" in the delta row = the layer-crossing PR review label, **not** ADR-073's stage-of-pipeline decomposition axis (same word, different concept).
+
+---
+
 ## What is factory
 
 Hub-and-spoke AI factory engine. One hub routes inbound messages from multiple platforms (Telegram, Discord, CLI) to per-conversation pools backed by a Claude CLI subprocess. Responses stream back through NATS to the originating adapter. All state is per-pool; agents are immutable singletons. Multiple bots per platform are supported via independent bindings.

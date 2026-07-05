@@ -3,10 +3,13 @@
 Extracted from Telegram and Discord adapters to eliminate near-identical
 circuit-open / backpressure guard logic and reply_to_id parsing.
 
-Audio helpers live in _shared_audio; text utilities live in _shared_text;
-streaming state classes live in _shared_streaming.
+Audio helpers live in _shared_audio; text utilities live in _shared_text.
 All are re-exported here so existing importers continue to work without
 changes.
+
+Streaming state (IntermediateTextState, StreamState) lives in the outbound
+per-part module (factory.outbound._streaming_state) — never re-exported from
+adapters/shared (per-part helper boundary).
 
 push_to_hub_guarded / PushGuardDeps have been relocated to
 factory.core.messaging.push_guard (ADR-073 / #1666).
@@ -36,7 +39,6 @@ from factory.adapters.shared._shared_text import (
     truncate_caption,
 )
 from factory.core.messaging.push_guard import PushGuardDeps, push_to_hub_guarded
-from factory.outbound._streaming_state import IntermediateTextState, StreamState
 from factory.typing.task_manager import TypingTaskManager
 
 if TYPE_CHECKING:
@@ -59,8 +61,6 @@ __all__ = [
     "chunk_text",
     "resolve_msg",
     "TypingTaskManager",
-    "IntermediateTextState",
-    "StreamState",
     "parse_reply_to_id",
     "send_with_retry",
 ]

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from factory.core.messaging import RenderEvent, TextDeltaRenderEvent
 from factory.core.messaging.message import GENERIC_ERROR_REPLY
 from factory.outbound._tool_recap import format_recap_lines
-from factory.transport._result import Err
+from factory.transport import Err
 
 log = logging.getLogger(__name__)
 

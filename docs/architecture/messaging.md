@@ -273,6 +273,13 @@ at parse (`extra="forbid"`).
 - Roster KV documents must never contain auth fields (`owner_users`, `trusted_*`, `default_trust`).
 - Control-plane subjects (`factory.hub.command.*`) must remain deny-listed until a dedicated ADR approves their payloads.
 - Any future durable media type (video, document) must use a distinct 5-token subject family (`factory.outbound.<media>.<platform>.<bot_id>`) and a distinct durable consumer — never share the audio consumer, never collapse onto the 4-token text path. Reuse the `FACTORY_OUTBOUND_AUDIO` stream only if subjects and retention needs align (ADR-077, upheld by ADR-079).
+- **Hub sole-provisioner:** `FACTORY_OUTBOUND_AUDIO` stream + dedup KV (`factory_outbound_audio_sent`)
+  and `FACTORY_JOBS` stream are provisioned by the hub before `announce_hub_ready` — adapters
+  must NOT call `ensure_stream` / `ensure_kv` for shared infra.
+- **Adapter consumer bind:** per-bot durable pull consumers (`outbound-audio-{platform}-{bot_id}`)
+  are adapter-side bind only; `ensure_consumer` stays on the adapter.
+- **Audio-disabled adapters:** `supports_audio=False` skips durable audio-consumer bootstrap —
+  lean channel ACLs otherwise log per-restart ERROR before `NullAudioConsumer` fallback.
 
 ## Open questions / known gaps
 

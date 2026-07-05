@@ -20,7 +20,7 @@ from factory.core.messaging.events import (
 )
 from factory.core.ports.llm import LlmResult
 from factory.core.trace import TraceContext
-from factory.transport._result import Err, Result, SanitizedError
+from factory.transport import Err, Result, SanitizedError
 from roxabi_contracts.cli.models import (
     ClaudeJobPayload,
     CliChunkEvent,

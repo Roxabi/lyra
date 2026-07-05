@@ -8,7 +8,7 @@ Plugin-style commands discovered and loaded dynamically. Core routing/loading in
 
 `CommandRouter` dispatches in strict priority:
 1. **Built-in commands** — always win; see `core/commands/command_config.py` for the full registry
-2. **Session commands** — registered by agents via `register_session_command()` (deprecated → prefer processor commands, ADR-031)
+2. **Session commands** — registered by agents via `register_session_command()` (deprecated → prefer processor commands, → `docs/architecture/workers-tooling.md`)
 3. **Plugin commands** — discovered from `commands/` subdirectories via `CommandLoader`
 
 Plugin commands cannot override built-ins.

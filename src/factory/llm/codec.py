@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from factory.core.agent.agent_config import ModelConfig
     from factory.core.messaging.events import LlmEvent
     from factory.core.ports.llm import LlmResult
-    from factory.transport._result import Result, SanitizedError
+    from factory.transport import Result, SanitizedError
     from roxabi_contracts.cli.models import CliControlCmd
 
 

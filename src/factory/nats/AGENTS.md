@@ -49,7 +49,7 @@ Pattern: `factory.{domain}.{qualifier...}`
 |---------|-----------|---------|
 | `factory.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
 | `factory.outbound.{platform}.{bot_id}` | hub → adapter | Text response chunk delivery (Core, at-most-once — unchanged) |
-| `factory.outbound.audio.{platform}.{bot_id}` | hub → adapter | Audio delivery (JetStream `FACTORY_OUTBOUND_AUDIO` `MaxAge=24h`, durable pull consumer `outbound-audio-{platform}-{bot_id}`, at-least-once + KV dedup `factory_outbound_audio_sent` — ADR-077) |
+| `factory.outbound.audio.{platform}.{bot_id}` | hub → adapter | Audio delivery (JetStream `FACTORY_OUTBOUND_AUDIO` `MaxAge=24h`, durable pull consumer `outbound-audio-{platform}-{bot_id}`, at-least-once + KV dedup `factory_outbound_audio_sent` — → `docs/architecture/messaging.md`) |
 | `factory.llm.generate.request` | hub → worker | LLM compute (queue-group dispatched) |
 | `factory.llm.health.{worker_id}` | worker → hub | LLM worker heartbeats |
 `{platform}` = lowercase ASCII (`telegram`, `discord`).
@@ -103,15 +103,9 @@ that composes `WorkerPoolClient` (from `factory.transport`) with a codec:
   both `NatsChannelProxy` (hub side) and `NatsOutboundListener` (adapter side) import it.
   Adding a new `RenderEvent` subtype requires a registry insertion here.
 
-## ADR references
+## See also
 
-- ADR-035 — NATS subject naming
-- ADR-036 — RenderEvent chunk protocol
-- ADR-045 — NATS transport SDK (roxabi-nats extraction)
-- ADR-049 — Contract schemas (roxabi-contracts)
-- ADR-065 — KV readiness probe
-- ADR-072 — Codec registry pattern (v2 RenderEvent)
-
-→ Full messaging/NATS decisions: `docs/architecture/messaging.md`
-→ Contract schemas: `docs/architecture/contracts.md`
-→ Security/ACL: `docs/architecture/security-routing.md`
+→ `docs/architecture/messaging.md` — NATS planes, subjects, hub readiness
+→ `docs/architecture/contracts.md` — roxabi-nats SDK, roxabi-contracts schemas
+→ `docs/architecture/llm-streaming.md` — RenderEvent chunk protocol + codec
+→ `docs/architecture/security-routing.md` — ACL policy

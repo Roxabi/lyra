@@ -29,7 +29,7 @@ New tombstone → add a `Rule`, **but only for a string verified dead against th
 
 | Scanned (operational truth — cite live symbols/paths) | Exempt (narrative/onboarding/aspirational — illustrative/future refs by design) |
 |---|---|
-| `docs/architecture/**` (non-`adr/`), `docs/ARCHITECTURE.md` | `docs/architecture/adr/**` (immutable records, ADR-080) |
+| `docs/architecture/**` (non-`adr/`), `docs/ARCHITECTURE.md` | `docs/architecture/adr/**` (immutable decision archive) |
 | `docs/standards/**` | `COMMANDS.md` |
 | `docs/CONFIGURATION.md`, `DEPLOYMENT.md`, `docs/QUICKSTART.md`, `GETTING-STARTED.md`, `MULTI-BOT.md` (onboarding, #2201) | `docs/OBSERVABILITY.md` |
 | `docs/agent-management.md`, `bot-management.md`, `data-dirs.md`, `debt-tracking.md` (#2200) | — |
@@ -37,6 +37,10 @@ New tombstone → add a `Rule`, **but only for a string verified dead against th
 | AGENTS.md network (root, `src/`, `packages/`, `plugins/`) | — |
 
 Add a doc to the gate → list it (or its dir) in `_collect_scan_files()`; regenerate via `--update-baseline` (new dead refs join the #1536 burn-down).
+
+### `check_agents_no_adr_refs.sh` — AGENTS.md altitude rule
+
+Fails on `ADR-NNN` in any tracked `**/AGENTS.md`. Invariants belong in domain pages (L1) or `.importlinter` (L0); ADRs are L3 provenance only. Runs inside `doc_drift_bundle`.
 
 `file_length` runs in **SLOC mode** (`QG_FILE_METRIC=sloc`, `metric: sloc` in `stack.yml`): the cap counts source lines only — blanks, comments and docstrings excluded — via `radon` (a dev dep; Node repos would use `npx sloc`). `check_file_length.sh` sources `check_lib.sh` for the exemption helpers. Exemption counts (`# N lines`) are SLOC too. Switching back to raw `wc -l` = set `metric: raw` (or drop the key) and re-run `/release-setup --force`.
 

@@ -316,6 +316,24 @@ Epic #1792 blocked-by #1778 (open); #1619 ✅ / #1203 ✅
 
 ---
 
+## Key invariants
+
+- **Axis primacy:** module decomposition follows the **stage axis** (parse → route →
+  session → dispatch), not the platform/adapter axis or executor-shape axis (Shapes A/B/C/D).
+  Executor shape is a runtime classification injected into shared stages — not a
+  code-organization boundary.
+- **N×M trap:** one module per pipeline stage; targets are thin compositions. New platform
+  → compose existing stages; new concern → one stage module. Per-adapter copies of
+  parse/sanitize/route/emit are forbidden (`.importlinter` contract `inbound-no-adapters`).
+- **concurrency_router:** single inbound stage under `factory/inbound/`, bound per adapter
+  via `functools.partial` — must never be imported from `factory.adapters`.
+- **Job transport primitive:** ONE shared pub/sub mechanism in `factory.transport` — not
+  per-port NATS implementations.
+- **Three-strikes:** cross-cutting concerns shared by ≥3 adapters belong in a shared module,
+  not duplicated per target.
+
+---
+
 ## See also
 
 - `docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` — historical why; **WorkEnvelope** / **ContractEnvelope** split; id-model prose amended by #1794

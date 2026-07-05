@@ -1,4 +1,5 @@
 # src/factory/transport/ — NATS Transport + Worker Pool
+# Stage purity + public surface (Result etc) enforced by generalized .importlinter (stage-purity, per-part-stage-helpers-isolation). See root AGENTS.md Core + .importlinter comments. (Anti-patchwork consolidation.)
 
 ## Purpose
 
@@ -21,6 +22,10 @@ DomainClient           — thin wrapper in factory.nats / factory.llm (compose p
   subscribe to heartbeat subjects or open inboxes directly.
 - `Result[T]` / `Ok[T]` / `Err` are the return types for all transport-level calls.
   `SanitizedError` strips internal detail before propagation to users (#1212).
+  Public surface only (`from factory.transport import ...`); direct `_result` forbidden
+  (enforced in `per-part-stage-helpers-isolation` contract). Full plumbing purity
+  generalized into `stage-purity` (no domain/stage/adapter/infra bleed →
+  `docs/architecture/job-model.md`).
 - CB lives in `WorkerPoolClient` — domain clients must NOT add a second CB layer.
 
 ## SanitizedError.from_message

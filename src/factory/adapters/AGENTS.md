@@ -21,7 +21,7 @@ No business logic, LLM calls, or agent logic lives here.
   defined in `src/factory/typing/listener.py`. Never hand-write a per-adapter
   `_build_*_typing_factory` closure. Stage-axis helper avoids N×M drift (N platforms
   × M typing concerns). Watch-trigger: a 3rd platform or a 2nd typing concern (e.g.
-  per-platform throttle) crosses the ADR-073 target-axis-trap threshold and must
+  per-platform throttle) crosses the target-axis-trap threshold and must
   reuse the helper, not duplicate the closure. Every adapter `_start_typing()` must
   call `self._typing.start(scope_id, self._factory_builder(scope_id))` — no lambdas
   or closures may survive in that method body; grep for `lambda` inside
@@ -56,7 +56,8 @@ cooperative MRO with `discord.Client`.
 `supports_audio: ClassVar[bool]` (default `True`) declares whether the adapter has
 audio egress. A new adapter with no audio (like `WebAdapter`, whose `render_audio`
 is a no-op) MUST set it `False`: bootstrap then skips the durable JetStream
-audio-consumer bind, which a lean channel ACL (ADR-079 §c) would otherwise reject
+audio-consumer bind, which a lean channel ACL would otherwise reject (→
+`docs/architecture/messaging.md` Key invariants)
 with a per-restart `ERROR` before falling back to `NullAudioConsumer`.
 
 `configure_tool_display(config: ToolDisplayConfig | None)` is the **single permitted
@@ -66,8 +67,8 @@ it after construction, keeping per-instance config storage off `__init__`. Every
 adapter inherits it. A new platform adapter MUST NOT re-declare a
 `tool_display_config` constructor kwarg or a bare
 `self._tool_display_config = ...` assignment. Same "define once on the base, never
-per-adapter-dir" rationale as `make_typing_factory` — avoids N×M drift per
-ADR-073.
+per-adapter-dir" rationale as `make_typing_factory` — avoids N×M drift (→
+`docs/architecture/job-model.md` Key invariants).
 
 ## MRO constraint (Discord only)
 
@@ -122,5 +123,4 @@ single platform live in that adapter module (e.g. `_discord_pre_route_hook`,
 
 ## NATS contracts
 
-→ ADR-045 (NATS transport), ADR-049 (contract schemas),
-`packages/roxabi-nats/`, `packages/roxabi-contracts/`
+→ `docs/architecture/contracts.md`, `packages/roxabi-nats/`, `packages/roxabi-contracts/`

@@ -7,7 +7,7 @@ platform-correct rich-message kwargs at each call site.
 SC-10 smoke acceptance criteria:
   - send_streaming() completes without raising
   - bot.send_rich_message called at least once (placeholder send)
-  - First placeholder call includes reply_to_message_id
+  - First placeholder call includes reply_parameters
   - Final edit call (edit_message_text) includes rich_message
   - OutboundMessage.metadata["reply_message_id"] is populated
 """
@@ -197,8 +197,8 @@ class TestTelegramSendStreamingSmoke:
         )
         assert found_rich, "Expected at least one edit_message_text with rich_message"
 
-    async def test_send_streaming_placeholder_has_reply_to_message_id(self) -> None:
-        """Placeholder send_rich_message must include reply_to_message_id=message_id."""
+    async def test_send_streaming_placeholder_has_reply_parameters(self) -> None:
+        """Placeholder send_rich_message must include reply_parameters=message_id."""
         # Arrange
         adapter, bot = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
@@ -209,12 +209,14 @@ class TestTelegramSendStreamingSmoke:
             original_msg, _three_chunk_events(), outbound=outbound
         )
 
-        # Assert — reply_to_message_id in first call
+        # Assert — reply_parameters in first call (aiogram 3.29+)
+        from aiogram.types import ReplyParameters
+
         first_call = bot.send_rich_message.call_args_list[0]
         kwargs = first_call.kwargs
-        assert kwargs.get("reply_to_message_id") == 10, (
-            f"Expected reply_to_message_id=10, got: {kwargs}"
-        )
+        reply_params = kwargs.get("reply_parameters")
+        assert isinstance(reply_params, ReplyParameters)
+        assert reply_params.message_id == 10, f"Expected message_id=10, got: {kwargs}"
 
     async def test_send_streaming_final_edit_uses_markdownv2(self) -> None:
         """Final delivery edit_message_text (last call) must use rich_message."""

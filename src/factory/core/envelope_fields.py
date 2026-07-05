@@ -81,7 +81,7 @@ def mint_work_envelope_fields(
     Resolution order:
     - ``trace_id``: explicit → ``TraceContext.get_trace_id()`` → raises if unset
     - ``pool_id``: explicit → ``TraceContext.get_pool_id()``
-    - ``job_id``: explicit → ``new_job_id()`` (ingress should pass ``root_job_id``)
+    - ``job_id``: explicit → ``TraceContext.get_root_job_id()`` → ``new_job_id()``
     """
     resolved_trace = trace_id or TraceContext.get_trace_id()
     if not resolved_trace:
@@ -92,7 +92,12 @@ def mint_work_envelope_fields(
         raise ValueError(msg)
 
     resolved_pool = pool_id if pool_id is not None else TraceContext.get_pool_id()
-    resolved_job = job_id if job_id is not None else new_job_id()
+    resolved_job = (
+        job_id
+        if job_id is not None
+        else TraceContext.get_root_job_id()
+        or new_job_id()
+    )
 
     return WorkEnvelopeFields(
         contract_version=CONTRACT_VERSION,

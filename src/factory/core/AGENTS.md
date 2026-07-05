@@ -33,7 +33,7 @@ Rule of thumb: if the Protocol abstracts something *outside* lyra (LLM, TTS, aud
 
 `ports/llm.py`, `ports/stt.py`, `ports/tts.py` follow the same shape: protocol + value objects + errors only. `ports/` is the single owner of domain types. Adapter-adjacent helpers (`is_whisper_noise`, `mime_from_suffix`) live in `factory/nats/stt/stt_helpers.py`, not in `ports/`.
 
-## Store pattern (ADR-048 (absorbed into ADR-059))
+## Store pattern (→ `docs/architecture/engineering-standards.md`)
 
 Store protocols stay in `core/stores/`; SQLite implementations live in `factory.infrastructure.stores`.
 Pattern: `__init__` = data structures only · `connect()` = open DB + migrate + warm cache · `close()` = teardown.
@@ -55,7 +55,7 @@ Reads are synchronous (cache). Writes are async (SQLite). Cache updated atomical
 
 **`PoolContext`** (`pool/pool_context.py`, re-exported from `pool/pool.py`) — narrow interface `Pool` requires from its owner. Test seam: inject a mock to unit-test `Pool` without pulling in `Hub`.
 
-**`RoutingKey`** (`hub/hub_protocol.py`) — `NamedTuple(platform, bot_id, scope_id)`. Always call `.to_pool_id()` — never build pool ID strings manually (ADR-001 §4).
+**`RoutingKey`** (`hub/hub_protocol.py`) — `NamedTuple(platform, bot_id, scope_id)`. Always call `.to_pool_id()` — never build pool ID strings manually (→ `docs/architecture/messaging.md` Key invariants).
 
 ## Non-obvious subdirectory placement
 

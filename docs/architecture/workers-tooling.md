@@ -162,6 +162,9 @@ Three observation layers: (1) in-process self-monitoring (circuit breakers, erro
 - Health checks are layer-bound: the external monitor checks process/endpoint/OS only; circuit breakers own LLM backend health.
 - Per-scope pool isolation is active at the hub layer; CliPool subprocess isolation per scope remains open.
 - `type=env` is a documented exception for `CLAUDE_CODE_OAUTH_TOKEN`; all other secrets use `type=mount`. Re-verify after Podman upgrades.
+- **Bus-bound error sanitization:** transport and outbound paths use `SanitizedError` with
+  `type(exc).__name__` only — never `str(exc)` on NATS-bus-bound fields. Enforced by the
+  `str_exc_bus_bound` quality gate (`tools/check_str_exc_bus_bound.sh`).
 
 ---
 

@@ -6,10 +6,10 @@ Sole writer to `turns.db` post-refactor (#1331). Subscribes to
 `factory.turns.write` JetStream subject and persists turn events via
 `TurnStore` private mutators.
 
-## ADR
+## Layer placement
 
-ADR-075 authorises this sublayer (axial: `stage-of-pipeline` →
-`infrastructure` → writer-subscriber sublayer).
+Turn-writer sublayer: `infrastructure` → subscriber-writer (→ `docs/architecture/storage.md`
+§ Turn persistence).
 
 ## Invariants
 

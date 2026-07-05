@@ -7,8 +7,9 @@ the durable outbound-audio delivery path (#1482).
 
 ## Invariants
 
-- **Hub sole-provisioner (ADR-079)** — `ensure_stream` and `ensure_kv` are called
-  by `hub_standalone.py` before `announce_hub_ready`. Adapters must NOT call these;
+- **Hub sole-provisioner** — `ensure_stream` and `ensure_kv` are called by
+  `hub_standalone.py` before `announce_hub_ready`. Adapters must NOT call these (→
+  `docs/architecture/messaging.md` Key invariants);
   `start_audio_consumer` is bind-only for the KV (`js.key_value(KV_BUCKET)`).
   `ensure_consumer` remains on the adapter (per-bot durable consumer, not shared).
 - **Retention: Limits** — NOT WorkQueue. Multiple per-platform consumers attach

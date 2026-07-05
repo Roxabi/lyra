@@ -39,7 +39,7 @@ from factory.outbound._tool_recap import ToolRecapAccumulator, format_recap_line
 from factory.outbound.error_handler import OutboundErrorHandler
 from factory.outbound.formatter import OutboundFormatter
 from factory.outbound.throttle import STREAMING_EDIT_INTERVAL
-from factory.transport._result import Err
+from factory.transport import Err
 from factory.transport.typing_publisher import is_typing_enabled
 
 log = logging.getLogger(__name__)

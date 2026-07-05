@@ -29,7 +29,7 @@ The host `nats.service` is retired (big-bang consolidation). Hub and adapters de
 `After=factory-nats.service` / `Requires=factory-nats.service` so systemd boots NATS first.
 
 NATS config: `nats/nats-container.conf` (bind-mounted read-only).
-Auth credentials: `auth.conf` delivered as an **inline bind mount** (`Volume=%h/.roxabi/factory/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z`) — NOT a Podman secret. See ADR-085. Private NKey seeds remain `type=mount` Podman secrets per ADR-054.
+Auth credentials: `auth.conf` delivered as an **inline bind mount** (`Volume=%h/.roxabi/factory/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z`) — NOT a Podman secret (→ `docs/architecture/deployment.md`). Private NKey seeds remain `type=mount` Podman secrets (→ `docs/architecture/deployment.md` § Key invariants).
 NATS version: pinned by digest in `factory-nats.container` — ¬autoupdate, bump manually.
 
 ---
@@ -158,7 +158,7 @@ Legacy 4-field stamps (pre-image-digest schema) are normalized to `:none:none` o
 4. **Render factory units** — `make quadlet-install NO_RESTART=1` (renders the telegram/discord `.container.tmpl` templates, copies to `~/.config/containers/systemd`, seeds BotStore). `NO_RESTART=1` **skips** `daemon-reload` — the reload lives in `deploy/quadlet-install-verify.sh`, run only in the non-`NO_RESTART` else-branch (see `docs/runbooks/quadlet-install.md § Deploy-time verification`).
 4b. **Reload systemd** — `converge.sh` then runs `systemctl --user daemon-reload` explicitly + unconditionally, so systemd regenerates `.service` units from the Quadlet content installed in steps 3-4 before the restarts fire (else restarts relaunch from the stale generated unit).
 5. **Regenerate auth.conf** — `factory-acl genkeys --regen-authconf` (renders `nkeys/` → `auth.conf`).
-6. **Install secrets** — `make quadlet-secrets-install` (recreates Podman secrets from host key files; `factory-nats-auth` is no longer a secret — `auth.conf` is now an inline bind mount per ADR-085).
+6. **Install secrets** — `make quadlet-secrets-install` (recreates Podman secrets from host key files; `factory-nats-auth` is no longer a secret — `auth.conf` is now an inline bind mount per `docs/architecture/deployment.md`).
 7. **Restart NATS** — operator-path choices for targeted operations:
    - **Pure identity add** (`make nats-add-identity`): atomic write to `auth.conf` on host → `systemctl --user reload factory-nats` (fires `ExecReload=` → `podman kill --signal=HUP factory-nats`). Zero client restarts, zero dropped connections.
    - **ACL permission change** (`make nats-regen-authconf`): atomic write to `auth.conf` on host → `systemctl --user restart factory-nats` (required per #1390 — stale-subject-auth risk on ACL changes). Waits for `is-active`.
@@ -213,7 +213,7 @@ Deploy scripts record imperative operator actions separately from container stdo
 | Converge skip vs run? | `grep converge_ ~/.local/state/factory/logs/operator.log` |
 | Who rotated blobstore? | `rotation-log.md` + `grep blobstore ~/.local/state/factory/logs/operator.log` |
 
-Full query recipes → `docs/runbooks/operator-log.md`. ADR → `docs/architecture/adr/093-operator-audit-three-channel.mdx`.
+Full query recipes → `docs/runbooks/operator-log.md`. Design → `docs/architecture/observability.md`.
 
 `operator.log` retention: `factory-operator-logrotate.timer` (weekly, 12 rotations, 10M maxsize) via `make quadlet-sync-install`.
 
@@ -260,11 +260,11 @@ Rules:
 ## Hardening invariants (∀ `.container` file)
 
 `NoNewPrivileges=true` | `ReadOnly=true` | `DropCapability=all`
-**Carve-out (ADR-092 Langfuse deps):** `factory-langfuse-{postgres,redis,clickhouse,minio}` omit the trio — upstream entrypoints `setpriv`/chmod data dirs before dropping to service users.
+**Carve-out (Langfuse deps):** `factory-langfuse-{postgres,redis,clickhouse,minio}` omit the trio — upstream entrypoints `setpriv`/chmod data dirs before dropping to service users (→ `docs/architecture/observability.md`).
 `UserNS=keep-id:uid=1500,gid=1500` for factory units (container UID 1500)
 Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentials.
 Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL permission changes require container restart (not HUP) to refresh (#1390). See [`docs/runbooks/nats-authconf-update.md`](../docs/runbooks/nats-authconf-update.md).
-**Carve-out (ADR-085):** `auth.conf` (the public ACL bundle — `U…` nkeys + permission blocks, no private seeds) is delivered as an **inline bind mount**, not a `type=mount` secret. This allows live SIGHUP reload for pure identity-add operations without client restarts. Private NKey seed files (e.g. `factory-nats-hub.seed`) remain `type=mount` per ADR-054 D5.
+**Carve-out (auth.conf):** `auth.conf` (the public ACL bundle — `U…` nkeys + permission blocks, no private seeds) is delivered as an **inline bind mount**, not a `type=mount` secret. This allows live SIGHUP reload for pure identity-add operations without client restarts. Private NKey seed files (e.g. `factory-nats-hub.seed`) remain `type=mount` (→ `docs/architecture/deployment.md`).
 ¬inline `#` comments after `Volume=` values — Quadlet passes them to Podman as mount options.
 
 ### Secret naming convention
@@ -329,4 +329,4 @@ so the hooksPath becomes process-immutable.
 
 - `docs/runbooks/container-publishing.md` — full CI → GHCR → Quadlet pattern + auto-update
 - `docs/ARCHITECTURE.md` — hub-spoke topology
-- ADR-055 (supersedes archived ADR-054) — UserNS + secret delivery decisions
+- `docs/architecture/deployment.md` — UserNS + secret delivery decisions

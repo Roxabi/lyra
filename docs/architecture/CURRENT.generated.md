@@ -5,47 +5,48 @@
 ## Layer Map
 
 
-### Adapters must not import BotStore directly (use BotStoreProtocol instead)
+### Application layers (commands, agents) must not import Infrastructure or Composition Root directly (ADR-059)
 
 - **Type:** forbidden
-- **Source modules:** factory.adapters
-- **Forbidden modules:** factory.infrastructure.stores.registry.bot_store
-- **Allow indirect imports:** True
-
-### Adapters must not import core.persona directly
-
-- **Type:** forbidden
-- **Source modules:** factory.adapters
-- **Forbidden modules:** factory.core.persona
-- **Allow indirect imports:** True
-
-### Agents must not import Composition Root
-
-- **Type:** forbidden
-- **Source modules:** factory.agents
-- **Forbidden modules:** factory.bootstrap
+- **Source modules:** factory.commands, factory.agents
+- **Forbidden modules:** factory.infrastructure, factory.bootstrap
 - **Ignore imports:** factory.agents.simple_agent -> factory.infrastructure.stores.registry.agent_store
-- **Allow indirect imports:** False
+- **Allow indirect imports:** True
 
 ### Clean architecture layers (transport ← streaming ← core ← llm/nats ← infrastructure ← adapters ← bootstrap)
 
 - **Type:** layers
-- **Layers:** factory.bootstrap, factory.adapters | factory.blobstore, factory.outbound, factory.infrastructure, factory.llm | factory.nats, factory.core, factory.typing, factory.streaming, factory.transport
+- **Layers:** factory.bootstrap, factory.adapters | factory.blobstore, factory.inbound | factory.outbound, factory.infrastructure, factory.llm | factory.nats, factory.core, factory.typing, factory.streaming, factory.transport
 - **Ignore imports:** factory.core.agent.agent_refiner -> factory.infrastructure.stores.registry.agent_store, factory.core.agent.agent -> factory.infrastructure.stores.registry.agent_store, factory.core.memory.memory -> factory.infrastructure.stores.identity.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.identity.identity_alias_store, factory.core.hub.hub_registration -> factory.infrastructure.stores.identity.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.identity.pairing, factory.core.hub.hub -> factory.infrastructure.stores.registry.prefs_store
 - **Allow indirect imports:** False
 
-### Commands must not import Infrastructure directly
+### No direct BotStore imports (use BotStoreProtocol from core.stores only); generalized from adapters + inbound (axial symmetry, ADR-073 + engineering-standards port purity)
 
 - **Type:** forbidden
-- **Source modules:** factory.commands
-- **Forbidden modules:** factory.infrastructure
+- **Source modules:** factory.adapters, factory.inbound
+- **Forbidden modules:** factory.infrastructure.stores.registry.bot_store
 - **Allow indirect imports:** True
 
-### Dashboard must not import core.persona or agent_db_loader
+### Only entry points (CLI/__main__) and bootstrap internals may reach Composition Root (enforce ADR-059 / engineering-standards). Foundational Composition Root isolation; slightly extended comments for axial (ADR-073) consistency with stage-purity.
 
 - **Type:** forbidden
-- **Source modules:** factory.dashboard
+- **Source modules:** factory.core, factory.agents, factory.inbound, factory.outbound, factory.streaming, factory.transport, factory.nats, factory.llm, factory.dashboard, factory.infrastructure, factory.integrations, factory.obs, factory.errors, factory.config, factory.monitoring, factory.agent_cmd, factory.commands
+- **Forbidden modules:** factory.bootstrap
+- **Allow indirect imports:** True
+
+### Outer layers (adapters, dashboard) must not import core.persona directly (port purity, ADR-059 / engineering-standards). Generalized from previous specific contracts.
+
+- **Type:** forbidden
+- **Source modules:** factory.adapters, factory.dashboard
 - **Forbidden modules:** factory.core.persona, factory.core.agent.agent_db_loader
+- **Allow indirect imports:** True
+
+### Per-part stage helpers/entrypoints isolation (HELPERS per part): locals (_*, router etc) not bypassed or crossed; adapters/shared use public surfaces only (ADR-073 + AGENTS.md)
+
+- **Type:** forbidden
+- **Source modules:** factory.adapters.shared, factory.adapters.shared.inbound, factory.adapters.telegram, factory.adapters.discord, factory.adapters.web, factory.adapters.socialmedia, factory.adapters.omp, factory.adapters.clipool, factory.adapters.nats, factory.adapters, factory.core, factory.nats, factory.llm, factory.infrastructure, factory.bootstrap, factory.dashboard, factory.agents, factory.commands, factory.monitoring, factory.obs, factory.integrations
+- **Forbidden modules:** factory.inbound.router, factory.inbound.session_builder, factory.inbound.dispatcher, factory.outbound._emitter_run, factory.outbound._placeholder_lifecycle, factory.outbound._reasoning_accum, factory.outbound._streaming_state, factory.outbound._tool_recap, factory.streaming.event_emitter, factory.streaming.state_machine, factory.streaming.parser, factory.adapters.shared._shared_streaming_emitter, factory.adapters.shared._shared_streaming, factory.transport._result
+- **Ignore imports:** factory.adapters.shared.inbound.pipeline -> factory.inbound.dispatcher, factory.adapters.shared.inbound.pipeline -> factory.inbound.router, factory.adapters.shared.inbound.pipeline -> factory.inbound.session_builder, factory.adapters.discord.discord_formatter -> factory.outbound._reasoning_accum, factory.adapters.telegram.telegram_formatter -> factory.outbound._reasoning_accum, factory.core.cli.cli_streaming_parser -> factory.streaming.event_emitter, factory.core.cli.cli_streaming_parser -> factory.streaming.state_machine, factory.core.processors.stream_processor -> factory.streaming.event_emitter, factory.core.processors.stream_processor -> factory.streaming.state_machine, factory.core.processors.stream_close -> factory.streaming.state_machine, factory.core.processors.stream_text -> factory.streaming.state_machine, factory.core.processors.stream_tool -> factory.streaming.state_machine, factory.transport.nats_request_response -> factory.transport._result, factory.transport.http_transport -> factory.transport._result, factory.transport.worker_pool_client -> factory.transport._result
 - **Allow indirect imports:** True
 
 ### Production code must not import tests.fakes
@@ -55,24 +56,25 @@
 - **Forbidden modules:** tests
 - **Allow indirect imports:** True
 
-### Shared floating modules must not import bootstrap, adapters, or infrastructure
+### Shared floating modules and pipeline stages must not import bootstrap, adapters, or infrastructure (upper-boundary + stages-upper-boundary generalization; ADR-073 / engineering-standards)
 
 - **Type:** forbidden
-- **Source modules:** factory.obs, factory.errors, factory.config, factory.integrations, factory.monitoring, factory.agent_cmd
+- **Source modules:** factory.obs, factory.errors, factory.config, factory.integrations, factory.monitoring, factory.agent_cmd, factory.inbound, factory.outbound, factory.streaming, factory.transport, factory.nats
 - **Forbidden modules:** factory.bootstrap, factory.adapters, factory.infrastructure
 - **Allow indirect imports:** True
 
-### Shared floating modules must not import each other (peer isolation)
+### Shared floating modules and pipeline stages must not import each other (peer isolation; generalized cross-part-stage-helpers-isolation)
 
 - **Type:** independence
 - **Ignore imports:** factory.core.processors.processor_registry -> factory.integrations.base
 - **Allow indirect imports:** False
 
-### adapters must not re-introduce the legacy streaming-emitter shim (#1279 T28)
+### Stage purity (inbound/outbound/streaming/transport/nats): no llm/nats/bootstrap bleed into stages + sqlite (outer infra/adapters/bootstrap covered by shared-modules-upper-boundary generalization). Enforces ADR-073 + engineering-standards. Consolidated from multiple purity contracts.
 
 - **Type:** forbidden
-- **Source modules:** factory.adapters
-- **Forbidden modules:** factory.adapters.shared._shared_streaming_emitter, factory.adapters.shared._shared_streaming
+- **Source modules:** factory.inbound, factory.outbound, factory.streaming, factory.transport, factory.nats
+- **Forbidden modules:** factory.llm, factory.bootstrap, aiosqlite, sqlite3
+- **Ignore imports:** factory.nats.pipeline.db -> sqlite3
 - **Allow indirect imports:** True
 
 ### bootstrap/types.py must not import from bootstrap subpackages (neutral shared module invariant)
@@ -80,6 +82,13 @@
 - **Type:** forbidden
 - **Source modules:** factory.bootstrap.types
 - **Forbidden modules:** factory.bootstrap.factory, factory.bootstrap.lifecycle, factory.bootstrap.standalone, factory.bootstrap.wiring
+- **Allow indirect imports:** True
+
+### core/ports must contain only pure Protocol definitions with zero outer-layer or I/O imports (port purity, ADR-059 / engineering-standards). Foundational; not generalized further as kernel invariant (ties to stage-purity consumers via ports).
+
+- **Type:** forbidden
+- **Source modules:** factory.core.ports
+- **Forbidden modules:** factory.infrastructure, factory.adapters, factory.bootstrap, factory.llm, factory.nats, factory.inbound, factory.outbound, factory.streaming, factory.transport, factory.dashboard, aiosqlite, sqlite3
 - **Allow indirect imports:** True
 
 ### core/stores protocols must not import SQLite drivers
@@ -101,13 +110,6 @@
 - **Type:** forbidden
 - **Source modules:** factory.dashboard
 - **Forbidden modules:** factory.infrastructure.stores
-- **Allow indirect imports:** True
-
-### inbound stages must not import adapters (stage-axis invariant, ADR-073 / #1287)
-
-- **Type:** forbidden
-- **Source modules:** factory.inbound
-- **Forbidden modules:** factory.adapters
 - **Allow indirect imports:** True
 
 ## NATS Subjects & Identities

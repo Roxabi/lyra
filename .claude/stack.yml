@@ -254,12 +254,17 @@ quality_gates:
     script: tools/check_doc_semantic_drift.py
     # Invoked only via doc_drift_bundle — no stages / run_order entry
 
+  agents_no_adr_refs:
+    enabled: true
+    script: tools/check_agents_no_adr_refs.sh
+    # Invoked only via doc_drift_bundle — no stages / run_order entry
+
   doc_drift_bundle:
     enabled: true
     # pre-push too: symbol deletions repeatedly reach CI as doc-drift reds
     # (fresh deletions are not grandfathered by the baseline) — catch pre-push.
     stages: [pre-push, ci]
-    description: legacy symbol grep + doc_drift + doc_semantic_drift
+    description: legacy symbol grep + doc_drift + doc_semantic_drift + agents_no_adr_refs
 
   pytest_smoke:
     enabled: true

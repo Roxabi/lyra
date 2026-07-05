@@ -25,7 +25,7 @@ Three primitives, all composed (not inherited):
 - **SanitizedError boundary** — `EventEmitter` is the ONLY place in this package where exception
   data is translated to terminal events. Never construct `str(exc)` or `f"...{exc}"` here. Use
   `type(exc).__name__` for class-name surfacing (deterministic, no PII leakage). See
-  `src/factory/transport/AGENTS.md` and ADR-045/049.
+  `src/factory/transport/AGENTS.md` and `docs/architecture/contracts.md`.
 
 - **`error_translator` is per-consumer** — every `EventEmitter` instance is constructed with a
   translator lambda specific to its `OutT` (e.g.
@@ -44,6 +44,12 @@ Three primitives, all composed (not inherited):
   yet satisfy the Protocol — `isinstance(stream_processor_instance, Parser)` returns `False`.
   Conformance for `StreamProcessor` is deferred; when its aliases land, isinstance-conformance
   tests should be added to `tests/streaming/test_parser_protocol.py`.
+
+- **Stage purity** — streaming primitives + public surfaces enforced by generalized
+  `stage-purity` + `per-part-stage-helpers-isolation` contracts (kernel-like: only
+  transport public + contracts; no I/O/outer/stages per engineering-standards →
+  `docs/architecture/job-model.md`; consolidated from low-consensus proposals to avoid
+  patchwork).
 
 ## Out of scope
 

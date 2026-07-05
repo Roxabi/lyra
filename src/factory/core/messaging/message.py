@@ -154,6 +154,10 @@ class InboundMessage:
     # events belonging to the same inbound event.  None = pre-#1620 message
     # (e.g. from tests that have not been updated yet).
     root_job_id: str | None = None
+    # Per-turn trace id stamped by TraceMiddleware (stage 0) before pool submit.
+    # Survives the async pool boundary so work-path codecs can mint envelopes
+    # after TraceContext is reset (#2069).
+    trace_id: str | None = None
 
 
 @dataclass

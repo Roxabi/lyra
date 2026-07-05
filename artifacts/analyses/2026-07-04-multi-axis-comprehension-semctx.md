@@ -1,5 +1,8 @@
 # Compréhension multi-axes d'une codebase — semctx, factory, et design d'un SSoT AI-compatible
 
+> **⚠ Corrections & suite (2026-07-05, grep-vérifié vs HEAD) :** diagnostic/CCM valable, mais 3 points encore présents à corriger avant mise en œuvre : **`satellite` = mono-sens** (le « sens B » `factory-host-sensor`/ADR-091 est fabriqué — ce publisher = « host sensor », `observability.md:31` ; retirer des tables homonymes l.229/341/472) · **`concepts.md`/`.json` transversal** viole le canon ratifié `¬index séparé`/`titre = contrat` (→ inline *distinguish-from* + `grep` name-as-key + WARN prospectif dans `doc_drift`) · **ban/remplacement de `## Current state`** injustifié (8/16 pages l'utilisent sainement, dont l'exemplaire `engineering-standards.md:22`).
+> → Diff verdicté : `2026-07-05-multi-axis-analysis-comparison.md` · analyse corrigée : `2026-07-05-multi-axis-comprehension-claude.md` · design retenu : `2026-07-04-multi-axis-ssot-model.md`.
+
 > Synthèse de réflexion — 2026-07-04
 > Méthode : analyse `semctx` (clone `~/projects/extarnal_repos/semctx`), comparaison outillage factory, diagnostic doc audit 03/07, extraction stratification corpus, recherche multi-agents (5 angles × web).
 > Finalité : proposer un modèle **CCM** (Codebase Comprehension Model) pour simplifier et structurer ce que factory effleure déjà (hexagonal, axial drift, ontologie, topologie, ADR-086).

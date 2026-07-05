@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import warnings
 from datetime import datetime, timezone
 
 import httpx
@@ -14,6 +15,13 @@ from .checks_log import check_hub_dict_stream_gen_timeout, check_nats_log_errors
 from .checks_varz import check_disk, check_disk_pct, check_inode_pct, check_nats_varz
 from .config import MonitoringConfig
 from .models import CheckResult, HealthReport
+
+warnings.warn(
+    "factory.monitoring.checks (the aggregate Layer-1 runner) is deprecated — "
+    "superseded by Monitoring v2 (#1035). This module will be removed when v2 lands.",
+    DeprecationWarning,
+    stacklevel=1,
+)
 
 
 def check_process(service_names: list[str]) -> list[CheckResult]:

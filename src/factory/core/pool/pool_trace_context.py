@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import Token
 from uuid import uuid4
@@ -17,7 +17,7 @@ def pool_turn_trace_context(
     *,
     pool_id: str,
     agent_name: str,
-) -> Iterator[str]:
+) -> Generator[str, None, None]:
     """Re-hydrate trace correlation vars for the duration of a pool turn."""
     stamped_trace = msg.trace_id if isinstance(msg.trace_id, str) else None
     trace_id = stamped_trace or TraceContext.get_trace_id() or uuid4().hex

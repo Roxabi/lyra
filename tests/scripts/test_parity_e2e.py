@@ -47,6 +47,7 @@ except ImportError:
 
 NATS_PY_AVAILABLE: bool = _nats_py_available
 
+
 # ── CI hard-fail guard (#2247, N6) ──────────────────────────────────────────
 # Inside GitHub Actions, a missing binary/import here means a broken CI
 # environment, not an intentionally minimal dev machine — fail collection
@@ -62,22 +63,50 @@ NATS_PY_AVAILABLE: bool = _nats_py_available
 # every local pre-push run. A dev shell that happens to export a generic
 # CI=true but lacks nats-server/nk locally would otherwise hard-fail
 # unexpectedly. GITHUB_ACTIONS=true is set only by actual GitHub runners.
-if os.getenv("GITHUB_ACTIONS") == "true" and not (
-    NATS_AVAILABLE and NK_AVAILABLE and NATS_PY_AVAILABLE
-):
-    _missing = [
+#
+# The decision itself (not just the missing-deps list) is factored into a
+# pure function so it can be unit-tested directly below
+# (test_ci_hardfail_guard_*) — the guard fires once at module-import time
+# and can't be re-triggered in-process, so without this extraction neither
+# a deleted guard nor a silently-inverted `== "true"` condition would have
+# any automated regression coverage (#2251 review, N6 finding).
+def _ci_hardfail_missing_deps(
+    *,
+    github_actions: bool,
+    nats_available: bool,
+    nk_available: bool,
+    nats_py_available: bool,
+) -> list[str]:
+    """Names missing when the guard should hard-fail; `[]` means don't fail.
+
+    Returns `[]` whenever `github_actions` is False, regardless of which
+    deps are available — collection-time skip behavior is preserved outside
+    GitHub Actions (see Judgment Call above).
+    """
+    if not github_actions:
+        return []
+    return [
         name
         for name, available in (
-            ("nats-server", NATS_AVAILABLE),
-            ("nk", NK_AVAILABLE),
-            ("nats-py", NATS_PY_AVAILABLE),
+            ("nats-server", nats_available),
+            ("nk", nk_available),
+            ("nats-py", nats_py_available),
         )
         if not available
     ]
+
+
+_ci_hardfail_missing = _ci_hardfail_missing_deps(
+    github_actions=os.getenv("GITHUB_ACTIONS") == "true",
+    nats_available=NATS_AVAILABLE,
+    nk_available=NK_AVAILABLE,
+    nats_py_available=NATS_PY_AVAILABLE,
+)
+if _ci_hardfail_missing:
     pytest.fail(
-        f"GITHUB_ACTIONS=true but missing: {', '.join(_missing)} — CI must "
-        "install nats-server + nk and have nats-py importable; a silent skip "
-        "here would mask a broken CI environment (#2247)."
+        f"GITHUB_ACTIONS=true but missing: {', '.join(_ci_hardfail_missing)} — "
+        "CI must install nats-server + nk and have nats-py importable; a "
+        "silent skip here would mask a broken CI environment (#2247)."
     )
 
 # ── Matrix-driven parametrization (#2247) ───────────────────────────────────
@@ -333,6 +362,8 @@ def nats_server(
     proc = subprocess.Popen(
         [
             "nats-server",
+            "-a",
+            "127.0.0.1",
             "-c",
             str(rendered_auth_conf / "auth.conf"),
             "-m",
@@ -659,6 +690,62 @@ def test_acl_matrix_active_identities_nonempty() -> None:
     )
 
 
+def test_ci_hardfail_guard_noop_outside_github_actions() -> None:
+    """N6 guard: `github_actions=False` never hard-fails, even with every dep missing.
+
+    Pins the collection-time skip behavior that must survive outside GitHub
+    Actions (Judgment Call above) — a future edit that drops the
+    `github_actions` short-circuit would otherwise only surface as an
+    unexpected hard-fail on some dev's machine, not as a failing test.
+    """
+    assert (
+        _ci_hardfail_missing_deps(
+            github_actions=False,
+            nats_available=False,
+            nk_available=False,
+            nats_py_available=False,
+        )
+        == []
+    )
+
+
+def test_ci_hardfail_guard_fires_in_github_actions_with_missing_deps() -> None:
+    """N6 guard: `github_actions=True` reports every missing dep by name.
+
+    Regression coverage for the guard itself (module-level `pytest.fail`
+    fires once at import time and can't be re-triggered in-process) — a
+    future edit that deletes the guard, drops a dep from the check, or
+    silently inverts the `== "true"` condition it's built from now fails
+    this always-collected unit test instead of only a scenario nobody runs
+    by default (`GITHUB_ACTIONS=true PATH=/usr/bin`, per the PR Test Plan).
+    """
+    assert _ci_hardfail_missing_deps(
+        github_actions=True,
+        nats_available=False,
+        nk_available=True,
+        nats_py_available=True,
+    ) == ["nats-server"]
+    assert _ci_hardfail_missing_deps(
+        github_actions=True,
+        nats_available=True,
+        nk_available=False,
+        nats_py_available=False,
+    ) == ["nk", "nats-py"]
+
+
+def test_ci_hardfail_guard_silent_in_github_actions_with_all_deps_present() -> None:
+    """N6 guard: `github_actions=True` with every dep present reports nothing."""
+    assert (
+        _ci_hardfail_missing_deps(
+            github_actions=True,
+            nats_available=True,
+            nk_available=True,
+            nats_py_available=True,
+        )
+        == []
+    )
+
+
 @pytest.mark.skipif(
     not NATS_PY_AVAILABLE,
     reason="nats-py not installed — skipping live ACL test",
@@ -925,6 +1012,8 @@ def test_retired_identity_connect_rejected(
     proc = subprocess.Popen(
         [
             "nats-server",
+            "-a",
+            "127.0.0.1",
             "-c",
             str(tmp / "auth.conf"),
             "-m",

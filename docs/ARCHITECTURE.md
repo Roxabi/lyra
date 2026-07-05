@@ -29,7 +29,7 @@
 
 ## Retrieval ladder — one question, one hop, one home
 
-The single entry index (materializes ADR-086 §47-54). The comprehension **axes** below — glossary · topology · structure · behavior · dynamics · delta · procedure — are retrieval *intents* (query columns), **not** storage folders: each question resolves to exactly **one** home. Facts live at the **altitude** whose freshness a machine can enforce — generated (L0) → intent/invariant (L1) → procedure (L2) → history (L3). Never hand-copy a fact that already has a home elsewhere; link to it.
+The single entry index (materializes ADR-086 § Retrieval ladder). The comprehension **axes** below — glossary · topology · structure · behavior · dynamics · delta · procedure — are retrieval *intents* (query columns), **not** storage folders: each question resolves to exactly **one** home. Facts live at the **altitude** whose freshness a machine can enforce — generated (L0) → intent/invariant (L1) → procedure (L2) → history (L3). Never hand-copy a fact that already has a home elsewhere; link to it.
 
 | Your question | → one hop | Axis · altitude |
 |---|---|---|

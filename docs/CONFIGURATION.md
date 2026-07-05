@@ -437,9 +437,9 @@ health_secret = ""                            # optional health endpoint auth
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `TELEGRAM_TOKEN` | No (legacy single-bot path only; multi-bot production uses Podman secrets — see `## Bot credentials`) | Bot token |
+| `TELEGRAM_TOKEN` | Yes (factory-log-monitor) | Bot token — live credential path for the `factory-log-monitor` Quadlet unit (`deploy/quadlet/factory-log-monitor.container`, #2245); multi-bot production adapters use Podman secrets instead — see `## Bot credentials` |
 | `TELEGRAM_WEBHOOK_SECRET` | Yes (hub) | Webhook secret |
-| `TELEGRAM_ADMIN_CHAT_ID` | No (legacy single-bot path only; see #1035) | Chat ID for alerts |
+| `TELEGRAM_ADMIN_CHAT_ID` | Yes (factory-log-monitor) | Chat ID for alerts — live credential path for the `factory-log-monitor` Quadlet unit (`deploy/quadlet/factory-log-monitor.container`, #2245) |
 | `TELEGRAM_BOT_USERNAME` | No | Bot username for help text |
 
 ### Discord

@@ -37,7 +37,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format dev-setup hooks-install quality-debt-report quality-debt-classify qg fleet-obs-evidence build-dashboard lint-js
+.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity check-seed-age test test-integration voice-smoke lint typecheck format dev-setup hooks-install quality-debt-report quality-debt-classify qg fleet-obs-evidence build-dashboard lint-js
 
 # ── Container image build + transfer ─────────────────────────────────────────
 

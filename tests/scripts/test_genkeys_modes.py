@@ -1333,11 +1333,11 @@ class TestExternalFailLoud:
         assert "External seeds require manual fan-out" in captured.err
 
 
-# ── N2/N10 — rotation-log wiring (RED, #2246) ──────────────────────────────────
+# ── N2/N10 — rotation-log wiring (#2246) ────────────────────────────────────
 
 
 class TestRotationLogWiring:
-    """RED (#2246): _mode_full_provision does not yet call rotation_log_append()."""
+    """#2246: _mode_full_provision calls rotation_log_append() per active identity."""
 
     def test_full_provision_writes_one_rotation_log_line_per_active_identity(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1345,9 +1345,6 @@ class TestRotationLogWiring:
         """rotation-log.md gains exactly K lines for K active identities.
 
         Spec trace: SC2 (N2, N10).
-        RED (#2246): rotation_log_append() is not called from _mode_full_provision
-        yet — rotation-log.md is never created, so this fails with 0 matching
-        lines for each active identity instead of the expected 1 each.
         """
         import argparse
 

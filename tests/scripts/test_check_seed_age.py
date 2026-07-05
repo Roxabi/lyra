@@ -1,8 +1,4 @@
-"""RED tests for scripts/check_seed_age.py::run() — #2246 Slice S2 Task 7.
-
-scripts/check_seed_age.py does not exist yet (implemented in Task 8, a
-separate backend-dev wave). Every test below MUST fail at collection time
-with a ModuleNotFoundError until that module lands.
+"""Tests for scripts/check_seed_age.py::run() — #2246 Slice S2 Task 7.
 
 Contract under test (pinned verbatim in
 artifacts/plans/2246-enforce-nkey-rotation-policy-plan.mdx, Task 7 / Task 8):
@@ -35,8 +31,10 @@ Bootstrap-grace design (spec §Expected Behavior items 7-9, §Edge Cases):
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import cast
 
@@ -328,3 +326,121 @@ class TestLatestDateWinsNotLastLine:
         assert warnings == []
         assert failures == []
         assert notes == []
+
+
+# ── N5 — CLI wiring (`factory-acl check seed-age`), not just run() ──────────
+#
+# The tests above exercise scripts/check_seed_age.py::run() directly. None of
+# them touch _cmd_check_seed_age's argparse wiring (subcommand registration,
+# ROTATION_LOG env read + expanduser, _seeds_dir() resolution, the
+# WARN:/FAIL:/NOTE: print + exit-code contract) — the exact integration
+# surface that ships to the M1 systemd timer. A wiring bug there (wrong
+# dest, mis-set default, wrong call signature into run()) would only surface
+# in production. These tests invoke the real CLI via subprocess.
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_CLI_MATRIX_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "v2-prod.json"
+
+
+def _run_check_seed_age(
+    *, rotation_log: Path, seeds_dir: Path, matrix: Path = _CLI_MATRIX_FIXTURE
+) -> subprocess.CompletedProcess[str]:
+    """Run `factory-acl check seed-age` via subprocess — real argparse wiring."""
+    env = os.environ.copy()
+    env["ROTATION_LOG"] = str(rotation_log)
+    env["SEEDS_DIR"] = str(seeds_dir)
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.gen_nkeys",
+            "check",
+            "seed-age",
+            "--matrix",
+            str(matrix),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
+        env=env,
+        timeout=30,
+    )
+
+
+class TestCliWiring:
+    """factory-acl check seed-age — CLI/argparse wiring per spec N5."""
+
+    def test_no_rotation_log_is_bootstrap_grace_and_prints_ok(
+        self, tmp_path: Path
+    ) -> None:
+        """No rotation-log.md at all -> every identity in grace, exit 0, OK line."""
+        result = _run_check_seed_age(
+            rotation_log=tmp_path / "rotation-log.md",  # does not exist
+            seeds_dir=tmp_path / "nkeys",  # empty, no seed files either
+        )
+        assert result.returncode == 0, result.stderr
+        assert "check-seed-age: OK (0 warning(s))" in result.stdout
+        assert "FAIL:" not in result.stderr
+        assert "WARN:" not in result.stderr
+
+    def test_fresh_log_entries_exit_zero_and_print_ok(self, tmp_path: Path) -> None:
+        """A rotation-log.md entry logged today for every identity -> clean OK."""
+        today = datetime.now(timezone.utc).date()
+        rotation_log = tmp_path / "rotation-log.md"
+        lines = [
+            f"{today.isoformat()} | secret:{name} | reason:seed-generated |"
+            " by:mickael | trigger:factory-acl-genkeys | host:roxabituwer"
+            for name in ("hub", "voice-tts", "clipool-worker")
+        ]
+        rotation_log.write_text(
+            "# Factory credential rotation log\n\n" + "\n".join(lines) + "\n"
+        )
+
+        result = _run_check_seed_age(
+            rotation_log=rotation_log, seeds_dir=tmp_path / "nkeys"
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "check-seed-age: OK (0 warning(s))" in result.stdout
+        assert "WARN:" not in result.stderr
+        assert "FAIL:" not in result.stderr
+
+    def test_warn_age_entry_exits_zero_with_warn_and_ok_count(
+        self, tmp_path: Path
+    ) -> None:
+        """An 80-day-old entry (WARN_DAYS<=80<FAIL_DAYS) warns but still exits 0."""
+        stale = datetime.now(timezone.utc).date() - timedelta(days=80)
+        rotation_log = tmp_path / "rotation-log.md"
+        rotation_log.write_text(
+            "# Factory credential rotation log\n\n"
+            f"{stale.isoformat()} | secret:hub | reason:seed-generated |"
+            " by:mickael | trigger:factory-acl-genkeys | host:roxabituwer\n"
+        )
+
+        result = _run_check_seed_age(
+            rotation_log=rotation_log, seeds_dir=tmp_path / "nkeys"
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "WARN:" in result.stderr
+        assert "check-seed-age: OK (1 warning(s))" in result.stdout
+
+    def test_fail_age_entry_exits_nonzero_and_omits_ok_line(
+        self, tmp_path: Path
+    ) -> None:
+        """A 95-day-old entry (>=FAIL_DAYS) fails the check; no OK line on failure."""
+        stale = datetime.now(timezone.utc).date() - timedelta(days=95)
+        rotation_log = tmp_path / "rotation-log.md"
+        rotation_log.write_text(
+            "# Factory credential rotation log\n\n"
+            f"{stale.isoformat()} | secret:hub | reason:seed-generated |"
+            " by:mickael | trigger:factory-acl-genkeys | host:roxabituwer\n"
+        )
+
+        result = _run_check_seed_age(
+            rotation_log=rotation_log, seeds_dir=tmp_path / "nkeys"
+        )
+
+        assert result.returncode == 1, result.stdout
+        assert "FAIL:" in result.stderr
+        assert "check-seed-age: OK" not in result.stdout

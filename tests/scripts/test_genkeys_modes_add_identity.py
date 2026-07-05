@@ -188,7 +188,7 @@ def test_add_identity_writes_only_new_seed(tmp_path: Path) -> None:
     assert "turn-writer" in content, "auth.conf must contain turn-writer block"
 
 
-# ── N1/N10 — rotation-log wiring (RED, #2246) ──────────────────────────────────
+# ── N1/N10 — rotation-log wiring (#2246) ────────────────────────────────────
 
 
 def test_add_identity_rotation_log_entry_only_on_added(tmp_path: Path) -> None:
@@ -196,9 +196,6 @@ def test_add_identity_rotation_log_entry_only_on_added(tmp_path: Path) -> None:
     noop/repaired.
 
     Spec trace: SC1 (N1, N10).
-    RED (#2246): rotation_log_append() is not called from _mode_add_identity yet
-    — the log file is never created/appended, so the added-case assertion fails
-    with 0 matching lines instead of the expected 1.
     """
     from scripts._loader import load_matrix
     from scripts._renderer import render_auth_conf

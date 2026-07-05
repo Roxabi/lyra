@@ -188,6 +188,7 @@ def _cmd_check_seed_age(args: argparse.Namespace) -> None:
     if failures:
         sys.exit(1)
 
+    print(f"check-seed-age: OK ({len(warnings)} warning(s))")
     sys.exit(0)
 
 

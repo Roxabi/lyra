@@ -1,0 +1,59 @@
+---
+title: "chore(security): enforce nkey rotation policy — wire rotation_log_append() on routine path + make check-seed-age"
+issue: 2246
+status: approved
+tier: F-lite
+date: 2026-07-05
+---
+
+## Problem
+
+`rotation_log_append()` (`src/factory/operator_audit.py:34`, thin bridge to `deploy/lib/operator-log.sh`) is only invoked from the disaster-recovery CLI (`src/factory/cli/secrets_reset.py:161`, `secret="nats-nkeys", reason="disaster-recovery"`). The routine rotation runbook (`docs/runbooks/nkey-rotation.md`) has two paths that never call it:
+
+- **Path A** (single/few identities): `rm <name>.seed && make nats-add-identity NAME=<name>` → `factory-acl genkeys --add-identity <name>` → `scripts/_modes.py::_mode_add_identity`. When the seed was absent it lands in `state == "added"` (`_add_identity_detect_state`), generates fresh key material, and never logs.
+- **Path B** (hub compromised → rotate every seed): bare `factory-acl genkeys` → `scripts/_modes.py::_mode_full_provision` (the same function also runs on first-ever cold bootstrap). Regenerates all 18 active identities' seeds (`deploy/nats/acl-matrix.json`) and never logs either.
+
+Confirmed by reading both call sites — no rotation-log write exists anywhere on either path. Only `_mode_regen_authconf` (pure ACL re-render, no new key material) and `_mode_regenerate`/DR correctly stay unlogged/logged respectively; those are out of scope here and untouched.
+
+Effect: `~/.roxabi/factory/rotation-log.md`, the only tamper-resistant age source (seed-file mtime is silently reset by Syncthing/rsync/restore per the issue), is structurally incomplete for every identity that has only ever gone through routine rotation or lifecycle provisioning. The documented "max seed age: 90 days" policy (#2204) has no enforcement mechanism and no reliable data source — inert prose, not a control.
+
+**Why now:** split out of #2204 (credential rotation policy doc) by architect/security/devops panel review (2026-07-04) — the policy doc is about to land with no wiring behind it.
+
+## Who
+
+- **Primary:** M₁ operator (Mickael) running `nkey-rotation.md` Path A/B by hand — needs the log to actually capture what they just did, and a CI/cron/pre-push signal instead of manually eyeballing seed ages.
+- **Secondary:** `factory ops verify` / future audit tooling that will eventually consume `rotation-log.md` as SSoT for credential hygiene; #2204's policy doc, which cites this issue's mechanism as its enforcement arm.
+
+## Constraints
+
+- Do not touch the existing disaster-recovery call site (`secrets_reset.py:161`) — it already logs correctly (blanket `secret="nats-nkeys"` entry); this issue adds coverage, it doesn't refactor that path.
+- `rotation-log.md` line format is fixed by `deploy/lib/operator-log.sh::rotation_log_append()`: `{date} | secret:{name} | reason:{reason} | by:{user} | trigger:{trigger} | host:{host}` (day-granularity date, no schema versioning) — `make check-seed-age` must parse this exact format, not invent a new one.
+- Cannot rely on seed-file mtime as the primary age source (Syncthing/rsync/restore reset it) — mtime is a documented fallback only, for identities with zero log entries (bootstrap grace, item 4 of issue scope).
+- 18 active identities today (`deploy/nats/acl-matrix.json`); `_mode_full_provision` iterates all of them on every Path B run — any logging added there fires once per identity, not once per invocation.
+- `_mode_add_identity`'s `state == "added"` fires both for a genuinely brand-new identity (`nats-identity-lifecycle.md`) and for a rotated one (seed deleted then regenerated, `nkey-rotation.md` Path A) — the code cannot distinguish the two from state alone; logging both is correct for age-tracking purposes (either way the seed's age clock legitimately restarts at that moment).
+- Threshold policy is fixed by #2204 and restated in this issue: warn ≥75 days, hard-fail ≥90 days — not a value to redesign here.
+- `make check-seed-age` must not become a merge-blocking CI gate on unrelated PRs (explicit acceptance criterion) — scheduled/cron or pre-push, not `ci.yml`.
+- Bash side (`deploy/lib/operator-log.sh`) is sourced by the Python bridge via `subprocess.run(["bash", "-c", ...])` — fail-soft, must never raise; any new call sites must preserve that (logging failure ≠ rotation failure).
+
+## Out of Scope
+
+- Redesigning the rotation-log line format or adding structured (JSON) rotation-log entries — parse the existing Markdown format as-is.
+- Touching `_mode_regen_authconf` (no new key material — correctly unlogged) or the existing disaster-recovery log call in `secrets_reset.py`.
+- Building a full credential-hygiene dashboard/UI — this is a `make` target + scheduled check, not a product surface.
+- Automating the rotation itself (e.g., auto-expiring seeds at 90 days) — policy is warn/hard-fail on staleness, not forced rotation.
+- #2204's actual policy-doc content (owned by a concurrent, separate issue) — this issue references it by expected path only.
+
+## Premise Validity
+
+**Success in 6 months:** every routine rotation performed via `nkey-rotation.md` Path A or Path B appends a real entry to `rotation-log.md` (verified: `git log`/operator report shows log entries matching real rotation events, not just DR entries); `make check-seed-age` runs on a schedule/pre-push (not in the blocking CI gate) and its warn/fail output at any point in time matches what a manual per-identity date scan of `rotation-log.md` would show.
+
+**Failure in 6 months (falsifiable):** at the 6-month mark (2027-01), an operator runs a Path A or Path B rotation per the runbook and `rotation-log.md` gets zero new lines for it (wiring silently regressed or was incomplete), OR `make check-seed-age` has never actually executed via its scheduled/pre-push hook in that window despite ≥1 active identity being provably >90 days old by log evidence — i.e., the control exists on paper but never fired, same failure mode the issue opens with.
+
+**Simplest alternative:** skip the `rotation_log_append()` wiring entirely and build `make check-seed-age` on seed-file mtime alone.
+**Why not simplest:** the issue's own premise is that mtime is unreliable (Syncthing/rsync/restore resets it silently) — a mtime-only check would pass green on hosts where a sync operation just touched every seed file, hiding a genuinely stale credential. That defeats the purpose of an age-based control; mtime may only serve as the documented fallback for identities with no log entry yet (bootstrap grace).
+
+## Complexity
+
+**Tier: F-lite** — label `size:F-lite`; single domain (NATS nkey provisioning/audit, entirely within `scripts/_modes.py` + `src/factory/operator_audit.py` + a new `tools/check-seed-age.*` + `Makefile`), clear scope enumerated by the issue's 5 numbered items, no new architecture — extends an existing fail-soft logging bridge and adds one new read-only checker script.
+
+Signals observed: issue label `size:F-lite`; scope touches ≤5 files (`scripts/_modes.py`, possibly `scripts/gen_nkeys.py`, a new `tools/check-seed-age.*`, `Makefile`, `docs/runbooks/nkey-rotation.md`) plus tests; no unknowns beyond confirming exact wiring points (resolved above by reading the code directly).

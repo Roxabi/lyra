@@ -9,7 +9,7 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from factory.nats.envelope_fields import mint_work_envelope_fields
-from factory.transport._result import Err, Result, SanitizedError
+from factory.transport import Err, Result, SanitizedError
 from roxabi_contracts.socialmedia.models import (
     SocialMediaListGroupsResponse,
     SocialMediaListIntegrationsResponse,

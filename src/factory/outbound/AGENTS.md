@@ -1,4 +1,6 @@
 # src/factory/outbound/ — Outbound Stage Composition
+# HELPERS per part + stage purity enforced via generalized .importlinter contracts (per-part-stage-helpers-isolation, stage-purity).
+# See root AGENTS.md Core + .importlinter (anti-patchwork: no new narrow contracts; consolidated from prior low-consensus proposals).
 
 ## Purpose
 

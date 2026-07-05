@@ -281,16 +281,6 @@ ignore_imports =
     factory.transport.nats_request_response -> factory.transport._result
     factory.transport.http_transport -> factory.transport._result
     factory.transport.worker_pool_client -> factory.transport._result
-    # llm and nats codecs use Result via transport (transitional; prefer public import)
-    factory.llm.cli_nats_codec -> factory.transport._result
-    factory.llm.cli_pool_codec -> factory.transport._result
-    factory.llm.codec -> factory.transport._result
-    factory.nats.audio.nats_tts_codec -> factory.transport._result
-    factory.nats.image.nats_image_codec -> factory.transport._result
-    factory.nats.socialmedia.nats_socialmedia_codec -> factory.transport._result
-    factory.nats.stt.nats_stt_codec -> factory.transport._result
-    # adapters shared using outbound helper (legacy composition site)
-    factory.adapters.shared._shared -> factory.outbound._streaming_state
 allow_indirect_imports = true
 
 [importlinter:contract:stage-purity]

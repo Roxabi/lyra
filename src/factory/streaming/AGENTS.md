@@ -45,6 +45,12 @@ Three primitives, all composed (not inherited):
   Conformance for `StreamProcessor` is deferred; when its aliases land, isinstance-conformance
   tests should be added to `tests/streaming/test_parser_protocol.py`.
 
+- **Stage purity** — streaming primitives + public surfaces enforced by generalized
+  `stage-purity` + `per-part-stage-helpers-isolation` contracts (kernel-like: only
+  transport public + contracts; no I/O/outer/stages per engineering-standards →
+  `docs/architecture/job-model.md`; consolidated from low-consensus proposals to avoid
+  patchwork).
+
 ## Out of scope
 
 - **Event vocabulary** — `LlmEvent`, `RenderEvent`, `WorkerError`, etc. live in

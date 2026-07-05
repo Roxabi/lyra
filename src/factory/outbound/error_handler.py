@@ -12,7 +12,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, TypeVar
 
-from factory.transport._result import Err, Ok, Result, SanitizedError
+from factory.transport import Err, Ok, Result, SanitizedError
 
 if TYPE_CHECKING:
     pass

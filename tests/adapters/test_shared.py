@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from factory.adapters.shared._shared import (
-    IntermediateTextState,
     chunk_text,
     send_with_retry,
 )
@@ -20,6 +19,7 @@ from factory.core.messaging.render_events import (
 )
 from factory.outbound._emitter_run import _run_event_loop
 from factory.outbound._placeholder_lifecycle import _drain_fallback
+from factory.outbound._streaming_state import IntermediateTextState
 from factory.outbound.emitter import OutboundEmitter as StreamingSession
 
 # ---------------------------------------------------------------------------

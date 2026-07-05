@@ -24,7 +24,8 @@ parse → AttachmentIngestStage (store-conditional; no-store path clears pending
 ## Layer invariants
 
 - `router.py`, `session_builder.py`, `dispatcher.py`, `pipeline.py` must NOT import `discord` or `aiogram`. Platform isolation lives in the `wire_parser_<platform>.py` modules (Telegram, Discord, Web) and adapter-side hooks. Each delegates to the adapter's `normalize()` via a narrow `_<Platform>Normalizer` Protocol — never an adapter import (stage-axis invariant). New platforms add a `wire_parser_<platform>.py` here plus a routing branch in `Router.decide`.
-- Stages depend on `factory.core` only — never `factory.adapters`. Enforced by `.importlinter` (`inbound-no-adapters` contract, #1287). Known violations are tagged `DEBT:inbound-adapters-transition` / `DEBT:inbound-adapters-wireparser` and listed as `ignore_imports` in that contract pending relocation to `factory.core`/factory.shared (deferred to #1283 Phase 6).
+- Stages depend on `factory.core` only — never `factory.adapters`. Enforced by generalized `.importlinter` contracts (stage-purity, stages-no-adapters folded into upper-boundary generalization, per-part-stage-helpers-isolation, no-direct-bot-store). See root AGENTS.md Core section. (Anti-patchwork: specifics consolidated.)
+- Never import concrete `BotStore` (or other infra stores) — use `BotStoreProtocol` (or port) only. Enforced by `no-direct-bot-store` contract (generalized from adapters + inbound for axial symmetry + layers per engineering-standards).
 - `InboundContext`, `RouterCtx`, `SessionCtx`, `DispatchCtx` are `@dataclass(frozen=True)`. The container references are frozen; the mutable collections they carry (`RouterCtx.owned_threads: set`) are mutated in place by hooks and `SessionBuilder`. Document this contract on `context.py` module docstring.
 - Hook signatures (verified post-Phase-3):
   - `pre_route_hook(InboundMessage, InboundContext) -> Awaitable[None]` — may mutate

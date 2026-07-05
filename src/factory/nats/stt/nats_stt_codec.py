@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from factory.core.ports.stt import TranscriptionResult
 from factory.nats.envelope_fields import mint_work_envelope_fields
-from factory.transport._result import Err, Result, SanitizedError
+from factory.transport import Err, Result, SanitizedError
 from roxabi_contracts import BlobRef
 from roxabi_contracts.voice import SttRequest, SttResponse
 

@@ -18,7 +18,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from factory.nats.envelope_fields import mint_work_envelope_fields
-from factory.transport._result import Err, Result, SanitizedError
+from factory.transport import Err, Result, SanitizedError
 from roxabi_contracts.image import ImageRequest, ImageResponse
 
 log = logging.getLogger(__name__)

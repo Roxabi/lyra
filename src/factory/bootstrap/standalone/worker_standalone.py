@@ -218,3 +218,25 @@ async def _bootstrap_omp_standalone(raw_config: dict) -> None:  # noqa: ARG001
     finally:
         await cancel_fleet_reporter(fleet_reporter_task)
         await nc.close()
+
+
+async def _bootstrap_log_monitor_standalone(raw_config: dict) -> None:  # noqa: ARG001
+    """Run the standalone log-monitor loop (V1-pull detection, #2245).
+
+    No NATS connection — this is a periodic pull-based health probe, not an
+    event/metric bus producer (ADR-091 plane③ V1: pull; V2 subscribe is #1035,
+    future work). Runs until SIGTERM/SIGINT, or once if FACTORY_LOG_MONITOR_ONCE is set.
+    """
+    from factory.monitoring.config import load_monitoring_config
+    from factory.monitoring.log_watch import LogMonitorLoop
+
+    config = load_monitoring_config()
+    loop = LogMonitorLoop(config)
+
+    log.info("log-monitor: starting (interval=%dm)", config.check_interval_minutes)
+
+    if os.environ.get("FACTORY_LOG_MONITOR_ONCE"):
+        report = await loop.run_once()
+        sys.exit(0 if report.all_passed else 1)
+
+    await loop.run_forever()

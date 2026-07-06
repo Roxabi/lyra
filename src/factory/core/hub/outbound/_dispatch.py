@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any
 
 from ...config.dispatch_config import DispatchConfig
 from ...lifecycle.circuit_breaker import CircuitBreaker
-from ...messaging.message import RoutingContext
+from ...messaging.message import InboundMessage, RoutingContext
 from ...messaging.utils.callbacks import unwrap_callback
+from ...pool.pool_trace_context import turn_trace_context
 from .outbound_errors import (
     _CIRCUIT_NOTIFY_DEBOUNCE,
     _CIRCUIT_OPEN_MSG,
@@ -112,7 +113,9 @@ async def _try_send(
             async for _ in payload:
                 pass
             return False
-        await adapter.send_streaming(msg, payload, outbound)
+        assert isinstance(msg, InboundMessage)
+        with turn_trace_context(msg):
+            await adapter.send_streaming(msg, payload, outbound)
     return True
 
 

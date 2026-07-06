@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from ...messaging.message import InboundMessage, OutboundMessage, Platform
 from ...messaging.utils.callbacks import unwrap_callback
+from ...pool.pool_trace_context import turn_trace_context
 
 if TYPE_CHECKING:
     from ...messaging.render_events import RenderEvent
@@ -102,7 +103,8 @@ class StreamingDispatch:
                 "Call register_adapter() before dispatching responses."
             )
         if hasattr(adapter, "send_streaming"):
-            await adapter.send_streaming(msg, chunks, outbound)
+            with turn_trace_context(msg):
+                await adapter.send_streaming(msg, chunks, outbound)
         else:
             if outbound is not None:
                 log.warning(

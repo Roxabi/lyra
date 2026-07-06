@@ -471,6 +471,46 @@ class TestGuardedProcessOneTraceHydration:
         assert TraceContext.get_root_job_id() is None
 
 
+class TestOutboundStreamingTraceHydration:
+    @pytest.mark.no_default_trace
+    async def test_try_send_streaming_restores_trace_from_message(self) -> None:
+        """Deferred outbound streaming must re-hydrate TraceContext from msg."""
+        from collections.abc import AsyncIterator
+
+        from factory.core.envelope_fields import mint_work_envelope_fields
+        from factory.core.hub.outbound._dispatch import _try_send
+        from factory.core.messaging.render_events import TextDeltaRenderEvent
+
+        captured_trace: list[str | None] = []
+
+        async def chunks() -> AsyncIterator[TextDeltaRenderEvent]:
+            captured_trace.append(TraceContext.get_trace_id())
+            fields = mint_work_envelope_fields()
+            captured_trace.append(fields.trace_id)
+            yield TextDeltaRenderEvent(message_id="msg-1", delta="hi")
+
+        adapter = MagicMock()
+
+        async def _send_streaming(
+            _msg: InboundMessage,
+            events: AsyncIterator[TextDeltaRenderEvent],
+            _outbound: object,
+        ) -> None:
+            async for _ in events:
+                pass
+
+        adapter.send_streaming = _send_streaming
+
+        stamped = "cccccccc-dddd-eeee-ffff-000000000001"
+        msg = dataclasses.replace(make_inbound_message(), trace_id=stamped)
+
+        sent = await _try_send(adapter, "streaming", msg, chunks(), None)
+
+        assert sent is True
+        assert captured_trace == [stamped, stamped]
+        assert TraceContext.get_trace_id() is None
+
+
 # ──────────────────────────────────────────────────────────────────────
 # TelegramTokenFilter
 # ──────────────────────────────────────────────────────────────────────

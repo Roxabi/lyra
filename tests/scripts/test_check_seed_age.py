@@ -329,6 +329,49 @@ class TestLatestDateWinsNotLastLine:
         assert notes == []
 
 
+class TestFutureDatedLogEntryRejected:
+    """A future-dated rotation-log.md line must never be able to permanently
+    suppress WARN/FAIL by "winning" the latest-date comparison forever
+    (module docstring: "a future-dated entry is treated as malformed rather
+    than being allowed to permanently win the latest comparison — #2246
+    review").
+
+    Falsifiable: removing the `if log_date > today: continue` guard in
+    `_latest_log_dates` makes the bogus future-dated line "win" as latest
+    (any date > today is always the max), silently suppressing the FAIL
+    asserted below.
+    """
+
+    def test_future_dated_entry_does_not_mask_a_real_stale_entry(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange: a genuinely stale (95d) entry that should FAIL, plus a
+        # bogus future-dated (30d ahead) entry for the same identity that
+        # would otherwise "win" the latest-date comparison and mask it.
+        matrix = _matrix(**{"telegram-adapter": "active"})
+        stale = _age_date(95)
+        rotation_log = _write_log(
+            tmp_path,
+            [
+                _log_line(stale, "telegram-adapter"),
+                _log_line(_TODAY + timedelta(days=30), "telegram-adapter"),
+            ],
+        )
+        seeds_dir = tmp_path / "nkeys"
+
+        # Act
+        warnings, failures, notes = run(matrix, rotation_log, seeds_dir, today=_TODAY)
+
+        # Assert: the genuine 95d-stale entry gates a FAIL; the future-dated
+        # line is ignored rather than resetting the age to "fresh forever".
+        assert warnings == []
+        assert failures == [
+            f"telegram-adapter: nkey seed rotation is 95d old"
+            f" (last logged {stale.isoformat()}, FAIL_DAYS=90)"
+        ]
+        assert notes == []
+
+
 # ── N5 — CLI wiring (`factory-acl check seed-age`), not just run() ──────────
 #
 # The tests above exercise scripts/check_seed_age.py::run() directly. None of

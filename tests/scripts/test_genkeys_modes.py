@@ -416,6 +416,12 @@ class TestRegenerateMode:
 
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        # Hermetic by construction, not by accident of where the induced
+        # failure lands in _mode_full_provision's loop (#2246 review) — see
+        # test_regenerate_mid_loop_failure_writes_no_rotation_log_entries
+        # below, which pins the same env vars for the same reason.
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setattr(_modes, "_provider_factory", _FailsOnSecondCall)
 
         args = argparse.Namespace(yes=True, matrix=_MATRIX_FIXTURE)
@@ -477,6 +483,12 @@ class TestRegenerateMode:
 
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        # Hermetic by construction, not by accident of where the induced
+        # failure lands in _mode_full_provision's loop (#2246 review) — see
+        # test_regenerate_mid_loop_failure_writes_no_rotation_log_entries
+        # below, which pins the same env vars for the same reason.
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setenv("FACTORY_ACL_WRITE_ETC_NATS", "1")
         monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 

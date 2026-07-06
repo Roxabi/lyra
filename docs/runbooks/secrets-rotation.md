@@ -40,12 +40,13 @@ YYYY-MM-DD | secret:<identity> | reason:<reason> | by:<operator> | trigger:<manu
 
 If a rotation runs outside an instrumented script (raw `podman secret create`, manual seed swap), append the entry by hand — see "Manual operations" in [operator-log.md](operator-log.md).
 
-**Enforcement status: not yet wired.** Today this is operator discipline, not a machine-checked control:
+**Enforcement (nkey seeds, #2246).** For identities in [`acl-matrix.json`](../../deploy/nats/acl-matrix.json), the 90-day max is machine-checked on M₁:
 
-- `rotation_log_append()` is only called from the disaster-recovery path ([`secrets_reset.py`](../../src/factory/cli/secrets_reset.py)) — routine per-identity rotation via [nkey-rotation.md](nkey-rotation.md) Path A/B does not yet log, so the rotation log is not a complete age source for every identity.
-- There is no `make check-seed-age` (or equivalent) target — nothing currently reads the log and fails a stale identity.
+- **Logging.** Routine rotation via [nkey-rotation.md](nkey-rotation.md) Path A (`make nats-add-identity`) and Path B (`factory-acl genkeys`) calls `rotation_log_append()` automatically. Disaster recovery ([`secrets_reset.py`](../../src/factory/cli/secrets_reset.py)) and blobstore regen (`deploy/install.sh`) also append. Manual rotations outside those paths must still append by hand (see [operator-log.md](operator-log.md)).
+- **Age check.** `make check-seed-age` reads `rotation-log.md` as the sole authoritative age source: **warn at ≥75 days**, **fail at ≥90 days**. Seed-file mtime is informational only (Syncthing/rsync/restore reset it). Identities with **no log entry** are in bootstrap grace — the check never gates them until their first logged rotation.
+- **Schedule.** `factory-check-seed-age.timer` runs the check daily on M₁. It is **not** a CI/merge gate — a stale identity surfaces as `factory-check-seed-age.service` in `failed` state and `systemctl --user is-system-running` → `degraded`. Bootstrap grace, fail-open logging, and triage notes → [nkey-rotation.md § Bootstrap grace](nkey-rotation.md#bootstrap-grace--rotation-log-and-seed-age-policy).
 
-Wiring the routine path and adding an age-check target is tracked in [#2246](https://github.com/Roxabi/roxabi-factory/issues/2246); until it ships, treat the 90-day max as a calendar reminder to act on, not a gate that will catch a missed rotation.
+**Non-nkey secrets** (GitHub App PEM, OAuth, LiteLLM, blobstore) follow the same event-triggered and quarterly cadence rules above but are **not** covered by `check-seed-age` — operator discipline plus the rotation log for instrumented paths.
 
 ## Rotate one nkey
 

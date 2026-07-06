@@ -11,7 +11,7 @@ This runbook does **not** cover changing the GitHub App ID or installation ID �
 ## When to Rotate
 
 - **Compromise suspected** — PEM leaked in logs, visible in a build artifact, exfiltrated from disk, or accessible to an unauthorized party. Rotate immediately — see the event-triggered rules in [secrets-rotation.md § Rotation policy & schedule](secrets-rotation.md#rotation-policy--schedule), which apply to this credential too.
-- **Scheduled rotation** — cadence: every 90 days for prod (M₁), matching the max-seed-age policy in [secrets-rotation.md § Rotation policy & schedule](secrets-rotation.md#rotation-policy--schedule); every 180 days for dev (M₂) as an intentional relaxation for the non-prod host. Not yet machine-enforced for either host — see that section's "Enforcement status."
+- **Scheduled rotation** — cadence: every 90 days for prod (M₁), matching the max-seed-age policy in [secrets-rotation.md § Rotation policy & schedule](secrets-rotation.md#rotation-policy--schedule); every 180 days for dev (M₂) as an intentional relaxation for the non-prod host. PEM is not covered by `make check-seed-age` (nkey-only) — calendar reminder + operator discipline; append to `rotation-log.md` manually after rotation (Section 5).
 - **Operator key change** — the GitHub App "Generate a private key" action on github.com invalidates the previous key; rotation must follow immediately.
 
 ---

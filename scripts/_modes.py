@@ -595,17 +595,21 @@ def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDe
     }
 
     # Buffer rotation-log entries instead of appending them inline: this loop
-    # runs inside _mode_regenerate's backup/rollback boundary (_backup_seeds /
-    # _restore_on_failure). rotation-log.md is append-only and outside that
-    # transaction, so an inline append here would leave a false "freshly
-    # rotated" line for any identity already processed before a LATER
-    # identity's seed generation raises — the log would then claim a seed is
-    # fresh even though _restore_on_failure reverts it to its pre-rotation
-    # value, suppressing check_seed_age.py's WARN/FAIL for up to ~75-90 days
-    # (#2246 review). Flushing only after every identity's seed AND auth.conf
-    # are durably written (below) ensures a mid-loop failure yields ZERO log
-    # entries — the rollback path then sees a rotation log that still matches
-    # the (reverted) on-disk seed state.
+    # also runs inside _mode_regenerate's backup/rollback boundary
+    # (_backup_seeds / _restore_on_failure) when called via --regenerate.
+    # rotation-log.md is append-only and outside that transaction, so an
+    # inline append here would leave a false "freshly rotated" line for any
+    # identity already processed before a LATER identity's seed generation
+    # raises — the log would then claim a seed is fresh even though
+    # _restore_on_failure reverts it to its pre-rotation value, suppressing
+    # check_seed_age.py's WARN/FAIL for up to ~75-90 days (#2246 review).
+    # Flushing only after every identity's seed AND auth.conf are durably
+    # written (below) ensures a mid-loop failure yields ZERO log entries — on
+    # the --regenerate path, the rollback then sees a rotation log that still
+    # matches the (reverted) on-disk seed state. On the bare default-dispatch
+    # path (gen_nkeys.py's main(), no rollback boundary at all), the same
+    # all-or-nothing flush still avoids partial/misleading log entries on a
+    # mid-loop failure, independent of any rollback.
     pending_rotations: list[tuple[str, str, str]] = []
     pubkeys: dict[str, str] = {}
     for name in active:

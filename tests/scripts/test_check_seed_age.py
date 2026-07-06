@@ -525,6 +525,39 @@ class TestErrorPropagation:
             run(matrix, rotation_log, seeds_dir, today=_TODAY)
 
 
+class TestSeedMtimeErrorPropagation:
+    """The bootstrap-grace seed-mtime read deliberately catches only
+    `FileNotFoundError` (same narrow-except contract as `_latest_log_dates`'s
+    log-read path) -- any other OSError subclass (e.g. permission denied)
+    must propagate uncaught rather than being silently swallowed into a
+    NOTE.
+
+    Falsifiable: widening the except clause in `run()`'s bootstrap-grace
+    branch to `except OSError` (or broader) makes this test fail, since
+    `run()` would then return silently instead of raising `PermissionError`.
+    """
+
+    def test_permission_error_reading_seed_mtime_propagates(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange: no rotation-log entry (bootstrap grace) + a seed file exists
+        matrix = _matrix(**{"telegram-adapter": "active"})
+        rotation_log = tmp_path / "rotation-log.md"  # does not exist -> grace path
+        seeds_dir = tmp_path / "nkeys"
+        _touch_seed(seeds_dir, "telegram-adapter", age_days=10)
+
+        def _raise_permission_error(
+            self: Path, *args: object, **kwargs: object
+        ) -> object:
+            raise PermissionError(f"denied: {self}")
+
+        monkeypatch.setattr(Path, "stat", _raise_permission_error)
+
+        # Act / Assert
+        with pytest.raises(PermissionError):
+            run(matrix, rotation_log, seeds_dir, today=_TODAY)
+
+
 # ── ROTATION_LOG default path parity (bash vs Python) — #2246 review ────────
 #
 # gen_nkeys.py's _cmd_check_seed_age() (reader) and deploy/lib/operator-log.sh's

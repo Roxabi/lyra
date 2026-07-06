@@ -9,6 +9,8 @@ If you are here because `auth.conf` is out of date, an ACL grant is wrong, or a 
 - [nats-authconf-update.md](nats-authconf-update.md) — ACL/permission changes (`make nats-regen-authconf`)
 - [nats-identity-lifecycle.md](nats-identity-lifecycle.md) — adding (`make nats-add-identity`) or retiring an identity
 
+If you are here for the **quarterly scheduled rotation** (no compromise, just the calendar cadence) or want the max-seed-age policy, see [secrets-rotation.md § Rotation policy & schedule](secrets-rotation.md#rotation-policy--schedule) — this runbook covers the compromise-response mechanics only.
+
 **If you are not responding to a suspected compromise, you do not want this runbook.**
 
 Rotation replaces the seed file (private key material) for one or more identities. The affected processes authenticate with new credentials after their consuming unit restarts. All other identities keep their existing seeds untouched.
@@ -314,6 +316,7 @@ ls ~/.roxabi/factory/nkeys/*.bak-* 2>/dev/null && echo "WARNING: backup files st
 ## Cross-references
 
 - [`deploy/nats/acl-matrix.json`](../../deploy/nats/acl-matrix.json) — identity registry (SSoT for the active set)
+- [secrets-rotation.md § Rotation policy & schedule](secrets-rotation.md#rotation-policy--schedule) — max seed age, scheduled cadence, event triggers, rotation log
 - [nats-authconf-update.md](nats-authconf-update.md) — routine ACL/permission changes; external seed distribution
 - [nats-identity-lifecycle.md](nats-identity-lifecycle.md) — adding / retiring identities (`make nats-add-identity`)
 - [`tools/check-nats-acls.sh`](../../tools/check-nats-acls.sh) — ACL violation detector used in Verification

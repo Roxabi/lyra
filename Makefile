@@ -355,7 +355,7 @@ nats-add-identity:  ## add a single NATS identity rootless; idempotent after ful
 	fi
 
 # --frozen required — a bare `uv run` on the M1 prod checkout dirtied uv.lock
-# and jammed deploy for 12h on 2026-07-02 (see docs/runbooks). Scheduled via
+# and jammed deploy for 12h on 2026-07-02. Scheduled via
 # factory-check-seed-age.timer (daily) — never a CI/merge gate.
 check-seed-age:  ## warn/fail on stale nkey seeds (rotation-log.md driven)
 	@uv run --frozen factory-acl check seed-age

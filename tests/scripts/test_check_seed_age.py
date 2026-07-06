@@ -31,6 +31,7 @@ Bootstrap-grace design (spec §Expected Behavior items 7-9, §Edge Cases):
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -444,3 +445,88 @@ class TestCliWiring:
         assert result.returncode == 1, result.stdout
         assert "FAIL:" in result.stderr
         assert "check-seed-age: OK" not in result.stdout
+
+
+# ── Error-propagation contract (#2246 review) ────────────────────────────────
+
+
+class TestErrorPropagation:
+    """`_latest_log_dates` deliberately catches only `FileNotFoundError` (the
+    bootstrap-grace path) — every other `OSError` subclass must propagate
+    uncaught rather than being silently swallowed into that same grace path
+    (module docstring: "a broken read must surface loudly rather than
+    silently degrading to the same ungated grace").
+
+    Falsifiable: widening the except clause in `_latest_log_dates` to
+    `except OSError` (or broader) makes this test fail, since `run()` would
+    then return silently instead of raising `PermissionError`.
+    """
+
+    def test_permission_error_reading_rotation_log_propagates(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange
+        matrix = _matrix(**{"telegram-adapter": "active"})
+        rotation_log = _write_log(
+            tmp_path, [_log_line(_age_date(10), "telegram-adapter")]
+        )
+        seeds_dir = tmp_path / "nkeys"
+
+        def _raise_permission_error(self: Path, *args: object, **kwargs: object) -> str:
+            raise PermissionError(f"denied: {self}")
+
+        monkeypatch.setattr(Path, "read_text", _raise_permission_error)
+
+        # Act / Assert
+        with pytest.raises(PermissionError):
+            run(matrix, rotation_log, seeds_dir, today=_TODAY)
+
+
+# ── ROTATION_LOG default path parity (bash vs Python) — #2246 review ────────
+#
+# gen_nkeys.py's _cmd_check_seed_age() (reader) and deploy/lib/operator-log.sh's
+# rotation_log_append() (writer) each hardcode their own default for
+# ROTATION_LOG. Nothing pins the two literals together: if the bash default
+# ever moves (e.g. rotation-log.md relocated under a new state/ layout) and
+# only operator-log.sh is updated, the Python reader would silently keep
+# reading the old, now-empty/nonexistent path -- every identity falls into
+# bootstrap grace and check-seed-age reports "all clear" while real staleness
+# piles up unnoticed. This test extracts each file's literal default straight
+# out of its source text (not a third hardcoded expectation) and asserts they
+# resolve to the identical path.
+
+_GEN_NKEYS_PATH = _REPO_ROOT / "scripts" / "gen_nkeys.py"
+_OPERATOR_LOG_SH_PATH = _REPO_ROOT / "deploy" / "lib" / "operator-log.sh"
+
+
+class TestRotationLogDefaultPathParity:
+    def test_python_and_bash_rotation_log_defaults_match(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Falsifiable: change either literal independently (e.g. bash default
+        to `$HOME/.roxabi/factory/state/rotation-log.md` while Python keeps
+        `~/.roxabi/factory/rotation-log.md`) and this test fails, because the
+        two resolved paths would then differ under the same HOME.
+        """
+        # Arrange — extract the literal default straight out of each source file.
+        py_source = _GEN_NKEYS_PATH.read_text()
+        py_match = re.search(
+            r'os\.environ\.get\(\s*"ROTATION_LOG",\s*"([^"]+)"\s*\)', py_source
+        )
+        assert py_match, "ROTATION_LOG default literal not found in gen_nkeys.py"
+        py_literal = py_match.group(1)
+
+        sh_source = _OPERATOR_LOG_SH_PATH.read_text()
+        sh_match = re.search(r'ROTATION_LOG="\$\{ROTATION_LOG:-([^}]+)\}"', sh_source)
+        assert sh_match, "ROTATION_LOG default literal not found in operator-log.sh"
+        sh_literal = sh_match.group(1)
+
+        # Act — expand both under the SAME synthetic HOME (tilde vs $HOME).
+        fake_home = "/home/parity-test-user"
+        monkeypatch.setenv("HOME", fake_home)
+        py_resolved = Path(py_literal).expanduser()
+        sh_resolved = Path(os.path.expandvars(sh_literal))
+
+        # Assert
+        assert py_resolved == sh_resolved
+        assert str(py_resolved) == f"{fake_home}/.roxabi/factory/rotation-log.md"

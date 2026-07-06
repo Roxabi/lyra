@@ -43,14 +43,17 @@ _LOG_LINE_RE = re.compile(
 )
 
 
-def _latest_log_dates(rotation_log_path: Path) -> dict[str, date]:
+def _latest_log_dates(rotation_log_path: Path, today: date) -> dict[str, date]:
     """Parse rotation_log_path, keeping the latest logged date per secret name.
 
-    Malformed/header lines are skipped defensively. Missing file -> empty dict
-    (intended bootstrap-grace path). Other OSError subclasses (permission
-    denied, I/O error) propagate — a broken read must surface loudly rather
-    than silently degrading to the same ungated grace as "file doesn't exist
-    yet", which would hide that the check itself is broken (#2246 review).
+    Malformed/header lines are skipped defensively, as are lines dated after
+    ``today`` (a future-dated entry is treated as malformed rather than being
+    allowed to permanently win the "latest" comparison — #2246 review).
+    Missing file -> empty dict (intended bootstrap-grace path). Other OSError
+    subclasses (permission denied, I/O error) propagate — a broken read must
+    surface loudly rather than silently degrading to the same ungated grace
+    as "file doesn't exist yet", which would hide that the check itself is
+    broken (#2246 review).
     """
     latest: dict[str, date] = {}
     try:
@@ -65,6 +68,8 @@ def _latest_log_dates(rotation_log_path: Path) -> dict[str, date]:
         try:
             log_date = date.fromisoformat(match.group("date"))
         except ValueError:
+            continue
+        if log_date > today:
             continue
         secret = match.group("secret")
         prev = latest.get(secret)
@@ -89,7 +94,7 @@ def run(
     if today is None:
         today = datetime.now(timezone.utc).date()
 
-    latest_dates = _latest_log_dates(rotation_log_path)
+    latest_dates = _latest_log_dates(rotation_log_path, today)
 
     active_names = {
         name

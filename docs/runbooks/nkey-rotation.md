@@ -103,6 +103,7 @@ make nats-add-identity NAME=${IDENTITY}
 - generates a fresh seed for the now-absent identity (`STATE=added`),
 - re-renders `auth.conf` from **all** active seeds — the other identities keep their keys,
 - recreates the Podman secret `factory-nats-${IDENTITY}` from the new seed,
+- **automatically logs the rotation** to `rotation-log.md` (see "Bootstrap grace" note below),
 - `systemctl --user reload factory-nats` — nats-server re-reads `auth.conf`; the old public key is gone, so the compromised connection is dropped on the next auth check.
 
 Expected output: `factory-acl: STATE=added` followed by `reloaded factory-nats (SIGHUP)`.
@@ -136,6 +137,8 @@ cp -a ~/.roxabi/factory/nkeys ~/.roxabi/factory/nkeys.bak-${TS}
 cd ~/projects/roxabi-factory
 factory-acl genkeys        # default full-provision: fresh seed for every active identity
 ```
+
+The command automatically logs each identity's rotation to `rotation-log.md` (see "Bootstrap grace" note below).
 
 > If any identity has `deploy.type=external` (currently `voice-client` → M₂), this exits `2` and prints an `scp` manifest on stderr — the seeds are written locally but must be copied to the remote host before the fleet is consistent. Copy them, then re-run with `--ack-external-distribution`. See [nats-authconf-update.md](nats-authconf-update.md) § External seed distribution.
 
@@ -219,6 +222,27 @@ Any unit in `failed` state immediately after restart indicates an auth failure �
 ls -la ~/.roxabi/factory/nkeys/ | grep "${IDENTITY}"
 # Should show 0600 permissions, owner mickael, with no .bak-* file acting as the active seed.
 ```
+
+---
+
+## Bootstrap grace — rotation log and seed age policy
+
+When `make nats-add-identity` (Path A) or bare `factory-acl genkeys` (Path B) runs, each identity's rotation is **automatically recorded** to `~/.roxabi/factory/rotation-log.md`. This log feeds a scheduled age-check (`make check-seed-age`, running daily via systemd timer on M₁) that warns at ≥75 days and fails at ≥90 days.
+
+**Bootstrap grace applies:** identities with **no entry** in the rotation log are treated as **always OK** — the check never warns or fails them, regardless of their seed file's age or modification time. This is intentional:
+
+- Syncthing, rsync, and filesystem restores silently reset file modification times, making them an **unreliable age source** for credentials.
+- On the day this feature rolls out, all active identities will have zero rotation-log entries yet carry seeds whose actual creation dates already approach or exceed the 75-day warning threshold — a mtime-based check would produce a fleet-wide false-alarm storm on day one, contrary to the feature's intent.
+
+**Seed file mtime is surfaced only as informational.** When the rotation log has no entry for an identity, the checker prints the seed's mtime-derived age as a `NOTE:` (e.g., "seed mtime is 75d old — informational, not policy-enforced"), but this hint never gates the pass/fail verdict. The sole, authoritative age source is the rotation log.
+
+**Fail-open direction, by design.** Every gap in the logging path resolves toward *more* bootstrap grace, never toward a false FAIL:
+
+- The rotation-log append (`rotation_log_append`, via `deploy/lib/operator-log.sh`) is fail-soft — a failed write is swallowed (`|| true` in the shell, `check=False` + a hard timeout on the Python subprocess bridge in `src/factory/operator_audit.py`). If it silently fails for an identity, that identity simply stays in bootstrap grace (no gating verdict) rather than surfacing a "logging is broken" signal. There is currently no reconciliation/alert for this case — an operator auditing rotation coverage should not rely solely on `check-seed-age` being green; cross-check that every active identity in `acl-matrix.json` actually has a `rotation-log.md` entry.
+- `factory-acl genkeys` (full provision) buffers each identity's rotation-log entry and only appends it after **every** identity's seed and `auth.conf` are durably written — a mid-run failure (e.g. seed #7 of 18) writes **zero** log entries for that run, so the log can never claim a rotation happened for a run that didn't complete. The tradeoff: if you interrupt a full provision partway through and do *not* retry it, none of that run's identities get a rotation-log entry until you re-run `factory-acl genkeys` to completion — they read as bootstrap-grace, not as falsely fresh. `--regenerate`'s backup/restore path (`_restore_on_failure`) unconditionally restores `nkeys/` and `auth.conf` from the pre-attempt backup on any failure, including a genuine mid-loop one (fixed in #2258 — the guard previously read "already exists" as "already restored" and skipped restoring a partially-repopulated `nkeys/`). Either way the rotation-log invariant above holds: whatever state the seeds end up in, the log never claims a rotation that didn't durably complete.
+- `check_seed_age.py` only swallows a *missing* `rotation-log.md`/seed file (`FileNotFoundError`) as bootstrap grace. A genuine read failure (permissions, disk I/O) on either file propagates as an uncaught error instead of silently returning an all-clear — a broken check must be loud, not green.
+
+**`factory-check-seed-age.service` failing looks like `degraded`.** The unit is `Type=oneshot` with no `RemainAfterExit=`; a real stale-seed FAIL leaves it in `failed` state until the next daily timer run, which folds into `systemctl --user is-system-running` -> `degraded` on Machine 1. This is the intended escalation signal for a genuine credential-age violation — don't mistake it for unrelated drift during a future M1 triage; check `systemctl --user status factory-check-seed-age.service` first when `is-system-running` reports `degraded`.
 
 ---
 

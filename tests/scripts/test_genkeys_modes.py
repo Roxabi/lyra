@@ -258,6 +258,8 @@ class TestRegenerateMode:
             env={
                 "SEEDS_DIR": str(seeds_dir),
                 "AUTH_DIR": str(auth_dir),
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -301,6 +303,8 @@ class TestRegenerateMode:
                 "SEEDS_DIR": str(seeds_dir),
                 # AUTH_DIR deliberately NOT set — _require_root() checks real uid
                 "FACTORY_ACL_WRITE_ETC_NATS": "1",
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -340,6 +344,8 @@ class TestRegenerateMode:
         # Use env overrides so _require_root is skipped and paths redirect to tmp_path
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
 
         args = argparse.Namespace(yes=True, matrix=_MATRIX_FIXTURE)
 
@@ -410,6 +416,12 @@ class TestRegenerateMode:
 
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        # Hermetic by construction, not by accident of where the induced
+        # failure lands in _mode_full_provision's loop (#2246 review) — see
+        # test_regenerate_mid_loop_failure_writes_no_rotation_log_entries
+        # below, which pins the same env vars for the same reason.
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setattr(_modes, "_provider_factory", _FailsOnSecondCall)
 
         args = argparse.Namespace(yes=True, matrix=_MATRIX_FIXTURE)
@@ -471,6 +483,12 @@ class TestRegenerateMode:
 
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        # Hermetic by construction, not by accident of where the induced
+        # failure lands in _mode_full_provision's loop (#2246 review) — see
+        # test_regenerate_mid_loop_failure_writes_no_rotation_log_entries
+        # below, which pins the same env vars for the same reason.
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setenv("FACTORY_ACL_WRITE_ETC_NATS", "1")
         monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 
@@ -504,6 +522,135 @@ class TestRegenerateMode:
         assert (auth_dir / "auth.conf").read_text() == "original-etc-auth-conf", (
             "auth_dir/auth.conf must be restored to the pre-regen backup, not"
             " the freshly-written content produced before the induced failure"
+        )
+
+    def test_regenerate_mid_loop_failure_writes_no_rotation_log_entries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A REAL (non-mocked) failure partway through _mode_full_provision's
+        per-identity loop must leave rotation-log.md with ZERO entries.
+
+        Regression guard (#2246 review, backend-dev finding): before the
+        buffer-then-flush fix, rotation_log_append() fired inline inside the
+        loop, so an identity processed before the failing one (here: "hub",
+        processed before "clipool-worker" raises) would already have a
+        "freshly rotated" line in rotation-log.md by the time
+        _restore_on_failure() reverts seeds_dir back to its pre-rotation
+        backup — desyncing the log from the (reverted) real seed state and
+        suppressing check_seed_age.py's WARN/FAIL for that identity for up to
+        ~75-90 days. Unlike test_regenerate_restores_on_provision_failure
+        (which fully mocks out _mode_full_provision via an immediate
+        side_effect and therefore never reaches the per-identity loop), this
+        test lets the loop run for real and fails partway through it.
+        """
+        import argparse
+
+        from scripts._modes import _mode_regenerate
+
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir()
+        seeds_dir.mkdir()
+        (seeds_dir / "hub.seed").write_bytes(b"original-hub-seed")
+        (seeds_dir / "clipool-worker.seed").write_bytes(b"original-clipool-seed")
+        rotation_log = tmp_path / "rotation-log.md"
+
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(rotation_log))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
+
+        class _FlakyProvider(FakeNkeyProvider):
+            """Succeeds on 'hub' (processed first), raises on 'clipool-worker'
+            (processed second) — a real mid-loop failure, not a mock."""
+
+            def gen_seed(self, name: str) -> bytes:
+                if name == "clipool-worker":
+                    raise RuntimeError(f"simulated seed-gen failure for {name}")
+                return super().gen_seed(name)
+
+        monkeypatch.setattr(_modes, "_provider_factory", _FlakyProvider)
+
+        matrix_path = _make_matrix(tmp_path, with_external=False)
+        args = argparse.Namespace(
+            yes=True, matrix=matrix_path, ack_external_distribution=False
+        )
+
+        with pytest.raises(RuntimeError, match="simulated seed-gen failure"):
+            _mode_regenerate(args)
+
+        # rotation-log.md must have ZERO entries — not one for "hub" (processed
+        # successfully before the failure) with none for "clipool-worker".
+        # Before the buffer-then-flush fix, the inline rotation_log_append()
+        # call would have already written a "secret:hub" line by this point.
+        #
+        # NOTE: this test deliberately does NOT assert on-disk seed content
+        # (i.e. that seeds_dir was restored from its pre-rotation backup).
+        # _restore_on_failure()'s dead-guard bug (#2258) — where a genuine
+        # mid-loop failure left seeds_dir un-restored because the guard read
+        # "already exists" as "already restored" — is fixed above (see
+        # test_regenerate_restores_on_genuine_mid_loop_failure) and exercised
+        # there, not here. This test's contract is narrower and independent
+        # of it: regardless of seed-restore correctness, the rotation log
+        # must never claim an identity was freshly rotated when its seed
+        # generation didn't durably complete for the whole batch.
+        content = rotation_log.read_text() if rotation_log.exists() else ""
+        secret_lines = [ln for ln in content.splitlines() if "secret:" in ln]
+        assert secret_lines == [], (
+            "rotation-log.md must have zero 'secret:' lines after a mid-loop"
+            f" failure; got {secret_lines!r}"
+        )
+
+    def test_full_provision_log_failure_does_not_trigger_seed_rollback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A rotation-log FLUSH failure must not roll back already-good seeds.
+
+        Pins the other direction of the buffer-then-flush invariant: the
+        flush loop runs after every seed + auth.conf write has already
+        succeeded, so a failure in the logging bridge itself (_run_bash) must
+        fail soft (per src/factory/operator_audit.py's hardening — a
+        subprocess timeout/OSError is caught, never raised) rather than
+        propagating into _mode_regenerate's rollback path and reverting seeds
+        that were never actually compromised.
+        """
+        import argparse
+        import subprocess
+
+        from scripts._modes import _mode_regenerate
+
+        from factory import operator_audit
+
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir()
+        seeds_dir.mkdir()
+        (seeds_dir / "hub.seed").write_bytes(b"original-hub-seed")
+        (seeds_dir / "clipool-worker.seed").write_bytes(b"original-clipool-seed")
+
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
+        monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
+
+        def _raise_timeout(*_args: object, **_kwargs: object) -> None:
+            raise subprocess.TimeoutExpired(cmd="bash", timeout=1)
+
+        monkeypatch.setattr(operator_audit.subprocess, "run", _raise_timeout)
+
+        matrix_path = _make_matrix(tmp_path, with_external=False)
+        args = argparse.Namespace(
+            yes=True, matrix=matrix_path, ack_external_distribution=False
+        )
+
+        # Act — must NOT raise despite every rotation-log flush call failing.
+        _mode_regenerate(args)
+
+        # Assert — new seeds are in place; the logging failure did not trigger
+        # a rollback to the pre-rotation backup.
+        assert (seeds_dir / "hub.seed").read_bytes() != b"original-hub-seed", (
+            "a rotation-log flush failure must not roll back freshly generated seeds"
         )
 
 
@@ -613,6 +760,8 @@ class TestDefaultModeWrite:
             env={
                 "SEEDS_DIR": str(user_seeds_dir),
                 "AUTH_DIR": str(system_auth_dir),
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -662,6 +811,8 @@ class TestDefaultModeWrite:
                 "SEEDS_DIR": str(user_seeds_dir),
                 "AUTH_DIR": str(system_auth_dir),
                 "FACTORY_ACL_WRITE_ETC_NATS": "1",
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -852,6 +1003,8 @@ class TestExternalFailLoud:
         auth_dir.mkdir(parents=True)
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 
         # No externals → []
@@ -914,6 +1067,8 @@ class TestExternalFailLoud:
             env={
                 "SEEDS_DIR": str(seeds_dir),
                 "AUTH_DIR": str(auth_dir),
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -968,6 +1123,8 @@ class TestExternalFailLoud:
             env={
                 "SEEDS_DIR": str(seeds_dir),
                 "AUTH_DIR": str(auth_dir),
+                "ROTATION_LOG": str(tmp_path / "rotation-log.md"),
+                "OPERATOR_LOG": str(tmp_path / "operator.log"),
             },
         )
 
@@ -1088,6 +1245,8 @@ class TestExternalFailLoud:
 
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 
         args = argparse.Namespace(
@@ -1184,3 +1343,60 @@ class TestExternalFailLoud:
         # But manifest still prints (operator visibility)
         captured = capsys.readouterr()
         assert "External seeds require manual fan-out" in captured.err
+
+
+# ── N2/N10 — rotation-log wiring (#2246) ────────────────────────────────────
+
+
+class TestRotationLogWiring:
+    """#2246: _mode_full_provision calls rotation_log_append() per active identity."""
+
+    def test_full_provision_writes_one_rotation_log_line_per_active_identity(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """rotation-log.md gains exactly K lines for K active identities.
+
+        Spec trace: SC2 (N2, N10).
+        """
+        import argparse
+
+        from scripts._modes import _mode_full_provision
+
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir(parents=True)
+        rotation_log = tmp_path / "rotation-log.md"
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("ROTATION_LOG", str(rotation_log))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
+        monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
+
+        # K=2 active identities (hub, clipool-worker) — no externals needed.
+        matrix_path = _make_matrix(tmp_path, with_external=False)
+        active_names = {"hub", "clipool-worker"}
+        args = argparse.Namespace(
+            matrix=matrix_path, yes=True, ack_external_distribution=False
+        )
+
+        # Act
+        _mode_full_provision(args)
+
+        # Assert — exactly one secret:<name> line per active identity, with the
+        # reason/trigger pinned to the full-provision call site (not just a
+        # substring match on the name — a swapped trigger string would stay
+        # green against the name-only assertion).
+        content = rotation_log.read_text() if rotation_log.exists() else ""
+        for name in active_names:
+            matching = [ln for ln in content.splitlines() if f"secret:{name}" in ln]
+            assert len(matching) == 1, (
+                f"expected exactly one 'secret:{name}' line in rotation-log.md;"
+                f" got {matching!r} (rotation_log.exists()={rotation_log.exists()})"
+            )
+            line = matching[0]
+            assert "reason:seed-generated" in line, (
+                f"expected 'reason:seed-generated' in line: {line!r}"
+            )
+            assert "trigger:factory-acl-genkeys" in line, (
+                f"expected 'trigger:factory-acl-genkeys' in line: {line!r}"
+            )

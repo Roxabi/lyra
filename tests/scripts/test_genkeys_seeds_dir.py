@@ -181,6 +181,12 @@ class TestRootGuardRelaxed:
         auth_dir.mkdir(parents=True)
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        # Hermeticity: _mode_full_provision now calls rotation_log_append() per
+        # active identity (#2246) — without these overrides this test would
+        # write a real "secret:hub" line to the developer's actual
+        # ~/.roxabi/factory/rotation-log.md.
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 
         # Minimal 1-identity matrix
@@ -242,6 +248,12 @@ class TestRootGuardRelaxed:
         auth_dir.mkdir(parents=True)
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))  # bypasses real root check
+        # Hermeticity: _mode_full_provision now calls rotation_log_append() per
+        # active identity (#2246) — without these overrides this test would
+        # write a real "secret:hub" line to the developer's actual
+        # ~/.roxabi/factory/rotation-log.md.
+        monkeypatch.setenv("ROTATION_LOG", str(tmp_path / "rotation-log.md"))
+        monkeypatch.setenv("OPERATOR_LOG", str(tmp_path / "operator.log"))
         monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 
         import json

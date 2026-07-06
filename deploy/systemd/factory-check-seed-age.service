@@ -1,0 +1,15 @@
+[Unit]
+Description=factory nkey seed-age check — warn/fail on stale rotation-log entries
+
+[Service]
+# Type=oneshot with no RemainAfterExit=: a genuine stale-seed FAIL leaves this
+# unit `failed` until the next daily timer run, which folds into
+# `systemctl --user is-system-running` -> `degraded`. This is intentional —
+# it's the desired escalation signal for a real credential-age violation, not
+# unrelated drift. See docs/runbooks/nkey-rotation.md (#2246 review).
+Type=oneshot
+ExecStart=/usr/bin/make check-seed-age
+WorkingDirectory=%h/projects/roxabi-factory
+Environment="PATH=%h/projects/roxabi-factory/.venv/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+StandardOutput=journal
+StandardError=journal

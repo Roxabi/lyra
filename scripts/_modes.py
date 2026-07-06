@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Callable, cast
 
+from factory.operator_audit import rotation_log_append
 from factory.paths import factory_data_dir
 from scripts._acl_models import ExternalDeploy, LoadedMatrix
 from scripts._loader import load_matrix
@@ -78,6 +79,11 @@ def _auth_dir() -> Path:
     if env:
         return Path(env)
     return Path("/etc/nats/nkeys")
+
+
+def _repo_root() -> Path:
+    """Return repo root (mirrors ``gen_nkeys.py``'s ``_REPO_ROOT``)."""
+    return Path(__file__).resolve().parents[1]
 
 
 def _etc_nats_write_enabled() -> bool:
@@ -314,6 +320,11 @@ def _mode_add_identity(args: argparse.Namespace) -> None:
         return
 
     _add_identity_write(name, state, seeds_dir, matrix, provider)
+
+    if state == "added":
+        rotation_log_append(
+            _repo_root(), name, "seed-generated", trigger="factory-acl-add-identity"
+        )
 
     if state == "repaired":
         print(
@@ -583,6 +594,23 @@ def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDe
         if identity["status"] == "active"
     }
 
+    # Buffer rotation-log entries instead of appending them inline: this loop
+    # also runs inside _mode_regenerate's backup/rollback boundary
+    # (_backup_seeds / _restore_on_failure) when called via --regenerate.
+    # rotation-log.md is append-only and outside that transaction, so an
+    # inline append here would leave a false "freshly rotated" line for any
+    # identity already processed before a LATER identity's seed generation
+    # raises — the log would then claim a seed is fresh even though
+    # _restore_on_failure reverts it to its pre-rotation value, suppressing
+    # check_seed_age.py's WARN/FAIL for up to ~75-90 days (#2246 review).
+    # Flushing only after every identity's seed AND auth.conf are durably
+    # written (below) ensures a mid-loop failure yields ZERO log entries — on
+    # the --regenerate path, the rollback then sees a rotation log that still
+    # matches the (reverted) on-disk seed state. On the bare default-dispatch
+    # path (gen_nkeys.py's main(), no rollback boundary at all), the same
+    # all-or-nothing flush still avoids partial/misleading log entries on a
+    # mid-loop failure, independent of any rollback.
+    pending_rotations: list[tuple[str, str, str]] = []
     pubkeys: dict[str, str] = {}
     for name in active:
         seed = provider.gen_seed(name)
@@ -591,6 +619,7 @@ def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDe
         atomic_write(seed_file, seed_str, 0o600)
         os.chown(seed_file, uid, gid)
         pubkeys[name] = provider.pubkey_from_seed(seed)
+        pending_rotations.append((name, "seed-generated", "factory-acl-genkeys"))
 
     content = render_auth_conf(matrix, pubkeys)
 
@@ -610,6 +639,15 @@ def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDe
     user_conf = seeds_dir / "auth.conf"
     atomic_write(user_conf, content, 0o600)
     os.chown(user_conf, uid, gid)
+
+    # Flush point: every seed and auth.conf write above has already succeeded
+    # and is durable on disk — nothing below this line can fail in a way that
+    # triggers _mode_regenerate's rollback, so it's now safe to record the
+    # rotation. rotation_log_append() (via _run_bash) is itself hardened to
+    # never raise, so a flush-time logging failure fails soft (missing log
+    # line, bootstrap-grace-safe) rather than propagating.
+    for pending_name, reason, trigger in pending_rotations:
+        rotation_log_append(_repo_root(), pending_name, reason, trigger=trigger)
 
     externals: list[tuple[str, ExternalDeploy]] = []
     for name, identity in active.items():

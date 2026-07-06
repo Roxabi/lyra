@@ -164,6 +164,34 @@ def _cmd_check_grants(args: argparse.Namespace) -> None:
     print(f"check-grants: OK ({len(RESOURCES)} resources)")
 
 
+def _cmd_check_seed_age(args: argparse.Namespace) -> None:
+    """Warn/fail on stale nkey seeds per rotation-log.md (#2246)."""
+    import os
+
+    from scripts.check_seed_age import run
+
+    matrix = load_matrix(args.matrix)
+    rotation_log = Path(
+        os.environ.get("ROTATION_LOG", "~/.roxabi/factory/rotation-log.md")
+    ).expanduser()
+    seeds_dir = _seeds_dir()
+
+    warnings, failures, notes = run(matrix, rotation_log, seeds_dir)
+
+    for note in notes:
+        print(f"NOTE: {note}", file=sys.stderr)
+    for warning in warnings:
+        print(f"WARN: {warning}", file=sys.stderr)
+    for failure in failures:
+        print(f"FAIL: {failure}", file=sys.stderr)
+
+    if failures:
+        sys.exit(1)
+
+    print(f"check-seed-age: OK ({len(warnings)} warning(s))")
+    sys.exit(0)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="factory-acl",
@@ -248,7 +276,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # --- check subcommand (with sub-subcommands) ---
     ck = sub.add_parser("check", help="ACL matrix consistency checks")
-    ck_sub = ck.add_subparsers(dest="check_cmd", metavar="{retired,flows,grants}")
+    ck_sub = ck.add_subparsers(
+        dest="check_cmd", metavar="{retired,flows,grants,seed-age}"
+    )
     ck_sub.required = True
 
     ck_retired = ck_sub.add_parser(
@@ -283,6 +313,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to acl-matrix.json (default: deploy/nats/acl-matrix.json)",
     )
     ck_grants.set_defaults(func=_cmd_check_grants)
+
+    ck_seed_age = ck_sub.add_parser(
+        "seed-age",
+        help="Warn/fail on stale nkey seeds per rotation-log.md (#2246)",
+    )
+    ck_seed_age.add_argument(
+        "--matrix",
+        type=Path,
+        default=_DEFAULT_MATRIX,
+        metavar="PATH",
+        help="Path to acl-matrix.json (default: deploy/nats/acl-matrix.json)",
+    )
+    ck_seed_age.set_defaults(func=_cmd_check_seed_age)
 
     return parser
 

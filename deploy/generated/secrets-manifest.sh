@@ -23,6 +23,8 @@ declare -A SECRET_SOURCES=(
     [factory-nats-turn-writer]="nkeys/turn-writer.seed"
     [factory-nats-web]="nkeys/web-adapter.seed"
     [factory-socialmedia-api-key]="socialmedia-api-key.tok"
+    [factory-telegram-monitor-chat-id]="telegram-monitor-chat-id.tok"
+    [factory-telegram-monitor-token]="telegram-monitor-token.tok"
     [factory_blobstore_token]="n/a"
     [factory_otel_token]="n/a"
 )
@@ -47,6 +49,8 @@ declare -A SECRET_POLICY=(
     [factory-nats-turn-writer]="nats-seed"
     [factory-nats-web]="nats-seed"
     [factory-socialmedia-api-key]="optional"
+    [factory-telegram-monitor-chat-id]="optional"
+    [factory-telegram-monitor-token]="optional"
     [factory_blobstore_token]="generated"
     [factory_otel_token]="generated"
 )

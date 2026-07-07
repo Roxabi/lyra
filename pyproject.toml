@@ -120,7 +120,11 @@ filterwarnings = [
     "ignore:websockets.legacy is deprecated:DeprecationWarning",
     "ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning",
     # Temporary suppression — remove when #1035 lands (module deletion)
-    "ignore:factory.monitoring is deprecated:DeprecationWarning",
+    # Message pattern is matched via re.match (prefix, not full-string): match on the
+    # "factory.monitoring.checks" prefix shared by checks.py's warning text, since the
+    # full wording ("... (the aggregate Layer-1 runner) is deprecated ...") breaks a
+    # naive "factory.monitoring.checks is deprecated" substring match.
+    "ignore:factory.monitoring.checks:DeprecationWarning",
 ]
 markers = [
     "nats_integration: NATS integration tests requiring Docker Compose",

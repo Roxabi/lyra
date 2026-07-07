@@ -84,6 +84,11 @@ container = "factory-promtail.container"
 required_secrets = []
 host_roles = ["factory-hub"]
 
+[component.log-monitor]
+container = "factory-log-monitor.container"
+required_secrets = ["factory-telegram-monitor-token", "factory-telegram-monitor-chat-id"]
+host_roles = ["factory-hub"]
+
 # Langfuse stack — optional / deferred in otel-raw v1 (ADR-097). disabled = true:
 # units stay in deploy/quadlet/ for manual opt-in; converge/install skip them.
 [component.langfuse-postgres]

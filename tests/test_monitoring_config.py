@@ -168,3 +168,41 @@ class TestMonitoringConfigValidation:
                 telegram_token="fake",
                 telegram_admin_chat_id="12345",
             )
+
+    def test_invalid_nats_container_name_rejected(self) -> None:
+        """nats_container_name must match the same charset as service_names —
+        it is interpolated into a LogQL label matcher unescaped."""
+        from factory.monitoring.config import MonitoringConfig
+
+        with pytest.raises(ValueError, match="container name"):
+            MonitoringConfig(
+                nats_container_name="factory-nats\"} |~ \".*",
+                telegram_token="fake",
+                telegram_admin_chat_id="12345",
+            )
+
+    def test_invalid_hub_container_name_rejected(self) -> None:
+        """hub_container_name is gated by the same validator as
+        nats_container_name."""
+        from factory.monitoring.config import MonitoringConfig
+
+        with pytest.raises(ValueError, match="container name"):
+            MonitoringConfig(
+                hub_container_name="factory hub",
+                telegram_token="fake",
+                telegram_admin_chat_id="12345",
+            )
+
+    def test_valid_container_names_accepted(self) -> None:
+        """Default and other conventionally-named containers pass validation."""
+        from factory.monitoring.config import MonitoringConfig
+
+        config = MonitoringConfig(
+            nats_container_name="factory-nats",
+            hub_container_name="factory-hub",
+            telegram_token="fake",
+            telegram_admin_chat_id="12345",
+        )
+
+        assert config.nats_container_name == "factory-nats"
+        assert config.hub_container_name == "factory-hub"

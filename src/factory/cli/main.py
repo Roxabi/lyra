@@ -182,6 +182,16 @@ def _turn_writer() -> None:
     _boot(_bootstrap_turn_writer_standalone)
 
 
+@factory_app.command("log-monitor")
+def _log_monitor() -> None:
+    """Run standalone log-monitor process (V1-pull detection, #2245 — no NATS)."""
+    from factory.bootstrap.standalone.worker_standalone import (
+        _bootstrap_log_monitor_standalone,
+    )
+
+    _boot(_bootstrap_log_monitor_standalone)
+
+
 @factory_app.command("socialmedia-adapter")
 def _socialmedia_adapter() -> None:
     """Run the social media NATS satellite (tool.socialmedia → Postiz v1)."""

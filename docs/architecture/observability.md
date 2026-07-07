@@ -53,6 +53,19 @@ and alerts on Discord) is ratified design — it is not yet implemented in
 `src/factory`. Current live consumers of plane ① are the hub read-model
 projectors (below).
 
+**Standalone log monitor (`factory-log-monitor`, #2245) — plane ③, V1-pull.**
+A dedicated Quadlet container (`deploy/quadlet/factory-log-monitor.container`)
+periodically pulls NATS/hub container logs from Loki (`src/factory/monitoring/
+log_watch.py`, `checks_log.py`) and fires a raw Telegram alert
+(`escalation.py`) on threshold breach — no NATS connection, no
+`factory.metric.>` producer. It is explicitly a thin, temporary safety net:
+pull, not subscribe (plane ③'s existing HTTP-health mode, not a new plane),
+and it is not a preview of Monitoring v2/Sentinelle (no event bus, no
+dashboard surface). It should be retired or subsumed once Monitoring v2
+(#1035) ships log-scanning as a hub-native plane ③/④ consumer — see the
+`factory.monitoring` package docstring and `docs/CONFIGURATION.md`'s
+Monitoring section for the dormant-vs-live module split.
+
 ### Control-plane dashboard — sole human surface
 
 The dashboard is the **only** operator-facing surface (ADR-092). Every engine

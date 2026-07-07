@@ -437,9 +437,9 @@ health_secret = ""                            # optional health endpoint auth
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `TELEGRAM_TOKEN` | No (legacy single-bot path only; multi-bot production uses Podman secrets — see `## Bot credentials`) | Bot token |
+| `TELEGRAM_TOKEN` | Yes (factory-log-monitor) | Bot token — live credential path for the `factory-log-monitor` Quadlet unit (`deploy/quadlet/factory-log-monitor.container`, #2245); multi-bot production adapters use Podman secrets instead — see `## Bot credentials` |
 | `TELEGRAM_WEBHOOK_SECRET` | Yes (hub) | Webhook secret |
-| `TELEGRAM_ADMIN_CHAT_ID` | No (legacy single-bot path only; see #1035) | Chat ID for alerts |
+| `TELEGRAM_ADMIN_CHAT_ID` | Yes (factory-log-monitor) | Chat ID for alerts — live credential path for the `factory-log-monitor` Quadlet unit (`deploy/quadlet/factory-log-monitor.container`, #2245) |
 | `TELEGRAM_BOT_USERNAME` | No | Bot username for help text |
 
 ### Discord
@@ -664,9 +664,11 @@ startup
 
 ---
 
-## Monitoring — removed; superseded by Monitoring v2 (#1035)
+## Monitoring — mostly dormant; two modules live via `factory-log-monitor` (#2245)
 
-The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/factory/monitoring/` is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/roxabi-factory/issues/1035) spec mining. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
+The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. Most of the Python module `src/factory/monitoring/` (`checks.py`'s aggregate Layer-1 runner, `check_process`/`check_http_health`, `__main__.py`) is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/roxabi-factory/issues/1035) spec mining — it pokes `systemctl --user`, `podman logs`, and host loopback ports, none of which translate cleanly to a containerised world, and offers no UI beyond a Telegram message. This dormant path still emits a `DeprecationWarning` on import (`checks.py`, suppressed suite-wide in `pyproject.toml`'s `filterwarnings`).
+
+`checks_log.py`, `log_watch.py`, and `escalation.py`'s raw-alert path are the exception: as of #2245 they are live production code, shipped and run continuously by the standalone `factory-log-monitor` Quadlet container (`deploy/quadlet/factory-log-monitor.container`) as a thin, V1-pull safety net (ADR-091 plane③ — pull, not subscribe; see `docs/architecture/observability.md`). They never emit the deprecation warning and should be retired/subsumed once Monitoring v2 (#1035) ships log-scanning as a hub-native consumer.
 
 For ad-hoc hub-health probes, hit `/health/detail` directly:
 

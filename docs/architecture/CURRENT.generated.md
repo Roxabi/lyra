@@ -262,6 +262,11 @@
 - **Container:** factory-litellm.container
 - **Host roles:** factory-hub
 
+### log-monitor
+- **Container:** factory-log-monitor.container
+- **Required secrets:** factory-telegram-monitor-chat-id, factory-telegram-monitor-token
+- **Host roles:** factory-hub
+
 ### loki
 - **Container:** factory-loki.container
 - **Host roles:** factory-hub

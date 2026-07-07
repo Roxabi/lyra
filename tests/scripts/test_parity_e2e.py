@@ -133,61 +133,9 @@ def _flow_id(flow: dict) -> str:
     return f"{flow['requester']}-{flow['responder']}"
 
 
-def _identity_params_xfail_empty_grant(direction_index: int, direction: str) -> list:
-    """Parametrize ACTIVE_IDENTITIES, xfail(strict)-marking empty-allow-list cases.
-
-    **Live gap found while implementing #2247, not a test bug — documented
-    here, flagged in the PR description, out of scope to fix under this
-    issue.** Confirmed by isolated reproduction against a real nats-server
-    2.10.22: a user permissions block with an explicit empty allow list
-    (`publish: { allow: [] }` or `subscribe: { allow: [] }`) is NOT deny-all.
-    nats-server only builds a restrictive allow-sublist when the list is
-    non-empty; an empty list leaves that direction's allow-set nil, i.e.
-    "unrestricted" — and because the per-user `permissions` block replaces
-    `default_permissions` wholesale (not merged), the top-level
-    `deny: [">"]` fallback rendered by scripts/_renderer.py never applies
-    either. Reproduced with zero prior probes on the connection and
-    re-checked after `nc.drain()`, ruling out the `_probe()` timing race
-    that `_settle_deny` (above) exists to absorb — this is a distinct,
-    deterministic gap, not flakiness.
-
-    In `deploy/nats/acl-matrix.json` today this affects `dashboard-reader`
-    (publish: []), `gh-helper` (subscribe: []), and `ingress`
-    (subscribe: []) — computed here from EFFECTIVE_GRANTS, not hardcoded,
-    so any future identity added with an empty allow-list on either
-    direction is automatically caught by the same xfail rather than
-    silently green.
-
-    Root-cause fix tracked in #2267 (scripts/_renderer.py: emit an explicit
-    `deny: [">"]` for a direction whose intended allow-list is empty) — out
-    of scope for #2247
-    (test-only; acl-matrix.json/_renderer.py/_effective.py/ops.py are all
-    reused as-is per the approved spec's Out of Scope section). `strict=True`
-    is deliberate: once the renderer bug is fixed, this deny-probe starts
-    passing, XPASS fails the suite, and the marker must be removed by
-    whoever lands that fix — the gap cannot silently regress further nor
-    bit-rot silently once fixed.
-    """
-    params: list = []
-    for identity in ACTIVE_IDENTITIES:
-        if EFFECTIVE_GRANTS[identity][direction_index]:
-            params.append(identity)
-            continue
-        params.append(
-            pytest.param(
-                identity,
-                marks=pytest.mark.xfail(
-                    strict=True,
-                    reason=(
-                        f"{identity}: effective {direction} allow-list is "
-                        "empty — nats-server treats an empty `allow: []` as "
-                        "unrestricted, not deny-all (live gap — tracked #2267; "
-                        "xfail(strict) until renderer fix lands)"
-                    ),
-                ),
-            )
-        )
-    return params
+def _identity_params() -> list[str]:
+    """Parametrize over every active identity in the ACL matrix."""
+    return list(ACTIVE_IDENTITIES)
 
 
 def _non_flow_pair_target(flow: dict) -> str:
@@ -272,9 +220,8 @@ async def _settle_deny(
     observed empirically, both timing-shaped: (a) back-to-back probes on an
     already-"warm" connection needing one extra ~0.2s tick, and (b) a
     deny-probe that is the FIRST operation on a freshly-opened connection
-    (identities with an empty allow-list on the probed direction, e.g.
-    dashboard-reader/gh-helper/ingress) needing more cumulative elapsed time
-    than a single 0.2s wait — a one-shot wait left 3/68 nodes flaky. A
+    needing more cumulative elapsed time than a single 0.2s wait — a
+    one-shot wait left 3/68 nodes flaky. A
     bounded poll (5 × 0.2s = up to 1s total) covers both without loosening
     the assertion itself or touching the reused primitive (out of scope —
     see spec Out of Scope).
@@ -748,7 +695,7 @@ def test_ci_hardfail_guard_silent_in_github_actions_with_all_deps_present() -> N
     not NATS_PY_AVAILABLE,
     reason="nats-py not installed — skipping live ACL test",
 )
-@pytest.mark.parametrize("identity", _identity_params_xfail_empty_grant(0, "publish"))
+@pytest.mark.parametrize("identity", _identity_params())
 def test_acl_matrix_publish(
     identity: str, nats_server: NatsServerEndpoints, rendered_auth_conf: Path
 ) -> None:
@@ -801,7 +748,7 @@ def test_acl_matrix_publish(
     not NATS_PY_AVAILABLE,
     reason="nats-py not installed — skipping live ACL test",
 )
-@pytest.mark.parametrize("identity", _identity_params_xfail_empty_grant(1, "subscribe"))
+@pytest.mark.parametrize("identity", _identity_params())
 def test_acl_matrix_subscribe(
     identity: str, nats_server: NatsServerEndpoints, rendered_auth_conf: Path
 ) -> None:

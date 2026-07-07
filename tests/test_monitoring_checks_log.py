@@ -488,8 +488,15 @@ class TestLokiLogFetcher:
         with pytest.raises(LogFetchError):
             LokiLogFetcher().fetch("factory-nats", 10, pattern="permissions violation")
 
+    @pytest.mark.parametrize(
+        "pattern",
+        [
+            "permissions violation",
+            "_dict_stream_gen timeout",
+        ],
+    )
     def test_fetch_query_param_includes_case_insensitive_regex_filter(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, pattern: str
     ) -> None:
         """Regression guard for the truncation-risk fix: the server-side
         `|~ "(?i)<escaped-pattern>"` LogQL filter must survive future edits.
@@ -502,12 +509,12 @@ class TestLokiLogFetcher:
         mock_get = MagicMock(return_value=mock_response)
         monkeypatch.setattr("factory.monitoring.checks_log.httpx.get", mock_get)
 
-        LokiLogFetcher().fetch("factory-nats", 10, pattern="permissions violation")
+        LokiLogFetcher().fetch("factory-nats", 10, pattern=pattern)
 
         mock_get.assert_called_once()
         _, kwargs = mock_get.call_args
         query = kwargs["params"]["query"]
-        escaped = re.escape("permissions violation")
+        escaped = re.escape(pattern).replace(r"\ ", " ")
         assert f'|~ "(?i){escaped}"' in query
 
     def test_fetch_returns_empty_string_on_zero_matching_streams(

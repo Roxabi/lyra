@@ -75,6 +75,12 @@ extract_block() {
 # Fails with non-zero + diagnostic if: missing expected, or extra unexpected.
 assert_allow_list_equals() {
   local block="$1" direction="$2" expected="$3" name="$4"
+  # Empty matrix grant → renderer emits deny-all, not allow: [] (#2267).
+  if [ -z "$expected" ]; then
+    echo "$block" | grep -qE "${direction}:[[:space:]]*\{[[:space:]]*deny:[[:space:]]*\[\">\"\]" \
+      || { echo "FAIL: ${name} ${direction} expected deny: [\">\"] for empty grant"; exit 1; }
+    return 0
+  fi
   # Extract the `<direction>: { allow: [ ... ] }` list content
   local line
   line=$(echo "$block" | grep -oE "${direction}:[[:space:]]*\{[[:space:]]*allow:[[:space:]]*\[[^]]*\]" | head -1)

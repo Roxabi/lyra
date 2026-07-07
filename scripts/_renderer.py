@@ -30,6 +30,17 @@ def _quoted_list(items: list[str]) -> str:
     return ",".join(f'"{s}"' for s in items)
 
 
+def _perm_block(allow: list[str]) -> str:
+    """Render one publish/subscribe permissions block.
+
+    nats-server treats an explicit empty allow list as unrestricted (not deny-all)
+    because per-user permissions replace default_permissions wholesale (#2267).
+    """
+    if allow:
+        return f"{{ allow: [{_quoted_list(allow)}] }}"
+    return '{ deny: [">"] }'
+
+
 def _emit_user(
     name: str,
     pubkey: str,
@@ -44,8 +55,8 @@ def _emit_user(
         f'      nkey: "{pubkey}"\n'
         f"      # {name}\n"
         f"      permissions: {{\n"
-        f"        publish:   {{ allow: [{_quoted_list(pub_allow)}] }}\n"
-        f"        subscribe: {{ allow: [{_quoted_list(sub_allow)}] }}\n"
+        f"        publish:   {_perm_block(pub_allow)}\n"
+        f"        subscribe: {_perm_block(sub_allow)}\n"
         f"        allow_responses: {ar}\n"
         f"      }}\n"
         f"    }}"

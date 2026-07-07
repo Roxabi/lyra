@@ -88,6 +88,29 @@ class TestAllowResponsesHonored:
         assert "allow_responses: false" in rendered
 
 
+class TestEmptyGrantDenyAll:
+    def test_empty_allow_list_renders_deny_all(self) -> None:
+        """Empty matrix grant must emit deny: [\">\"], not allow: [] (#2267)."""
+        matrix: LoadedMatrix = {
+            "version": "2",
+            "request_reply_flows": [],
+            "identities": {
+                "ingress": {
+                    "status": "active",
+                    "created_at": "2026-04-21",
+                    "owner": "factory",
+                    "description": "ingress",
+                    "allow_responses": False,
+                    "publish": ["factory.event.github.>"],
+                    "subscribe": [],
+                }
+            },
+        }
+        rendered = render_auth_conf(matrix, {"ingress": "UDETINGRESS"})
+        assert "subscribe: { deny: [\">\"] }" in rendered
+        assert "allow: []" not in rendered
+
+
 class TestInboxGrantFromFlow:
     def test_inbox_grant_from_flow(self) -> None:
         """Responder's publish allow contains _inbox.<requester>.> from flows.

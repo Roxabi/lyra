@@ -507,7 +507,7 @@ class TestLokiLogFetcher:
         mock_get.assert_called_once()
         _, kwargs = mock_get.call_args
         query = kwargs["params"]["query"]
-        escaped = re.escape("permissions violation")
+        escaped = re.escape("permissions violation").replace(r"\ ", " ")
         assert f'|~ "(?i){escaped}"' in query
 
     def test_fetch_returns_empty_string_on_zero_matching_streams(

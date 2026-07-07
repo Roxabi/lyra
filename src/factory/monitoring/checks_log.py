@@ -71,7 +71,8 @@ class LokiLogFetcher:
         # true violations outside an unfiltered fetch. Case-insensitive regex is a
         # safe superset for both checks; exact counting still happens client-side
         # after fetch (unchanged from today).
-        escaped = re.escape(pattern)
+        # LogQL/RE2 rejects re.escape's `\ ` for literal spaces — keep spaces literal.
+        escaped = re.escape(pattern).replace(r"\ ", " ")
         query = f'{{systemd_unit="{container_name}.service"}} |~ "(?i){escaped}"'
         now_ns = time.time_ns()
         start_ns = now_ns - since_minutes * 60 * 1_000_000_000

@@ -158,9 +158,9 @@ def _identity_params_xfail_empty_grant(direction_index: int, direction: str) -> 
     direction is automatically caught by the same xfail rather than
     silently green.
 
-    Root-cause fix belongs in scripts/_renderer.py (e.g. emit an explicit
-    `deny: [">"]` for a direction whose intended allow-list is empty) or in
-    how empty allow-lists are represented — both out of scope for #2247
+    Root-cause fix tracked in #2267 (scripts/_renderer.py: emit an explicit
+    `deny: [">"]` for a direction whose intended allow-list is empty) — out
+    of scope for #2247
     (test-only; acl-matrix.json/_renderer.py/_effective.py/ops.py are all
     reused as-is per the approved spec's Out of Scope section). `strict=True`
     is deliberate: once the renderer bug is fixed, this deny-probe starts
@@ -181,10 +181,8 @@ def _identity_params_xfail_empty_grant(direction_index: int, direction: str) -> 
                     reason=(
                         f"{identity}: effective {direction} allow-list is "
                         "empty — nats-server treats an empty `allow: []` as "
-                        "unrestricted, not deny-all (live gap found by this "
-                        "test; out of scope to fix under #2247 — see PR "
-                        "description and _identity_params_xfail_empty_grant "
-                        "docstring)"
+                        "unrestricted, not deny-all (live gap — tracked #2267; "
+                        "xfail(strict) until renderer fix lands)"
                     ),
                 ),
             )

@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 # This import will fail at collection time — that is the intended RED state.
 from scripts._acl_models import LoadedMatrix
 from scripts._renderer import parse_auth_conf, render_auth_conf
@@ -89,26 +91,55 @@ class TestAllowResponsesHonored:
 
 
 class TestEmptyGrantDenyAll:
-    def test_empty_allow_list_renders_deny_all(self) -> None:
+    @pytest.mark.parametrize(
+        ("name", "empty_direction", "deny_fragment"),
+        [
+            ("ingress", "subscribe", "subscribe: { deny: [\">\"] }"),
+            ("dashboard-reader", "publish", "publish:   { deny: [\">\"] }"),
+        ],
+    )
+    def test_empty_grant_renders_deny_all(
+        self, name: str, empty_direction: str, deny_fragment: str
+    ) -> None:
         """Empty matrix grant must emit deny: [\">\"], not allow: [] (#2267)."""
+        publish = (
+            []
+            if empty_direction == "publish"
+            else ["factory.event.github.>"]
+        )
+        subscribe = (
+            []
+            if empty_direction == "subscribe"
+            else ["factory.event.>"]
+        )
         matrix: LoadedMatrix = {
             "version": "2",
             "request_reply_flows": [],
             "identities": {
-                "ingress": {
+                name: {
                     "status": "active",
                     "created_at": "2026-04-21",
                     "owner": "factory",
-                    "description": "ingress",
+                    "description": name,
                     "allow_responses": False,
-                    "publish": ["factory.event.github.>"],
-                    "subscribe": [],
+                    "publish": publish,
+                    "subscribe": subscribe,
                 }
             },
         }
-        rendered = render_auth_conf(matrix, {"ingress": "UDETINGRESS"})
-        assert "subscribe: { deny: [\">\"] }" in rendered
+        pubkey = f"UDET{name.upper().replace('-', '')}"
+        rendered = render_auth_conf(matrix, {name: pubkey})
+        parsed = parse_auth_conf(rendered)
+
+        assert deny_fragment in rendered
         assert "allow: []" not in rendered
+        user = parsed.users[0]
+        if empty_direction == "publish":
+            assert user.publish_allow == frozenset()
+            assert user.subscribe_allow
+        else:
+            assert user.subscribe_allow == frozenset()
+            assert user.publish_allow
 
 
 class TestInboxGrantFromFlow:

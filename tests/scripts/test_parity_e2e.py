@@ -220,9 +220,8 @@ async def _settle_deny(
     observed empirically, both timing-shaped: (a) back-to-back probes on an
     already-"warm" connection needing one extra ~0.2s tick, and (b) a
     deny-probe that is the FIRST operation on a freshly-opened connection
-    (identities with an empty allow-list on the probed direction, e.g.
-    dashboard-reader/gh-helper/ingress) needing more cumulative elapsed time
-    than a single 0.2s wait — a one-shot wait left 3/68 nodes flaky. A
+    needing more cumulative elapsed time than a single 0.2s wait — a
+    one-shot wait left 3/68 nodes flaky. A
     bounded poll (5 × 0.2s = up to 1s total) covers both without loosening
     the assertion itself or touching the reused primitive (out of scope —
     see spec Out of Scope).

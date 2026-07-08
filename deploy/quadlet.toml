@@ -54,10 +54,12 @@ container = "factory-omp.container"
 host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-omp", "factory-litellm-key", "factory_otel_token"]
 
+# socialmedia-adapter — WIP (#1713): disabled until config.toml mount + Postiz path ready.
 [component.socialmedia-adapter]
 container = "factory-socialmedia-adapter.container"
 host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-socialmedia", "factory-socialmedia-api-key", "factory_blobstore_token"]
+disabled = true
 
 [component.ingress]
 container = "factory-ingress.container"

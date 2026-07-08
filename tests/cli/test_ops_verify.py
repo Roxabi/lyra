@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -345,6 +346,36 @@ class _FakeNatsDelayed(_FakeNats):
         self._pending.clear()
 
 
+class _FakeNatsDelayedAfterFlush(_FakeNats):
+    """Fires the error_cb shortly after flush returns (M1 hub deny-probe race)."""
+
+    def __init__(self, deny_subjects: set[str] | None = None) -> None:
+        super().__init__(deny_subjects)
+        self._pending: str | None = None
+
+    async def publish(self, subject: str, data: bytes) -> None:
+        self.published.append(subject)
+        if subject in self._deny:
+            self._pending = subject
+
+    async def flush(self, timeout: float = 2.0) -> None:  # noqa: ARG002
+        if self._pending and self._error_cb is not None:
+            subj = self._pending
+            self._pending = None
+
+            async def _deliver() -> None:
+                await asyncio.sleep(0.05)  # NATS delivery window
+                cb = self._error_cb
+                if cb is not None:
+                    await cb(
+                        Exception(
+                            f'nats: permissions violation for publish to "{subj}"'
+                        )
+                    )
+
+            asyncio.create_task(_deliver())
+
+
 def test_verify_handles_post_flush_error_arrival(
     tmp_path: Path, matrix_two: Path
 ) -> None:
@@ -355,6 +386,35 @@ def test_verify_handles_post_flush_error_arrival(
 
     async def _factory(url, **kwargs):  # noqa: ARG001
         fake = _FakeNatsDelayed(next(iterator, set()))
+        fake.set_error_cb(kwargs.get("error_cb"))
+        return fake
+
+    with patch("factory.cli.ops.nats.connect", side_effect=_factory):
+        result = runner.invoke(
+            factory_app,
+            [
+                "ops",
+                "verify",
+                "--matrix",
+                str(matrix_two),
+                "--seeds-dir",
+                str(seeds),
+            ],
+        )
+    assert result.exit_code == 0, result.stdout
+    assert "2/2 deny checks passed" in result.stdout
+
+
+def test_verify_handles_delayed_post_flush_error_arrival(
+    tmp_path: Path, matrix_two: Path
+) -> None:
+    """Permission error landing after flush+sleep(0) is caught via settle window."""
+    seeds = _seed_dir(tmp_path, ["hub", "monitor"])
+    deny = [{"factory.verify.deny.hub"}, {"factory.verify.deny.monitor"}]
+    iterator = iter(deny)
+
+    async def _factory(url, **kwargs):  # noqa: ARG001
+        fake = _FakeNatsDelayedAfterFlush(next(iterator, set()))
         fake.set_error_cb(kwargs.get("error_cb"))
         return fake
 

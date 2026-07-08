@@ -211,11 +211,13 @@ async def _probe(
     await asyncio.sleep(0)
     denied = any(_is_permission_error(e) for e in errors[before:])
     if expect_deny:
-        return (
-            (True, "permission denied")
-            if denied
-            else (False, "publish accepted (expected deny)")
-        )
+        if not denied:
+            for _ in range(5):
+                await asyncio.sleep(0.2)
+                if any(_is_permission_error(e) for e in errors[before:]):
+                    return True, "permission denied (delayed delivery)"
+            return False, "publish accepted (expected deny)"
+        return True, "permission denied"
     return (False, "permission denied") if denied else (True, "published")
 
 

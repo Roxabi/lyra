@@ -29,7 +29,7 @@ EXPECTED_CONTAINERS = [
     "factory-turn-writer",
     "factory-blobstore",
     "factory-omp",
-    "factory-socialmedia-adapter",
+    # factory-socialmedia-adapter — disabled in quadlet.toml until #1713 ready.
     "factory-ingress",
     "factory-cloudflared",
     "factory-loki",
@@ -55,12 +55,14 @@ def _source_and_run(helper: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_emits_exactly_20_containers() -> None:
+def test_emits_enabled_container_count() -> None:
     """Real helper against the real quadlet.toml → returncode 0, enabled names only."""
     result = _source_and_run(HELPER)
     assert result.returncode == 0, result.stderr
     lines = [line for line in result.stdout.splitlines() if line]
-    assert len(lines) == 20, f"expected 20 containers, got {len(lines)}: {lines}"
+    assert len(lines) == len(EXPECTED_CONTAINERS), (
+        f"expected {len(EXPECTED_CONTAINERS)} containers, got {len(lines)}: {lines}"
+    )
 
 
 def test_declaration_order() -> None:

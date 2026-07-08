@@ -7,6 +7,8 @@ helpers remain trivially unit-testable without touching Typer.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 FACTORY_OWNED_IDENTITIES: frozenset[str] = frozenset(
     {
         "hub",
@@ -18,6 +20,48 @@ FACTORY_OWNED_IDENTITIES: frozenset[str] = frozenset(
 )
 
 BARE_INBOX_PATTERNS: frozenset[str] = frozenset({"_INBOX.>", "_inbox.>"})
+
+
+@dataclass
+class CheckRow:
+    identity: str
+    subject: str
+    kind: str  # "pub" | "deny"
+    expected: str
+    actual: str
+    ok: bool
+
+
+@dataclass
+class IdentityResult:
+    identity: str
+    rows: list[CheckRow] = field(default_factory=list)
+    skipped_reason: str | None = None
+
+    @property
+    def pub_passed(self) -> int:
+        return sum(1 for r in self.rows if r.kind == "pub" and r.ok)
+
+    @property
+    def deny_passed(self) -> int:
+        return sum(1 for r in self.rows if r.kind == "deny" and r.ok)
+
+    @property
+    def first_failure(self) -> CheckRow | None:
+        return next((r for r in self.rows if not r.ok), None)
+
+
+def active_identities(identities: dict[str, dict]) -> dict[str, dict]:
+    """Identities rendered in live auth.conf (``status != \"retired\"``).
+
+    Mirrors ``scripts._effective.effective_grants`` retirement filter — retired
+    rows stay in the matrix for history but are not NATS-authenticated.
+    """
+    return {
+        name: spec
+        for name, spec in identities.items()
+        if spec.get("status") != "retired"
+    }
 
 
 def audit_matrix_inbox_drift(
@@ -60,3 +104,30 @@ def emit_drift_report(identities: dict[str, dict], echo) -> bool:
     for finding in drift:
         echo(format_drift_finding(finding), err=True)
     return bool(drift)
+
+
+def print_verify_report(results: list[IdentityResult], echo) -> int:
+    """Summarize verify results; return 0 on full pass, 1 if any fail or skip."""
+    total_pub_pass = sum(r.pub_passed for r in results)
+    total_pub = sum(1 for r in results for c in r.rows if c.kind == "pub")
+    total_deny_pass = sum(r.deny_passed for r in results)
+    total_deny = sum(1 for r in results for c in r.rows if c.kind == "deny")
+    skipped = [r for r in results if r.skipped_reason]
+    failed = [r for r in results if r.first_failure]
+
+    for r in skipped:
+        echo(f"SKIP {r.identity}: {r.skipped_reason}")
+
+    if failed and (first := failed[0].first_failure):
+        echo(
+            f"FAIL {first.identity} {first.kind} {first.subject} — "
+            f"expected {first.expected!r}, got {first.actual!r}"
+        )
+
+    echo(
+        f"{len(results)} identities, "
+        f"{total_pub_pass}/{total_pub} pub checks passed, "
+        f"{total_deny_pass}/{total_deny} deny checks passed"
+        + (f", {len(skipped)} skipped" if skipped else "")
+    )
+    return 1 if failed or skipped else 0

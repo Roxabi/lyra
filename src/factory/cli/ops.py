@@ -13,7 +13,6 @@ import json
 import os
 import stat as _stat
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -21,7 +20,13 @@ import nats.errors
 import typer
 from nats.aio.client import Client as NATS
 
-from factory.cli.ops_audit import emit_drift_report
+from factory.cli.ops_audit import (
+    CheckRow,
+    IdentityResult,
+    active_identities,
+    emit_drift_report,
+    print_verify_report,
+)
 from factory.cli.ops_nats import (
     default_hub_seed,
     default_nats_url,
@@ -67,35 +72,6 @@ def _resolve_matrix_path(path: Path) -> Path:
     raise typer.BadParameter(
         f"matrix file not found: {p} — pass --matrix or set ROXABI_FACTORY_REPO"
     )
-
-
-@dataclass
-class CheckRow:
-    identity: str
-    subject: str
-    kind: str  # "pub" | "deny"
-    expected: str
-    actual: str
-    ok: bool
-
-
-@dataclass
-class IdentityResult:
-    identity: str
-    rows: list[CheckRow] = field(default_factory=list)
-    skipped_reason: str | None = None
-
-    @property
-    def pub_passed(self) -> int:
-        return sum(1 for r in self.rows if r.kind == "pub" and r.ok)
-
-    @property
-    def deny_passed(self) -> int:
-        return sum(1 for r in self.rows if r.kind == "deny" and r.ok)
-
-    @property
-    def first_failure(self) -> CheckRow | None:
-        return next((r for r in self.rows if not r.ok), None)
 
 
 def _load_matrix(path: Path) -> dict[str, dict]:
@@ -286,10 +262,18 @@ def verify(
         if unknown:
             raise typer.BadParameter(f"unknown identity name(s): {', '.join(unknown)}")
         identities = {n: identities[n] for n in only}
+        retired = [n for n in identities if identities[n].get("status") == "retired"]
+        if retired:
+            raise typer.BadParameter(
+                "identity/identities retired, not in live auth.conf: "
+                + ", ".join(retired)
+            )
+
+    identities = active_identities(identities)
 
     drift = emit_drift_report(identities, typer.echo)
     results = asyncio.run(_verify_all(resolved_url, identities, seeds_path))
-    exit_code = _print_report(results)
+    exit_code = print_verify_report(results, typer.echo)
     raise typer.Exit(max(exit_code, 1 if drift else 0))
 
 
@@ -301,32 +285,6 @@ async def _verify_all(
         seed_path = seed_path_for(seeds_dir, name)
         out.append(await _verify_identity(nats_url, name, spec, seed_path))
     return out
-
-
-def _print_report(results: list[IdentityResult]) -> int:
-    total_pub_pass = sum(r.pub_passed for r in results)
-    total_pub = sum(1 for r in results for c in r.rows if c.kind == "pub")
-    total_deny_pass = sum(r.deny_passed for r in results)
-    total_deny = sum(1 for r in results for c in r.rows if c.kind == "deny")
-    skipped = [r for r in results if r.skipped_reason]
-    failed = [r for r in results if r.first_failure]
-
-    for r in skipped:
-        typer.echo(f"SKIP {r.identity}: {r.skipped_reason}")
-
-    if failed and (first := failed[0].first_failure):
-        typer.echo(
-            f"FAIL {first.identity} {first.kind} {first.subject} — "
-            f"expected {first.expected!r}, got {first.actual!r}"
-        )
-
-    typer.echo(
-        f"{len(results)} identities, "
-        f"{total_pub_pass}/{total_pub} pub checks passed, "
-        f"{total_deny_pass}/{total_deny} deny checks passed"
-        + (f", {len(skipped)} skipped" if skipped else "")
-    )
-    return 1 if failed or skipped else 0
 
 
 @ops_app.command("publish-host-event")

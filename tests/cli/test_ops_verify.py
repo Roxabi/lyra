@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 
 from factory.cli import factory_app
 from factory.cli.ops import _expand_subject, _is_permission_error, _load_matrix
+from factory.cli.ops_audit import active_identities
 from factory.cli.ops_nats import default_hub_seed, inbox_prefix_for_seed
 
 runner = CliRunner()
@@ -142,6 +143,7 @@ def matrix_two(tmp_path: Path) -> Path:
         p,
         {
             "hub": {
+                "status": "active",
                 "publish": [
                     "factory.outbound.telegram.>",
                     "factory.llm.generate.request",
@@ -149,6 +151,7 @@ def matrix_two(tmp_path: Path) -> Path:
                 "subscribe": [],
             },
             "monitor": {
+                "status": "active",
                 "publish": ["lyra.monitor.>"],
                 "subscribe": [],
             },
@@ -259,6 +262,82 @@ def test_verify_skips_when_seed_missing(tmp_path: Path, matrix_two: Path) -> Non
     assert result.exit_code == 1
     assert "SKIP monitor: seed missing" in result.stdout
     assert "1 skipped" in result.stdout
+
+
+def test_active_identities_excludes_retired() -> None:
+    identities = {
+        "hub": {"status": "active", "publish": []},
+        "monitor": {"status": "retired", "publish": []},
+        "legacy": {"publish": []},
+    }
+    assert list(active_identities(identities)) == ["hub", "legacy"]
+
+
+def test_verify_excludes_retired_identities(tmp_path: Path) -> None:
+    matrix = tmp_path / "matrix.json"
+    _write_matrix(
+        matrix,
+        {
+            "hub": {
+                "status": "active",
+                "publish": ["factory.event.>"],
+                "subscribe": [],
+            },
+            "monitor": {
+                "status": "retired",
+                "publish": ["factory.monitor.>"],
+                "subscribe": [],
+            },
+        },
+    )
+    seeds = _seed_dir(tmp_path, ["hub", "monitor"])
+    deny = [{"factory.verify.deny.hub"}]
+    with patch("factory.cli.ops.nats.connect", _patched_connect(deny)):
+        result = runner.invoke(
+            factory_app,
+            [
+                "ops",
+                "verify",
+                "--matrix",
+                str(matrix),
+                "--seeds-dir",
+                str(seeds),
+            ],
+        )
+    assert result.exit_code == 0, result.stdout
+    assert "1 identities" in result.stdout
+    assert "monitor" not in result.stdout
+    assert "1/1 deny checks passed" in result.stdout
+
+
+def test_verify_only_retired_rejects(tmp_path: Path) -> None:
+    matrix = tmp_path / "matrix.json"
+    _write_matrix(
+        matrix,
+        {
+            "monitor": {
+                "status": "retired",
+                "publish": ["factory.monitor.>"],
+                "subscribe": [],
+            },
+        },
+    )
+    seeds = _seed_dir(tmp_path, ["monitor"])
+    result = runner.invoke(
+        factory_app,
+        [
+            "ops",
+            "verify",
+            "--matrix",
+            str(matrix),
+            "--seeds-dir",
+            str(seeds),
+            "--only",
+            "monitor",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "retired" in result.output
 
 
 def test_verify_only_filter(tmp_path: Path, matrix_two: Path) -> None:

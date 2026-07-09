@@ -6,6 +6,8 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
+from factory.adapters.web.web_agui import StreamFormat, is_stream_terminal
+
 
 @dataclass
 class WebSession:
@@ -15,6 +17,7 @@ class WebSession:
         default_factory=lambda: asyncio.Queue(maxsize=512)
     )
     closed: bool = False
+    stream_format: StreamFormat = "legacy"
 
 
 class WebSessionHub:
@@ -29,6 +32,9 @@ class WebSessionHub:
             session = WebSession()
             self._sessions[session_id] = session
         return session
+
+    def set_stream_format(self, session_id: str, stream_format: StreamFormat) -> None:
+        self.get_or_create(session_id).stream_format = stream_format
 
     def close(self, session_id: str) -> None:
         session = self._sessions.pop(session_id, None)
@@ -45,7 +51,7 @@ class WebSessionHub:
             # Terminal events (done/error) must never be dropped — the SSE
             # generator only exits when it dequeues one. Evict the oldest queued
             # item to make room. Non-terminal events (deltas/pings) may drop.
-            if event.get("type") in {"done", "error"}:
+            if is_stream_terminal(event, session.stream_format):
                 try:
                     session.queue.get_nowait()
                 except asyncio.QueueEmpty:

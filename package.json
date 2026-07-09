@@ -9,7 +9,9 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "dev:dashboard": "bun --filter @roxabi-factory/dashboard dev",
+    "dev:dashboard-v2": "bun --filter @roxabi-factory/dashboard-v2 dev",
     "build:dashboard": "bun --filter @roxabi-factory/dashboard build",
+    "build:dashboard-v2": "bun --filter @roxabi-factory/dashboard-v2 build",
     "typecheck": "bun run --filter '@roxabi-factory/*' typecheck",
     "lint": "biome check apps packages brand",
     "format": "biome check --write apps packages brand"

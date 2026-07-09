@@ -17,6 +17,8 @@ from factory.adapters.shared.inbound import (
     get_or_create_parser,
     run_inbound_guarded,
 )
+from factory.adapters.web.e2e_stub import e2e_enabled, publish_e2e_agui_reply
+from factory.adapters.web.web_agui import StreamFormat, is_stream_terminal, run_error
 from factory.inbound.wire_parser_web import WebWireParser
 from roxabi_contracts.dashboard import ChatRequest, ChatResponse
 
@@ -40,7 +42,10 @@ def build_chat_router(  # noqa: C901
         return {"agents": adapter.agent_names}
 
     @router.post("/api/chat", response_model=ChatResponse)
-    async def post_chat(req: ChatRequest) -> ChatResponse:
+    async def post_chat(
+        req: ChatRequest,
+        format: StreamFormat = Query(default="legacy"),
+    ) -> ChatResponse:
         session_id = req.session_id or uuid4().hex
         raw = {
             "agent": req.agent,
@@ -55,14 +60,18 @@ def build_chat_router(  # noqa: C901
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not adapter.ready:
             raise HTTPException(status_code=503, detail="adapter not ready")
+        adapter.sessions.set_stream_format(session_id, format)
 
         kit = get_inbound_pipeline_kit()
         parser = get_or_create_parser(kit.parser_cache, adapter, WebWireParser)
 
         async def _web_backpressure(text: str) -> None:
-            await adapter.sessions.publish(
-                session_id, {"type": "error", "message": text}
-            )
+            if format == "agui":
+                await adapter.sessions.publish(session_id, run_error(message=text))
+            else:
+                await adapter.sessions.publish(
+                    session_id, {"type": "error", "message": text}
+                )
 
         await run_inbound_guarded(
             pipeline=kit.pipeline,
@@ -74,6 +83,10 @@ def build_chat_router(  # noqa: C901
             send_backpressure=_web_backpressure,
             on_drop=None,
         )
+        if e2e_enabled() and format == "agui":
+            asyncio.create_task(
+                publish_e2e_agui_reply(adapter.sessions, session_id, req.text)
+            )
         stream_token = tokens.mint(session_id)
         return ChatResponse(session_id=session_id, stream_token=stream_token)
 
@@ -81,10 +94,16 @@ def build_chat_router(  # noqa: C901
     async def stream(
         session_id: str,
         token: str | None = Query(default=None),
+        format: StreamFormat = Query(default="legacy"),
     ) -> StreamingResponse:
         if not tokens.verify(session_id, token):
             raise HTTPException(status_code=403, detail="invalid stream token")
         session = adapter.sessions.get_or_create(session_id)
+        if session.stream_format != format:
+            raise HTTPException(
+                status_code=403,
+                detail="stream format mismatch",
+            )
 
         async def event_gen() -> AsyncIterator[str]:
             try:
@@ -94,10 +113,13 @@ def build_chat_router(  # noqa: C901
                             session.queue.get(), timeout=120.0
                         )
                     except TimeoutError:
-                        yield "data: " + json.dumps({"type": "ping"}) + "\n\n"
+                        if format == "agui":
+                            yield ": ping\n\n"
+                        else:
+                            yield "data: " + json.dumps({"type": "ping"}) + "\n\n"
                         continue
                     yield "data: " + json.dumps(item) + "\n\n"
-                    if item.get("type") in {"done", "error"}:
+                    if is_stream_terminal(item, format):
                         break
             finally:
                 adapter.sessions.close(session_id)

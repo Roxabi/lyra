@@ -1,0 +1,110 @@
+{
+  "subtitle": "Control plane status — agents, jobs, and active chats.",
+  "alerts": {
+    "title": "Alerts",
+    "agentsOffline_one": "{{count}} agent offline",
+    "agentsOffline_other": "{{count}} agents offline",
+    "jobsActive_one": "{{count}} active job",
+    "jobsActive_other": "{{count}} active jobs",
+    "enginesDown_one": "{{count}} observability engine unreachable",
+    "enginesDown_other": "{{count}} observability engines unreachable",
+    "allClear": "All systems responding."
+  },
+  "agents": {
+    "title": "Agents",
+    "loadError": "Failed to load agent roster.",
+    "empty": "No agents in the roster.",
+    "emptyHint": "Hub agents will appear here with harness status.",
+    "colAgent": "Agent",
+    "colHarness": "Harness",
+    "colStatus": "Status"
+  },
+  "jobs": {
+    "title": "Active jobs",
+    "loadError": "Failed to load jobs.",
+    "empty": "No jobs running.",
+    "emptyHint": "Active OMP jobs show up here in real time.",
+    "colJob": "Job",
+    "colAgent": "Agent",
+    "colStatus": "Status"
+  },
+  "fleet": {
+    "subtitle": "M₁ container liveness — Roxabi units report over NATS; third-party rows show as non-instrumented.",
+    "tableTitle": "Fleet",
+    "count": "{{count}} container(s)",
+    "searchPlaceholder": "Search containers…",
+    "emptyFiltered": "No containers match the filters.",
+    "filters": {
+      "status": "Status"
+    },
+    "loadError": "Could not load fleet snapshot.",
+    "empty": "No fleet rows in catalog.",
+    "emptyHint": "Instrumented containers will appear here via NATS.",
+    "columns": {
+      "name": "Container",
+      "status": "Status",
+      "health": "Health",
+      "image": "Image",
+      "revision": "Revision",
+      "age": "Age",
+      "imageDigest": "Image digest"
+    },
+    "status": {
+      "ok": "OK",
+      "stale": "Stale",
+      "unknown": "Unknown",
+      "pinned": "Pinned"
+    },
+    "imageDigest": {
+      "current": "Current",
+      "stale": "Outdated",
+      "unknown_compare": "Unknown",
+      "n/a": "N/A"
+    }
+  },
+  "pipeline": {
+    "subtitle": "Open PRs and recent merges — CI, publish, M₁ and Cloudflare stages from ingress events.",
+    "disclaimer": "Indicative only — not for merge decisions. GitHub checks remain canonical.",
+    "tableTitle": "Release pipeline",
+    "loadError": "Could not load pipeline state.",
+    "loading": "Connecting to pipeline stream…",
+    "empty": "No PRs tracked yet — waiting for GitHub ingress events.",
+    "noMatches": "No PRs match the active filters.",
+    "stale": "stale",
+    "lastEvent": "Last event {{age}} ago",
+    "filters": {
+      "ci_red": "CI red",
+      "awaiting_reviewed": "Awaiting reviewed",
+      "deploy_pending": "Deploy pending"
+    },
+    "reviewed": "reviewed",
+    "notReviewed": "no reviewed label",
+    "merged": "merged",
+    "columns": {
+      "ci": "CI",
+      "merge": "Merge",
+      "publish": "Publish",
+      "m1": "M₁",
+      "cf": "CF"
+    },
+    "stage": {
+      "pending": "pending",
+      "running": "running",
+      "success": "ok",
+      "failure": "failed",
+      "skipped": "skipped",
+      "unknown": "unknown",
+      "n/a": "n/a"
+    }
+  },
+  "engines": {
+    "loadError": "Failed to load ops engine health.",
+    "loading": "Loading ops health…"
+  },
+  "chats": {
+    "title": "Recent chats",
+    "empty": "No open chats.",
+    "emptyHint": "Open a chat tab to start an operator session.",
+    "openChat": "Open chat"
+  }
+}

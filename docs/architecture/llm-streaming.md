@@ -129,7 +129,9 @@ single permitted write point. Tool-result content is sanitized before emit
 → ADR-070
 
 ADR-070 back-ported four AG-UI event families into `core/messaging/render_events.py`.
-AG-UI is **not** adopted as a wire format.
+Dashboard-v2 (ADR-102) opts into AG-UI as an **edge wire format** via `?format=agui` on
+`POST /api/chat` and `GET /api/stream/{session_id}`; the hub still speaks RenderEvent v2
+internally — the web adapter serializes at the SSE boundary only.
 
 | Family | Events |
 |---|---|
@@ -148,8 +150,13 @@ identifier). `RunErrorRenderEvent.code` is drawn from the canonical
 `None` survives only as the pre-taxonomy sentinel. Every event carries a `SCHEMA_VERSION_*`
 constant (ADR-049 discipline) and is `frozen=True`.
 
-Deferred (gated on a concrete consumer): StateSnapshot/Delta, ActivitySnapshot/Delta,
-AG-UI HTTP/SSE adapter.
+**Dashboard-v2 wire (ADR-102, Lot 1–2):** `POST /api/chat?format=agui` negotiates format;
+`GET /api/stream/{session_id}?format=agui&token=…` returns AG-UI SSE (`RUN_*`,
+`TEXT_MESSAGE_*`, reasoning families). Mismatched `format` → HTTP 403. AG-UI streams emit
+`: ping` keepalives on idle (120s queue timeout). Lot 3 (`TOOL_CALL_*` fidelity,
+`edit_tool_recap`) remains deferred.
+
+Deferred (no concrete consumer yet): StateSnapshot/Delta, ActivitySnapshot/Delta.
 
 ### Outbound delivery
 

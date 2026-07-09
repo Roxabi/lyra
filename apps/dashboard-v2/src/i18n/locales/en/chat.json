@@ -1,0 +1,56 @@
+{
+  "empty": "Create a chat to get started.",
+  "agentsLoadError": "Failed to load agents. Chat is unavailable until the roster can be fetched.",
+  "sessionsLoadError": "Failed to load sessions.",
+  "loadingAgents": "Loading agents…",
+  "defaultsWarning": "Could not load DB defaults for {{agent}}; using fallback harness/model.",
+  "context": {
+    "title": "Context",
+    "agentStatus": "Agent status",
+    "activeJobs": "Active jobs"
+  },
+  "sidebar": {
+    "agentLabel": "Agent",
+    "new": "New",
+    "activeChats": "Active chats",
+    "closeTab": "Close",
+    "resume": "Resume",
+    "loading": "Loading…",
+    "noSessions": "No sessions",
+    "emptyMessage": "(empty)",
+    "turnCount": "{{count}} turns",
+    "newSession": "new session",
+    "sessionHint": "session {{id}}"
+  },
+  "composer": {
+    "placeholder": "Write your message…",
+    "placeholderOffline": "Agent offline",
+    "send": "Send",
+    "stop": "Stop"
+  },
+  "message": {
+    "thinking": "Thinking"
+  },
+  "emptyState": {
+    "title": "Conversation with {{agent}}",
+    "offline": "Agent is offline. Check the harness or try again later.",
+    "online": "Send a message to start. Responses appear here in real time."
+  },
+  "picker": {
+    "harness": "Harness",
+    "model": "Model",
+    "offline": "Offline",
+    "dbOverride": "≠ DB default ({{default}})"
+  },
+  "errors": {
+    "adapterNotReady": "Adapter not ready — try again shortly.",
+    "sendFailed": "Failed to send message.",
+    "agentsFetchFailed": "Failed to load agents.",
+    "statusFetchFailed": "Failed to load agent status.",
+    "sessionsFetchFailed": "Failed to load sessions.",
+    "turnsFetchFailed": "Failed to load session history.",
+    "resumeFailed": "Failed to resume session.",
+    "resumeRejected": "Resume rejected: {{message}}",
+    "streamFailed": "Stream connection failed."
+  }
+}

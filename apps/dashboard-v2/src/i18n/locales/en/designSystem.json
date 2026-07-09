@@ -1,0 +1,12 @@
+{
+  "title": "Design system",
+  "subtitle": "Forge theme tokens, shadcn primitives, and operator UI patterns for dashboard-v2.",
+  "forgeTheme": "Forge theme",
+  "forgeThemeHint": "Semantic shadcn variables mapped from brand/tokens — primary is Forge Orange, surfaces are Obsidian.",
+  "typography": "Typography",
+  "typographyHint": "Inter (body) · Outfit (headings) · JetBrains Mono (job IDs, logs, code).",
+  "buttons": "Buttons",
+  "badges": "Badges",
+  "statusColors": "Status colors",
+  "statusColorsHint": "Job and agent status hues are distinct from primary."
+}

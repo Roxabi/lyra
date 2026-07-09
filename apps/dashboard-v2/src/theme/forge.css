@@ -1,0 +1,99 @@
+/**
+ * Forge brand → shadcn semantic tokens (native theming).
+ * SSOT: brand/tokens/*.css at repo root. Values mapped onto shadcn variables
+ * consumed by @theme inline in index.css — no parallel --brand-* namespace.
+ *
+ * | Forge token        | shadcn variable      |
+ * |--------------------|----------------------|
+ * | --bg               | --background         |
+ * | --bg-card          | --card               |
+ * | --bg-elevated      | --secondary, --muted |
+ * | --text             | --foreground         |
+ * | --text-muted       | --muted-foreground   |
+ * | --accent (orange)  | --primary, --ring    |
+ * | --accent-dim       | --accent (subtle bg) |
+ * | --border           | --border             |
+ * | status-*           | --status-* (extended)|
+ */
+
+/* Light — brand/tokens/colors.css [data-theme="light"] */
+:root {
+  --background: #fafaf9;
+  --foreground: #1c1917;
+  --card: #ffffff;
+  --card-foreground: #1c1917;
+  --popover: #ffffff;
+  --popover-foreground: #1c1917;
+  --primary: #c2410c;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f0;
+  --secondary-foreground: #1c1917;
+  --muted: #f4f4f0;
+  --muted-foreground: #57534e;
+  --accent: rgba(194, 65, 12, 0.12);
+  --accent-foreground: #1c1917;
+  --destructive: #f87171;
+  --border: rgba(0, 0, 0, 0.08);
+  --input: rgba(0, 0, 0, 0.12);
+  --ring: #c2410c;
+  --chart-1: #06b6d4;
+  --chart-2: #f59e0b;
+  --chart-3: #c2410c;
+  --chart-4: #10b981;
+  --chart-5: #a855f7;
+  --radius: 0.5rem;
+  --sidebar: #f4f4f0;
+  --sidebar-foreground: #1c1917;
+  --sidebar-primary: #c2410c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f0ec;
+  --sidebar-accent-foreground: #1c1917;
+  --sidebar-border: rgba(0, 0, 0, 0.08);
+  --sidebar-ring: #c2410c;
+
+  --status-open: #06b6d4;
+  --status-closing: #f59e0b;
+  --status-error: #f87171;
+  --status-idle: #6b6560;
+}
+
+/* Dark — default cockpit (brand/tokens/colors.css :root) */
+.dark {
+  --background: #0a0a0f;
+  --foreground: #fafafa;
+  --card: #18181f;
+  --card-foreground: #fafafa;
+  --popover: #18181f;
+  --popover-foreground: #fafafa;
+  --primary: #e85d04;
+  --primary-foreground: #fafafa;
+  --secondary: #101018;
+  --secondary-foreground: #fafafa;
+  --muted: #101018;
+  --muted-foreground: #9ca3af;
+  --accent: rgba(232, 93, 4, 0.14);
+  --accent-foreground: #fafafa;
+  --destructive: #f87171;
+  --border: rgba(255, 255, 255, 0.07);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #e85d04;
+  --chart-1: #06b6d4;
+  --chart-2: #f59e0b;
+  --chart-3: #e85d04;
+  --chart-4: #10b981;
+  --chart-5: #a855f7;
+  --radius: 0.5rem;
+  --sidebar: #101018;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #e85d04;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #1f1f28;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-ring: #e85d04;
+
+  --status-open: #06b6d4;
+  --status-closing: #f59e0b;
+  --status-error: #f87171;
+  --status-idle: #7d8895;
+}

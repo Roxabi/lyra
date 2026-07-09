@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from factory.adapters.web import web_agui
 from factory.adapters.web.web_formatter import WebFormatter, web_session_id
 from factory.core.messaging.message import InboundMessage, OutboundMessage
 from factory.outbound.emitter import OutboundEmitter
@@ -21,6 +22,29 @@ async def send(
     """Push a complete reply to the browser session."""
     session_id = web_session_id(original_msg)
     text = outbound.to_text()
+    session = adapter.sessions.get_or_create(session_id)
+    if session.stream_format == "agui":
+        run_id = web_agui.new_run_id()
+        message_id = web_agui.new_message_id()
+        await adapter.sessions.publish(
+            session_id, web_agui.run_started(thread_id=session_id, run_id=run_id)
+        )
+        await adapter.sessions.publish(
+            session_id, web_agui.text_start(message_id=message_id)
+        )
+        if text:
+            await adapter.sessions.publish(
+                session_id,
+                web_agui.text_content(message_id=message_id, delta=text),
+            )
+        await adapter.sessions.publish(
+            session_id, web_agui.text_end(message_id=message_id)
+        )
+        await adapter.sessions.publish(
+            session_id,
+            web_agui.run_finished(thread_id=session_id, run_id=run_id),
+        )
+        return
     await adapter.sessions.publish(session_id, {"type": "delta", "text": text})
     await adapter.sessions.publish(session_id, {"type": "done"})
 

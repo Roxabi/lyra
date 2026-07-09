@@ -193,6 +193,30 @@ quality_gates:
     # guaranteed red. Identity asserted by tests/scripts/test_qg.sh.
     files: ^(apps/dashboard/|packages/shared/|brand/|src/factory/adapters/web/|tests/e2e/dashboard/)|^(bun\.lock|package\.json)$
 
+  dashboard_v2_unit_test:
+    enabled: true
+    script: bun run --filter @roxabi-factory/dashboard-v2 test
+    requires: bun
+    stages: [pre-push, ci]
+    files: ^(apps/dashboard-v2/|packages/shared/|brand/)|^(bun\.lock|package\.json)$
+    description: Vitest unit tests for dashboard-v2 SPA
+
+  dashboard_v2_build:
+    enabled: true
+    script: bun run build:dashboard-v2
+    requires: bun
+    stages: [ci]
+    files: ^(apps/dashboard-v2/|packages/shared/|brand/|src/factory/adapters/web/|tests/e2e/dashboard-v2/)|^(bun\.lock|package\.json)$
+    description: Dashboard-v2 SPA production build
+
+  dashboard_v2_dist_assert:
+    enabled: true
+    script: test -f apps/dashboard-v2/dist/index.html
+    stages: [ci]
+    # MUST stay byte-identical to dashboard_v2_build's filter (asserted by
+    # tests/scripts/test_qg.sh).
+    files: ^(apps/dashboard-v2/|packages/shared/|brand/|src/factory/adapters/web/|tests/e2e/dashboard-v2/)|^(bun\.lock|package\.json)$
+
   trufflehog:
     enabled: true
     script: trufflehog git file://. --only-verified --fail
@@ -389,6 +413,7 @@ qg:
       - pytest_smoke
       - doc_drift_bundle
       - dashboard_unit_test
+      - dashboard_v2_unit_test
       - trufflehog
       - check_single_write_tool_display_config
       - no_runtime_toml_bots
@@ -405,9 +430,12 @@ qg:
       - test_sleep
     ci:
       - dashboard_build
+      - dashboard_v2_build
       - lint_js
       - dashboard_unit_test
+      - dashboard_v2_unit_test
       - dashboard_dist_assert
+      - dashboard_v2_dist_assert
       - file_length
       - file_exemptions
       - hardcoded_constants
@@ -446,7 +474,9 @@ qg:
       - lint
       - typecheck
       - dashboard_build
+      - dashboard_v2_build
       - dashboard_unit_test
+      - dashboard_v2_unit_test
       - import_layers
       - acl_specs_drift
       - acl_authconf_drift

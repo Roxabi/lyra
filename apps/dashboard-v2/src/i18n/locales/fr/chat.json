@@ -1,0 +1,56 @@
+{
+  "empty": "Créez un chat pour commencer.",
+  "agentsLoadError": "Échec du chargement des agents. Le chat est indisponible tant que le roster n'est pas accessible.",
+  "sessionsLoadError": "Échec du chargement des sessions.",
+  "loadingAgents": "Chargement des agents…",
+  "defaultsWarning": "Impossible de charger les defaults DB pour {{agent}} ; harness/modèle de secours utilisés.",
+  "context": {
+    "title": "Contexte",
+    "agentStatus": "Statut agent",
+    "activeJobs": "Jobs actifs"
+  },
+  "sidebar": {
+    "agentLabel": "Agent",
+    "new": "Nouveau",
+    "activeChats": "Chats actifs",
+    "closeTab": "Fermer",
+    "resume": "Reprendre",
+    "loading": "Chargement…",
+    "noSessions": "Aucune session",
+    "emptyMessage": "(vide)",
+    "turnCount": "{{count}} tours",
+    "newSession": "nouvelle session",
+    "sessionHint": "session {{id}}"
+  },
+  "composer": {
+    "placeholder": "Écrivez votre message…",
+    "placeholderOffline": "Agent hors ligne",
+    "send": "Envoyer",
+    "stop": "Arrêter"
+  },
+  "message": {
+    "thinking": "Réflexion"
+  },
+  "emptyState": {
+    "title": "Conversation avec {{agent}}",
+    "offline": "L'agent est hors ligne. Vérifiez le harness ou réessayez plus tard.",
+    "online": "Envoyez un message pour démarrer. Les réponses s'affichent ici en temps réel."
+  },
+  "picker": {
+    "harness": "Harness",
+    "model": "Modèle",
+    "offline": "Hors ligne",
+    "dbOverride": "≠ défaut DB ({{default}})"
+  },
+  "errors": {
+    "adapterNotReady": "Adaptateur indisponible — réessayez dans un instant.",
+    "sendFailed": "Échec de l'envoi du message.",
+    "agentsFetchFailed": "Échec du chargement des agents.",
+    "statusFetchFailed": "Échec du chargement du statut agent.",
+    "sessionsFetchFailed": "Échec du chargement des sessions.",
+    "turnsFetchFailed": "Échec du chargement de l'historique.",
+    "resumeFailed": "Échec de la reprise de session.",
+    "resumeRejected": "Reprise refusée : {{message}}",
+    "streamFailed": "Échec de la connexion au flux."
+  }
+}

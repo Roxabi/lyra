@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Plus, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetchSessions, resumeSession } from "@/features/chat/api";
@@ -39,6 +40,8 @@ export function ChatSidebar({
   onNew,
   onResumed,
 }: ChatSidebarProps) {
+  const { t } = useTranslation("chat");
+  const { t: tc } = useTranslation("common");
   const activeTab = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
   const agent = activeTab?.agent ?? agents[0] ?? null;
   const [pickerAgent, setPickerAgent] = useState(agents[0] ?? "lyra");
@@ -49,7 +52,7 @@ export function ChatSidebar({
     return {
       value: id,
       label: displayAgentName(id),
-      hint: online ? "online" : "offline",
+      hint: online ? tc("status.online") : tc("status.offline"),
     };
   });
 
@@ -78,7 +81,7 @@ export function ChatSidebar({
       <div className="shrink-0 space-y-2 px-3 py-3">
         <div className="flex items-center gap-2">
           <SelectField
-            label="Agent"
+            label={t("sidebar.agentLabel")}
             value={pickerAgent}
             options={agentOptions}
             onChange={setPickerAgent}
@@ -91,14 +94,14 @@ export function ChatSidebar({
             disabled={!pickerAgent}
           >
             <Plus className="size-4" />
-            New
+            {t("sidebar.new")}
           </Button>
         </div>
       </div>
 
       <div className="shrink-0 px-3 pb-2">
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Active chats
+          {t("sidebar.activeChats")}
         </p>
         <ul className="space-y-0.5">
           {tabs.map((tab) => {
@@ -122,7 +125,10 @@ export function ChatSidebar({
                         {getAgentPersona(tab.agent).displayName}
                       </span>
                       <span className="block truncate text-[10px] text-muted-foreground">
-                        {tab.sessionId ? `Session ${tab.sessionId.slice(0, 8)}` : "New session"} ·{" "}
+                        {tab.sessionId
+                          ? t("sidebar.sessionHint", { id: tab.sessionId.slice(0, 8) })
+                          : t("sidebar.newSession")}
+                        {" · "}
                         {tab.model}
                       </span>
                     </span>
@@ -132,7 +138,7 @@ export function ChatSidebar({
                     variant="ghost"
                     size="icon"
                     className="absolute right-1 top-1/2 size-7 -translate-y-1/2 opacity-0 group-hover:opacity-100"
-                    aria-label="Close tab"
+                    aria-label={t("sidebar.closeTab")}
                     onClick={() => onClose(tab.id)}
                   >
                     <X className="size-3.5" />
@@ -146,18 +152,20 @@ export function ChatSidebar({
 
       <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
         <p className="mb-1.5 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Resume session
+          {t("sidebar.resume")}
         </p>
-        {isLoading ? <p className="shrink-0 text-xs text-muted-foreground">Loading…</p> : null}
+        {isLoading ? (
+          <p className="shrink-0 text-xs text-muted-foreground">{tc("actions.loading")}</p>
+        ) : null}
         {isError ? (
           <p className="shrink-0 text-xs text-destructive" role="alert">
-            Failed to load sessions.
+            {t("sessionsLoadError")}
           </p>
         ) : null}
         <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto">
           {sessions.length === 0 && !isLoading && !isError ? (
             <li className="rounded-lg bg-muted/30 px-3 py-3 text-center text-xs text-muted-foreground">
-              No sessions
+              {t("sidebar.noSessions")}
             </li>
           ) : null}
           {sessions.map((s) => (
@@ -174,9 +182,11 @@ export function ChatSidebar({
                     {PLATFORM_LABEL[s.platform] ?? s.platform}
                   </Badge>
                   <p className="truncate text-xs text-foreground">
-                    {s.first_user_msg ?? "Empty message"}
+                    {s.first_user_msg ?? t("sidebar.emptyMessage")}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">{s.turn_count} turns</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {t("sidebar.turnCount", { count: s.turn_count })}
+                  </p>
                 </div>
                 <RotateCcw className="mt-1 size-3.5 shrink-0 text-muted-foreground" />
               </Button>

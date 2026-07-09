@@ -1,7 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
-  APP_NAME,
-  APP_TAGLINE,
   type AppNavItem,
   adminNavItems,
   homeNavItems,
@@ -23,17 +22,19 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 
-function NavSection({ title, items }: { title: string; items: AppNavItem[] }) {
+function NavSection({ titleKey, items }: { titleKey: string; items: AppNavItem[] }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { t } = useTranslation("common");
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{title}</SidebarGroupLabel>
+      <SidebarGroupLabel>{t(titleKey)}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
             const active = isNavItemActive(pathname, item);
             const Icon = item.Icon;
+            const label = t(item.labelKey);
 
             if (item.status === "planned") {
               return (
@@ -41,11 +42,11 @@ function NavSection({ title, items }: { title: string; items: AppNavItem[] }) {
                   <SidebarMenuButton
                     isActive={false}
                     disabled
-                    tooltip={`${item.label} — coming soon`}
+                    tooltip={t("nav.comingSoon", { label })}
                     className="opacity-50"
                   >
                     <Icon />
-                    <span>{item.label}</span>
+                    <span>{label}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               );
@@ -53,13 +54,9 @@ function NavSection({ title, items }: { title: string; items: AppNavItem[] }) {
 
             return (
               <SidebarMenuItem key={item.to}>
-                <SidebarMenuButton
-                  isActive={active}
-                  tooltip={item.label}
-                  render={<Link to={item.to} />}
-                >
+                <SidebarMenuButton isActive={active} tooltip={label} render={<Link to={item.to} />}>
                   <Icon />
-                  <span>{item.label}</span>
+                  <span>{label}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             );
@@ -71,6 +68,8 @@ function NavSection({ title, items }: { title: string; items: AppNavItem[] }) {
 }
 
 export function AppSidebar() {
+  const { t } = useTranslation("common");
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
@@ -79,8 +78,8 @@ export function AppSidebar() {
             <SidebarMenuButton size="lg" render={<Link to="/" />}>
               <img src="/factory-mark.svg" alt="" className="size-8" aria-hidden />
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{APP_NAME}</span>
-                <span className="truncate text-xs text-muted-foreground">{APP_TAGLINE}</span>
+                <span className="truncate font-semibold">{t("appName")}</span>
+                <span className="truncate text-xs text-muted-foreground">{t("appTagline")}</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -88,15 +87,15 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <NavSection title="Home" items={homeNavItems} />
-        <NavSection title="Operate" items={operateNavItems} />
-        <NavSection title="Observe" items={observeNavItems} />
-        <NavSection title="Admin" items={adminNavItems} />
+        <NavSection titleKey="nav.sectionHome" items={homeNavItems} />
+        <NavSection titleKey="nav.sectionOperate" items={operateNavItems} />
+        <NavSection titleKey="nav.sectionObserve" items={observeNavItems} />
+        <NavSection titleKey="nav.sectionAdmin" items={adminNavItems} />
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-2">
         <span className="px-2 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground group-data-[collapsible=icon]:hidden">
-          v2 greenfield
+          {t("nav.badgeV2")}
         </span>
       </SidebarFooter>
       <SidebarRail />

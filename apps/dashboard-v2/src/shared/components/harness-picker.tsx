@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { SelectField } from "@/shared/components/select-field";
 import type { HarnessKind } from "@/shared/lib/chats-storage";
 
@@ -14,11 +15,12 @@ const OPTIONS = [
 ];
 
 export function HarnessPicker({ value, onChange, disabled, dbDefault }: HarnessPickerProps) {
+  const { t } = useTranslation("chat");
   const override = dbDefault !== undefined && value !== dbDefault;
   return (
     <div className="flex flex-col gap-0.5">
       <SelectField
-        label="Harness"
+        label={t("picker.harness")}
         value={value}
         disabled={disabled}
         options={OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
@@ -26,7 +28,7 @@ export function HarnessPicker({ value, onChange, disabled, dbDefault }: HarnessP
       />
       {override ? (
         <span className="text-[10px] text-amber-600 dark:text-amber-400">
-          Override (DB default: {dbDefault})
+          {t("picker.dbOverride", { default: dbDefault })}
         </span>
       ) : null}
     </div>

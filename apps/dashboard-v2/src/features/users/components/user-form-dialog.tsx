@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ interface UserFormDialogProps {
 }
 
 export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const isEdit = Boolean(user);
 
@@ -91,7 +93,7 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
       return createAdminUser(body);
     },
     onSuccess: () => {
-      toast.info(isEdit ? "User updated." : "User created.");
+      toast.info(isEdit ? t("editSuccess") : t("createSuccess"));
       void qc.invalidateQueries({ queryKey: ["admin-access"] });
       onOpenChange(false);
       reset();
@@ -103,7 +105,7 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
     onOpenChange(next);
   };
 
-  const title = isEdit ? "Edit user" : "Create user";
+  const title = isEdit ? t("editTitle") : t("createTitle");
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -111,9 +113,7 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            {isEdit
-              ? "Update user profile, platform IDs, and agent access."
-              : "Add a new user with email and optional platform bindings."}
+            {isEdit ? t("editDescription") : t("createDescription")}
           </DialogDescription>
         </DialogHeader>
 
@@ -128,70 +128,67 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
           {saveMut.isError ? (
             <Alert variant="destructive">
               <AlertDescription>
-                {bffErrorMessage(
-                  saveMut.error,
-                  isEdit ? "Failed to update user." : "Failed to create user.",
-                )}
+                {bffErrorMessage(saveMut.error, t, isEdit ? "edit" : "create")}
               </AlertDescription>
             </Alert>
           ) : null}
 
           {isEdit && user ? (
             <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">User ID</p>
+              <p className="text-xs font-medium text-muted-foreground">{t("colUser")}</p>
               <p className="font-mono text-xs">{user.user_id}</p>
             </div>
           ) : null}
 
           <div className="space-y-2">
-            <Label htmlFor="user-name">Display name</Label>
+            <Label htmlFor="user-name">{t("fieldName")}</Label>
             <Input
               id="user-name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Jane Operator"
+              placeholder={t("fieldNamePlaceholder")}
               autoComplete="name"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="user-email">Email</Label>
+            <Label htmlFor="user-email">{t("fieldEmail")}</Label>
             <Input
               id="user-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="jane@example.com"
+              placeholder={t("fieldEmailPlaceholder")}
               autoComplete="email"
             />
             {!emailValid && email.trim().length > 0 ? (
-              <p className="text-xs text-destructive">Enter a valid email address.</p>
+              <p className="text-xs text-destructive">{t("fieldEmailInvalid")}</p>
             ) : null}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="user-telegram">Telegram UID</Label>
+              <Label htmlFor="user-telegram">{t("fieldTelegram")}</Label>
               <Input
                 id="user-telegram"
                 value={telegramUid}
                 onChange={(e) => setTelegramUid(e.target.value)}
-                placeholder="Optional"
+                placeholder={t("fieldTelegramPlaceholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="user-discord">Discord UID</Label>
+              <Label htmlFor="user-discord">{t("fieldDiscord")}</Label>
               <Input
                 id="user-discord"
                 value={discordUid}
                 onChange={(e) => setDiscordUid(e.target.value)}
-                placeholder="Optional"
+                placeholder={t("fieldDiscordPlaceholder")}
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Agent access</p>
+            <p className="text-xs font-medium text-muted-foreground">{t("fieldAgents")}</p>
             {agentsLoading ? (
               <div className="flex flex-wrap gap-2">
                 <Skeleton className="h-7 w-20 rounded-full" />
@@ -199,7 +196,7 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
               </div>
             ) : agentsError ? (
               <p className="text-xs text-destructive" role="alert">
-                Failed to load agents.
+                {t("fieldAgentsLoadError")}
               </p>
             ) : availableAgents.length > 0 ? (
               <div className="flex flex-wrap gap-2">
@@ -213,17 +210,17 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">No agents configured yet.</p>
+              <p className="text-xs text-muted-foreground">{t("fieldAgentsEmpty")}</p>
             )}
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("formCancel")}
             </Button>
             <Button type="submit" disabled={!nameValid || !emailValid || saveMut.isPending}>
               {saveMut.isPending ? <Spinner className="mr-1.5" /> : null}
-              {isEdit ? "Save" : "Create"}
+              {isEdit ? t("formSave") : t("formCreate")}
             </Button>
           </DialogFooter>
         </form>

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { Bot } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,12 +33,13 @@ const LOG_PRESET_OPTIONS: { value: OpsLogPreset; label: string }[] = [
 const opsRouteApi = getRouteApi("/ops");
 
 function EngineCardsSkeleton() {
+  const { t } = useTranslation("common");
   return (
     <div
       role="status"
       className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
       aria-busy="true"
-      aria-label="Loading"
+      aria-label={t("actions.loading")}
     >
       {[0, 1, 2].map((i) => (
         <Card key={i}>
@@ -52,8 +54,9 @@ function EngineCardsSkeleton() {
 }
 
 function LogsSkeleton() {
+  const { t } = useTranslation("common");
   return (
-    <div role="status" className="space-y-2" aria-busy="true" aria-label="Loading">
+    <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
       {[0, 1, 2].map((i) => (
         <Skeleton key={i} className="h-10 w-full" />
       ))}
@@ -62,6 +65,8 @@ function LogsSkeleton() {
 }
 
 export function OpsPage() {
+  const { t } = useTranslation("ops");
+  const { t: tc } = useTranslation("common");
   const { container } = opsRouteApi.useSearch();
   const [logPreset, setLogPreset] = useState<OpsLogPreset>("hub-errors");
   const [agentSearch, setAgentSearch] = useState("");
@@ -122,7 +127,7 @@ export function OpsPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <PageIntro>Platform health, Loki logs, and agent harness reachability.</PageIntro>
+      <PageIntro>{t("subtitle")}</PageIntro>
 
       {enginesLoading ? <EngineCardsSkeleton /> : null}
 
@@ -135,7 +140,7 @@ export function OpsPage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 <Badge variant={engine.reachable ? "default" : "destructive"}>
-                  {engine.reachable ? "Online" : "Offline"}
+                  {engine.reachable ? tc("status.online") : tc("status.offline")}
                 </Badge>
                 {engine.detail ? (
                   <p className="truncate text-xs text-muted-foreground">{engine.detail}</p>
@@ -147,7 +152,7 @@ export function OpsPage() {
             <Card className="sm:col-span-2 lg:col-span-3">
               <CardContent className="pt-6">
                 <p className="text-sm text-destructive" role="alert">
-                  Failed to load engine health.
+                  {t("engines.loadError")}
                 </p>
               </CardContent>
             </Card>
@@ -158,21 +163,21 @@ export function OpsPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Card data-testid="ops-harness-card-clipool">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Clipool harness</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("harness.clipool")}</CardTitle>
           </CardHeader>
           <CardContent>
             <Badge variant={clipoolUp ? "default" : "destructive"}>
-              {clipoolUp ? "Online" : "Offline"}
+              {clipoolUp ? tc("status.online") : tc("status.offline")}
             </Badge>
           </CardContent>
         </Card>
         <Card data-testid="ops-harness-card-omp">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">OMP harness</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("harness.omp")}</CardTitle>
           </CardHeader>
           <CardContent>
             <Badge variant={ompUp ? "default" : "destructive"}>
-              {ompUp ? "Online" : "Offline"}
+              {ompUp ? tc("status.online") : tc("status.offline")}
             </Badge>
           </CardContent>
         </Card>
@@ -181,9 +186,11 @@ export function OpsPage() {
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
           <div className="space-y-1">
-            <CardTitle className="text-sm font-medium">Logs</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("logs.title")}</CardTitle>
             {container ? (
-              <p className="text-xs text-muted-foreground">Container filter: {container}</p>
+              <p className="text-xs text-muted-foreground">
+                {t("logs.containerFilter", { container })}
+              </p>
             ) : null}
             {logs?.query ? (
               <p className="font-mono text-[10px] text-muted-foreground">{logs.query}</p>
@@ -191,7 +198,7 @@ export function OpsPage() {
           </div>
           {container ? null : (
             <SelectField
-              label="Preset"
+              label={t("logs.presetLabel")}
               value={logPreset}
               options={LOG_PRESET_OPTIONS}
               onChange={(v) => setLogPreset(v as OpsLogPreset)}
@@ -203,16 +210,16 @@ export function OpsPage() {
           {logsLoading ? <LogsSkeleton /> : null}
           {logsError ? (
             <p className="text-sm text-destructive" role="alert">
-              Failed to load logs.
+              {t("logs.loadError")}
             </p>
           ) : null}
           {logs && !logs.engine_reachable ? (
-            <p className="text-sm text-muted-foreground">Log engine unreachable.</p>
+            <p className="text-sm text-muted-foreground">{t("logs.unreachable")}</p>
           ) : null}
           {logs?.engine_reachable && logs.entries.length === 0 ? (
             <EmptyState
-              title="No log entries"
-              description="Try a different preset or check back later."
+              title={t("logs.empty")}
+              description={t("logs.emptyHint")}
               className="py-8"
             />
           ) : null}
@@ -241,20 +248,25 @@ export function OpsPage() {
           <ListToolbarHeader
             meta={
               statusLoading
-                ? "Loading…"
-                : `${filteredAgents.length} agent${filteredAgents.length === 1 ? "" : "s"}`
+                ? tc("actions.loading")
+                : t("agents.count", { count: filteredAgents.length })
             }
           />
           <ListToolbarSearch
             value={agentSearch}
             onChange={setAgentSearch}
-            placeholder="Search agents…"
-            aria-label="Search"
+            placeholder={t("agents.searchPlaceholder")}
+            aria-label={tc("search")}
           />
         </ListToolbar>
 
         {statusLoading ? (
-          <div role="status" className="space-y-2" aria-busy="true" aria-label="Loading">
+          <div
+            role="status"
+            className="space-y-2"
+            aria-busy="true"
+            aria-label={tc("actions.loading")}
+          >
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-14 w-full rounded-xl" />
             ))}
@@ -264,10 +276,8 @@ export function OpsPage() {
         {!statusLoading && filteredAgents.length === 0 ? (
           <EmptyState
             icon={hasAgentFilters ? undefined : Bot}
-            title={hasAgentFilters ? "No matching agents" : "No agents"}
-            description={
-              hasAgentFilters ? undefined : "Agent status will appear when workers report in."
-            }
+            title={hasAgentFilters ? t("agents.emptyFiltered") : t("agents.empty")}
+            description={hasAgentFilters ? undefined : t("agents.emptyHint")}
           />
         ) : null}
 
@@ -281,10 +291,10 @@ export function OpsPage() {
                 <AgentIdentity agentId={s.agent} avatarSize="sm" />
                 <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
                   <Badge variant={s.in_roster ? "default" : "outline"}>
-                    Roster {s.in_roster ? "✓" : "✗"}
+                    {t("agents.roster")} {s.in_roster ? "✓" : "✗"}
                   </Badge>
                   <Badge variant={s.harness_reachable ? "default" : "destructive"}>
-                    Harness {s.harness_reachable ? "✓" : "✗"}
+                    {t("agents.harness")} {s.harness_reachable ? "✓" : "✗"}
                   </Badge>
                 </div>
               </div>

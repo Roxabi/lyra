@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
@@ -19,12 +20,15 @@ export function DataTable({
   children,
   isLoading,
   isEmpty,
-  emptyTitle = "No data",
+  emptyTitle,
   emptyDescription,
   skeletonRows = 3,
   skeletonCols = 4,
   className,
 }: DataTableProps) {
+  const { t } = useTranslation("common");
+  const resolvedEmptyTitle = emptyTitle ?? t("empty.noData");
+
   if (isLoading) {
     return (
       <div className={cn("overflow-x-auto rounded-xl border bg-card shadow-sm", className)}>
@@ -36,7 +40,7 @@ export function DataTable({
   if (isEmpty) {
     return (
       <div className={cn("rounded-xl border bg-card shadow-sm", className)}>
-        <EmptyState title={emptyTitle} description={emptyDescription} />
+        <EmptyState title={resolvedEmptyTitle} description={emptyDescription} />
       </div>
     );
   }
@@ -61,13 +65,14 @@ export function DataTableBody({ children }: { children: ReactNode }) {
 }
 
 export function TableRowsSkeleton({ rows = 3, cols = 4 }: { rows?: number; cols?: number }) {
+  const { t } = useTranslation("common");
   const skeletonRows = Array.from({ length: rows }, (_, row) => ({
     id: `table-skel-${rows}x${cols}-r${row}`,
     cells: Array.from({ length: cols }, (_, col) => `table-skel-${rows}x${cols}-r${row}-c${col}`),
   }));
 
   return (
-    <div role="status" className="divide-y px-4" aria-busy="true" aria-label="Loading">
+    <div role="status" className="divide-y px-4" aria-busy="true" aria-label={t("actions.loading")}>
       {skeletonRows.map((row) => (
         <div key={row.id} className="flex items-center gap-4 py-3">
           {row.cells.map((cellId) => (
@@ -80,10 +85,11 @@ export function TableRowsSkeleton({ rows = 3, cols = 4 }: { rows?: number; cols?
 }
 
 export function ListRowsSkeleton({ rows = 3 }: { rows?: number }) {
+  const { t } = useTranslation("common");
   const skeletonRows = Array.from({ length: rows }, (_, row) => `list-skel-${rows}-r${row}`);
 
   return (
-    <div role="status" className="space-y-2" aria-busy="true" aria-label="Loading">
+    <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
       {skeletonRows.map((rowId) => (
         <div key={rowId} className="flex items-center gap-3 rounded-md bg-muted/30 px-3 py-2">
           <Skeleton className="h-4 w-28" />

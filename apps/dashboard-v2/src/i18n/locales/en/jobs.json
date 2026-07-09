@@ -1,0 +1,49 @@
+{
+  "subtitle": "Active jobs, manual launch, and steer via the dashboard BFF.",
+  "searchPlaceholder": "Search jobs…",
+  "filters": {
+    "status": "Status"
+  },
+  "launch": {
+    "title": "Launch an OMP job",
+    "agentLabel": "Agent",
+    "promptLabel": "OMP job prompt",
+    "promptPlaceholder": "Operator prompt — published as WorkEnvelope on NATS",
+    "submit": "Launch",
+    "submitting": "Sending…",
+    "launchFailed": "Launch failed",
+    "launched": "Job {{jobId}} launched"
+  },
+  "live": {
+    "title": "Running jobs",
+    "active_one": "{{count}} active",
+    "active_other": "{{count}} active",
+    "loadError": "Could not load jobs.",
+    "empty": "No active jobs in the registry.",
+    "emptyHint": "Launch an OMP job above or wait for a worker to start one.",
+    "emptyFiltered": "No jobs match the filters."
+  },
+  "workers": {
+    "title": "Workers"
+  },
+  "table": {
+    "job": "Job",
+    "agent": "Agent",
+    "platform": "Platform",
+    "status": "Status",
+    "mode": "Mode",
+    "started": "Started",
+    "steer": "Steer",
+    "steerPlaceholder": "Steer…",
+    "actions": "Actions",
+    "cancel": "Cancel"
+  },
+  "steer": {
+    "sent": "Steer sent for {{jobId}}",
+    "failed": "Failed to send steer"
+  },
+  "cancel": {
+    "sent": "Cancel sent for {{jobId}}",
+    "failed": "Failed to cancel job"
+  }
+}

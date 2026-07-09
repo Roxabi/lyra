@@ -1,0 +1,30 @@
+{
+  "subtitle": "Observability proxied by the BFF — Loki, Langfuse, and OTel.",
+  "engines": {
+    "loadError": "Could not load observability engine status."
+  },
+  "agents": {
+    "title": "Monitored agents",
+    "count": "{{count}} agent(s)",
+    "searchPlaceholder": "Search agents…",
+    "empty": "No monitored agents.",
+    "emptyFiltered": "No agents match your search.",
+    "emptyHint": "Roster agents will appear here with harness state.",
+    "roster": "roster",
+    "harness": "harness"
+  },
+  "harness": {
+    "title": "Harness",
+    "clipool": "Clipool (claude-cli)",
+    "omp": "OMP (omp-rpc)"
+  },
+  "logs": {
+    "title": "Loki logs",
+    "presetLabel": "Preset",
+    "loadError": "Could not load logs.",
+    "empty": "No entries for this preset.",
+    "emptyHint": "Try another preset or wait for new events.",
+    "unreachable": "Loki engine unreachable — logs unavailable.",
+    "containerFilter": "Journal for {{container}}"
+  }
+}

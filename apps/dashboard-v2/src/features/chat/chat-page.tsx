@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { fetchAgentDefaults } from "@/features/agents/api";
 import { fetchAgents, fetchSessionTurns } from "@/features/chat/api";
 import { ChatPane } from "@/features/chat/components/chat-pane";
@@ -16,6 +17,7 @@ import {
 } from "@/shared/lib/chats-storage";
 
 export function ChatPage() {
+  const { t } = useTranslation("chat");
   const [tabs, setTabs] = useState<ChatTab[]>(() => loadTabs());
   const [activeId, setActiveId] = useState<string | null>(() => loadTabs()[0]?.id ?? null);
   const [hydratedLog, setHydratedLog] = useState<string | null>(null);
@@ -52,19 +54,17 @@ export function ChatPage() {
           defaults = await fetchAgentDefaults(agents[0]);
         } catch {
           defaults = undefined;
-          setDefaultsWarning(
-            `Could not load DB defaults for ${agents[0]}; using fallback harness/model.`,
-          );
+          setDefaultsWarning(t("defaultsWarning", { agent: agents[0] }));
         }
-        const t = newTab(agents[0], defaults);
-        setTabs([t]);
-        setActiveId(t.id);
+        const tab = newTab(agents[0], defaults);
+        setTabs([tab]);
+        setActiveId(tab.id);
       })();
     }
-  }, [agents, tabs.length]);
+  }, [agents, tabs.length, t]);
 
   const updateTab = (id: string, patch: Partial<ChatTab>) => {
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    setTabs((prev) => prev.map((tab) => (tab.id === id ? { ...tab, ...patch } : tab)));
   };
 
   const addTab = (agent: string) => {
@@ -74,27 +74,25 @@ export function ChatPage() {
         defaults = await fetchAgentDefaults(agent);
       } catch {
         defaults = undefined;
-        setDefaultsWarning(
-          `Could not load DB defaults for ${agent}; using fallback harness/model.`,
-        );
+        setDefaultsWarning(t("defaultsWarning", { agent }));
       }
-      const t = newTab(agent, defaults);
-      setTabs((prev) => [...prev, t]);
-      setActiveId(t.id);
+      const tab = newTab(agent, defaults);
+      setTabs((prev) => [...prev, tab]);
+      setActiveId(tab.id);
       setHydratedLog(null);
     })();
   };
 
   const closeTab = (id: string) => {
     setTabs((prev) => {
-      const next = prev.filter((t) => t.id !== id);
+      const next = prev.filter((tab) => tab.id !== id);
       if (activeId === id) setActiveId(next[0]?.id ?? null);
       return next;
     });
   };
 
   const onResumed = async (agent: string, sessionId: string) => {
-    const existing = tabs.find((t) => t.sessionId === sessionId);
+    const existing = tabs.find((tab) => tab.sessionId === sessionId);
     if (existing) {
       setActiveId(existing.id);
     } else {
@@ -104,9 +102,9 @@ export function ChatPage() {
       } catch {
         defaults = undefined;
       }
-      const t = newTab(agent, defaults, sessionId);
-      setTabs((prev) => [...prev, t]);
-      setActiveId(t.id);
+      const tab = newTab(agent, defaults, sessionId);
+      setTabs((prev) => [...prev, tab]);
+      setActiveId(tab.id);
     }
     try {
       const turns = await fetchSessionTurns(sessionId);
@@ -142,12 +140,12 @@ export function ChatPage() {
         {agentsError ? (
           <div className="flex flex-1 items-center justify-center px-6">
             <p className="text-sm text-destructive" role="alert">
-              Failed to load agents. Chat is unavailable until the roster can be fetched.
+              {t("agentsLoadError")}
             </p>
           </div>
         ) : agentsLoading ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Loading agents…
+            {t("loadingAgents")}
           </div>
         ) : activeTab ? (
           <ChatPane
@@ -160,7 +158,7 @@ export function ChatPage() {
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            No active chat
+            {t("empty")}
           </div>
         )}
       </main>

@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,8 @@ import {
 import { type SortDirection, toggleSort } from "@/shared/lib/sort";
 
 export function JobsPage() {
+  const { t } = useTranslation("jobs");
+  const { t: tc } = useTranslation("common");
   const [launchAgent, setLaunchAgent] = useState("");
   const [launchPrompt, setLaunchPrompt] = useState("");
   const [steerTexts, setSteerTexts] = useState<Record<string, string>>({});
@@ -74,28 +77,28 @@ export function JobsPage() {
       }),
     onSuccess: (res) => {
       if (res.accepted) {
-        toast.info(`Job launched: ${res.job_id}`);
+        toast.info(t("launch.launched", { jobId: res.job_id }));
       } else {
         toast.error(res.message);
       }
       setLaunchPrompt("");
     },
-    onError: () => toast.error("Failed to launch job."),
+    onError: () => toast.error(t("launch.launchFailed")),
   });
 
   const steerMutation = useMutation({
     mutationFn: ({ jobId, text }: { jobId: string; text: string }) => steerJob(jobId, text),
     onSuccess: (_res, vars) => {
       setSteerTexts((prev) => ({ ...prev, [vars.jobId]: "" }));
-      toast.info(`Steer sent to ${vars.jobId}`);
+      toast.info(t("steer.sent", { jobId: vars.jobId }));
     },
-    onError: () => toast.error("Failed to steer job."),
+    onError: () => toast.error(t("steer.failed")),
   });
 
   const cancelMutation = useMutation({
     mutationFn: (jobId: string) => cancelJob(jobId),
-    onSuccess: (_res, jobId) => toast.info(`Cancel sent to ${jobId}`),
-    onError: () => toast.error("Failed to cancel job."),
+    onSuccess: (_res, jobId) => toast.info(t("cancel.sent", { jobId })),
+    onError: () => toast.error(t("cancel.failed")),
   });
 
   function onSort(nextKey: JobsSortKey) {
@@ -112,16 +115,16 @@ export function JobsPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <PageIntro>Launch OMP jobs, steer running workers, and monitor live job status.</PageIntro>
+      <PageIntro>{t("subtitle")}</PageIntro>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Launch job</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("launch.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-end gap-3">
             <SelectField
-              label="Agent"
+              label={t("launch.agentLabel")}
               value={selectedAgent}
               options={agents.map((a) => ({
                 value: a,
@@ -133,12 +136,12 @@ export function JobsPage() {
             <Badge variant="outline">factory.jobs.omp</Badge>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="launch-prompt">Prompt</Label>
+            <Label htmlFor="launch-prompt">{t("launch.promptLabel")}</Label>
             <Textarea
               id="launch-prompt"
               value={launchPrompt}
               onChange={(e) => setLaunchPrompt(e.target.value)}
-              placeholder="Describe the task for the agent…"
+              placeholder={t("launch.promptPlaceholder")}
               rows={3}
             />
           </div>
@@ -148,7 +151,7 @@ export function JobsPage() {
             disabled={!launchPrompt.trim() || !selectedAgent || launchMutation.isPending}
             onClick={() => launchMutation.mutate()}
           >
-            {launchMutation.isPending ? "Launching…" : "Launch"}
+            {launchMutation.isPending ? t("launch.submitting") : t("launch.submit")}
           </Button>
         </CardContent>
       </Card>
@@ -157,22 +160,20 @@ export function JobsPage() {
         <ListToolbar>
           <ListToolbarHeader
             meta={
-              isLoading
-                ? "Loading…"
-                : `${visibleJobs.length} active job${visibleJobs.length === 1 ? "" : "s"}`
+              isLoading ? tc("actions.loading") : t("live.active", { count: visibleJobs.length })
             }
           />
           <ListToolbarSearch
             value={search}
             onChange={setSearch}
-            placeholder="Search jobs…"
-            aria-label="Search"
+            placeholder={t("searchPlaceholder")}
+            aria-label={tc("search")}
           />
           {statusOptions.length > 0 ? (
             <ListToolbarControls
               filters={
                 <>
-                  <span className="text-xs text-muted-foreground">Status</span>
+                  <span className="text-xs text-muted-foreground">{t("filters.status")}</span>
                   {statusOptions.map((statusValue) => (
                     <FilterChip
                       key={statusValue}
@@ -191,14 +192,14 @@ export function JobsPage() {
 
         {isError ? (
           <p className="text-sm text-destructive" role="alert">
-            Failed to load jobs stream.
+            {t("live.loadError")}
           </p>
         ) : null}
 
         {!isLoading && !isError && visibleJobs.length === 0 ? (
           <EmptyState
-            title={hasFilters ? "No matching jobs" : "No active jobs"}
-            description={hasFilters ? undefined : "Launch a job above to get started."}
+            title={hasFilters ? t("live.emptyFiltered") : t("live.empty")}
+            description={hasFilters ? undefined : t("live.emptyHint")}
           />
         ) : null}
 
@@ -206,33 +207,33 @@ export function JobsPage() {
           <DataTable>
             <DataTableHeader>
               <SortableTableHeader
-                label="Job"
+                label={t("table.job")}
                 active={sortKey === "job_id"}
                 direction={sortDirection}
                 onClick={() => onSort("job_id")}
               />
               <SortableTableHeader
-                label="Agent"
+                label={t("table.agent")}
                 active={sortKey === "agent"}
                 direction={sortDirection}
                 onClick={() => onSort("agent")}
               />
-              <TableHead>Platform</TableHead>
+              <TableHead>{t("table.platform")}</TableHead>
               <SortableTableHeader
-                label="Status"
+                label={t("table.status")}
                 active={sortKey === "status"}
                 direction={sortDirection}
                 onClick={() => onSort("status")}
               />
-              <TableHead>Mode</TableHead>
+              <TableHead>{t("table.mode")}</TableHead>
               <SortableTableHeader
-                label="Started"
+                label={t("table.started")}
                 active={sortKey === "started_at"}
                 direction={sortDirection}
                 onClick={() => onSort("started_at")}
               />
-              <TableHead>Steer</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead>{t("table.steer")}</TableHead>
+              <TableHead>{t("table.actions")}</TableHead>
             </DataTableHeader>
             <DataTableBody>
               {visibleJobs.map((job) => (
@@ -264,7 +265,7 @@ export function JobsPage() {
                             [job.job_id]: e.target.value,
                           }))
                         }
-                        placeholder="Steer message"
+                        placeholder={t("table.steerPlaceholder")}
                       />
                       <Button
                         type="button"
@@ -292,7 +293,7 @@ export function JobsPage() {
                       disabled={cancelMutation.isPending}
                       onClick={() => cancelMutation.mutate(job.job_id)}
                     >
-                      Cancel
+                      {t("table.cancel")}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -304,7 +305,7 @@ export function JobsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Workers</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("workers.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {agents.map((agent) => {
@@ -321,7 +322,7 @@ export function JobsPage() {
                   </p>
                 </div>
                 <Badge variant={health?.online ? "default" : "outline"}>
-                  {health?.online ? "Active" : "Inactive"}
+                  {health?.online ? tc("status.active") : tc("status.inactive")}
                 </Badge>
               </div>
             );

@@ -1,0 +1,38 @@
+{
+  "title": "Intégrations",
+  "subtitle": "Connectez les sources d'observabilité externes (GitHub, Cloudflare) à votre tenant factory.",
+  "tenantLabel": "Tenant factory",
+  "auth": {
+    "title": "Jeton opérateur",
+    "hint": "Requis lorsque FACTORY_DASHBOARD_OPERATOR_TOKEN est défini côté serveur.",
+    "placeholder": "Jeton Bearer",
+    "save": "Enregistrer le jeton"
+  },
+  "github": {
+    "title": "GitHub App",
+    "description": "Installez la GitHub App factory sur votre org ou compte. Les webhooks passent par factory-ingress.",
+    "install": "Installer sur GitHub",
+    "installUnavailable": "Slug GitHub App non configuré (INGRESS_GITHUB_APP_SLUG).",
+    "manualTitle": "Enregistrement manuel",
+    "installationId": "ID d'installation",
+    "register": "Enregistrer l'installation"
+  },
+  "cloudflare": {
+    "title": "Cloudflare",
+    "description": "Enregistrez l'ID de compte après provisionnement de l'URL webhook par tenant.",
+    "accountId": "ID de compte",
+    "register": "Enregistrer le compte"
+  },
+  "table": {
+    "externalId": "ID externe",
+    "status": "Statut",
+    "enabled": "Actif",
+    "disabled": "Déconnecté",
+    "disconnect": "Déconnecter",
+    "empty": "Aucune installation pour ce connecteur."
+  },
+  "errors": {
+    "load": "Échec du chargement des intégrations.",
+    "auth": "Jeton opérateur invalide ou manquant."
+  }
+}

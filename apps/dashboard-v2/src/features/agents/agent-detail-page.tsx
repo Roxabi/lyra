@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useShellTitle } from "@/app/shell-title";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -37,6 +38,7 @@ function composeSoulMarkdown(sections: SoulSections): string {
 
 export function AgentDetailPage() {
   const { name } = useParams({ from: "/agents/$name" });
+  const { t } = useTranslation("agents");
   const { setLiteral } = useShellTitle();
   const qc = useQueryClient();
   const [tab, setTab] = useState<string>("Identity");
@@ -100,13 +102,13 @@ export function AgentDetailPage() {
     },
     onSuccess: () => {
       setDirty(false);
-      toast.info("Agent saved.");
+      toast.info(t("saveNotice"));
       void qc.invalidateQueries({ queryKey: ["agent-config", name] });
       void qc.invalidateQueries({ queryKey: ["agent-soul", name] });
       void qc.invalidateQueries({ queryKey: ["agents-config"] });
     },
     onError: () => {
-      toast.error("Failed to save agent.");
+      toast.error(t("saveError"));
     },
   });
 
@@ -124,21 +126,20 @@ export function AgentDetailPage() {
   const soulSections = soulQ.data?.sections ?? {};
   const hasSoulBlob = Boolean(cfg?.soul_document_blob_ref);
   const hasSectionContent = SOUL_SECTIONS.some((s) => (soulSections[s] ?? "").trim().length > 0);
-  const soulSourceLabel = hasSoulBlob
-    ? "blob storage"
+  const soulSourceKey = hasSoulBlob
+    ? "soulSourceBlob"
     : hasSectionContent
-      ? "legacy sections"
-      : "empty";
+      ? "soulSourceLegacy"
+      : "soulSourceEmpty";
 
   if (configQ.isLoading || soulQ.isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading agent configuration…</p>;
+    return <p className="text-sm text-muted-foreground">{t("loadingConfig")}</p>;
   }
 
   if (configQ.isError) {
     return (
       <Alert variant="destructive">
-        <AlertTitle>Failed to load agent</AlertTitle>
-        <AlertDescription>Could not fetch configuration for {name}.</AlertDescription>
+        <AlertTitle>{t("loadError")}</AlertTitle>
       </Alert>
     );
   }
@@ -151,56 +152,56 @@ export function AgentDetailPage() {
           avatarSize="lg"
           nameClassName="font-heading text-lg font-semibold"
         />
-        <p className="text-sm text-muted-foreground">Edit defaults and soul for {name}.</p>
+        <p className="text-sm text-muted-foreground">{t("detailSubtitle", { name })}</p>
       </div>
 
       <Card>
         <CardContent className="flex flex-wrap items-center gap-3 pt-6 text-sm">
-          <span className="font-medium text-muted-foreground">Defaults</span>
+          <span className="font-medium text-muted-foreground">{t("defaultsTitle")}</span>
           <Badge variant="outline" className="font-mono">
             {cfg?.backend ?? harness}
           </Badge>
           <Badge variant="outline" className="font-mono">
             {cfg?.model ?? model}
           </Badge>
-          <Badge variant={hasSoulBlob ? "default" : "secondary"}>Soul: {soulSourceLabel}</Badge>
+          <Badge variant={hasSoulBlob ? "default" : "secondary"}>
+            {t("soulSource", { source: t(soulSourceKey) })}
+          </Badge>
           {cfg?.updated_at ? (
-            <span className="text-xs text-muted-foreground">Updated {cfg.updated_at}</span>
+            <span className="text-xs text-muted-foreground">
+              {t("updatedAt", { date: cfg.updated_at })}
+            </span>
           ) : null}
         </CardContent>
       </Card>
 
       {soulQ.isError ? (
         <Alert variant="destructive">
-          <AlertTitle>Failed to load soul</AlertTitle>
-          <AlertDescription>Soul document could not be fetched.</AlertDescription>
+          <AlertTitle>{t("soulLoadError")}</AlertTitle>
         </Alert>
       ) : null}
 
       {!soulQ.isError && !hasSectionContent ? (
         <Alert>
-          <AlertTitle>No soul content</AlertTitle>
-          <AlertDescription>
-            This agent has no soul sections yet. Add content below and save.
-          </AlertDescription>
+          <AlertTitle>{t("noSoulContentTitle")}</AlertTitle>
+          <AlertDescription>{t("noSoulContent")}</AlertDescription>
         </Alert>
       ) : null}
 
       {dirty ? (
         <Alert>
-          <AlertTitle>Unsaved changes</AlertTitle>
-          <AlertDescription>Save to persist edits to the database.</AlertDescription>
+          <AlertTitle>{t("unsavedChanges")}</AlertTitle>
         </Alert>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Identity & defaults</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("defaultsTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="display-name">Display name</Label>
+              <Label htmlFor="display-name">{t("displayName")}</Label>
               <Input
                 id="display-name"
                 value={displayName}
@@ -211,7 +212,7 @@ export function AgentDetailPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="tagline">Tagline</Label>
+              <Label htmlFor="tagline">{t("tagline")}</Label>
               <Input
                 id="tagline"
                 value={tagline}
@@ -248,10 +249,10 @@ export function AgentDetailPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Alert>
-            <AlertTitle>Session lag</AlertTitle>
+            <AlertTitle>{t("sessionLagTitle")}</AlertTitle>
             <AlertDescription>
-              Soul changes apply to <strong>new sessions</strong> only. Active chat sessions keep
-              the soul they started with.
+              {t("sessionLagPrefix")} <strong>{t("sessionLagStrong")}</strong>
+              {t("sessionLagSuffix")}
             </AlertDescription>
           </Alert>
 
@@ -270,7 +271,7 @@ export function AgentDetailPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="soul-section">{tab}</Label>
+            <Label htmlFor="soul-section">{t("soulSectionEditor", { section: tab })}</Label>
             <Textarea
               id="soul-section"
               className="min-h-48 font-mono text-xs"
@@ -280,7 +281,7 @@ export function AgentDetailPage() {
             />
           </div>
 
-          <p className="text-xs text-muted-foreground">{docBytes.toLocaleString()} bytes</p>
+          <p className="text-xs text-muted-foreground">{t("documentSize", { bytes: docBytes })}</p>
 
           {secretWarning ? (
             <Alert variant="destructive">
@@ -290,7 +291,7 @@ export function AgentDetailPage() {
 
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => previewMut.mutate()}>
-              Preview compose
+              {t("previewCompose")}
             </Button>
             <Button
               type="button"
@@ -298,7 +299,7 @@ export function AgentDetailPage() {
               onClick={() => saveMut.mutate()}
             >
               {saveMut.isPending ? <Spinner className="mr-1.5" /> : null}
-              Save
+              {t("save")}
             </Button>
           </div>
 

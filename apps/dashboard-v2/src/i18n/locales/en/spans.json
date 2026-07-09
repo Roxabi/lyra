@@ -1,0 +1,13 @@
+{
+  "subtitle": "Raw OTel spans from otel-raw store (JSONL + SQLite).",
+  "title": "Spans",
+  "titleCount": "Spans ({{count}})",
+  "loadError": "Failed to load spans.",
+  "empty": "No spans match filters.",
+  "rawJson": "Raw JSON",
+  "filters": {
+    "poolId": "pool_id",
+    "jobId": "job_id",
+    "component": "component"
+  }
+}

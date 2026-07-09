@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { fetchJobs } from "@/features/overview/api";
 import type { AgentHealth } from "@/shared/api/bff-types";
@@ -13,6 +14,8 @@ interface CockpitContextPanelProps {
 }
 
 export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps) {
+  const { t } = useTranslation("chat");
+  const { t: tc } = useTranslation("common");
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ["jobs-cockpit"],
     queryFn: fetchJobs,
@@ -25,13 +28,13 @@ export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps)
     <aside className="flex w-64 shrink-0 flex-col bg-card/40">
       <div className="px-4 py-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Context
+          {t("context.title")}
         </h2>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         <section className="space-y-2">
-          <h3 className="text-sm font-medium">Agent status</h3>
+          <h3 className="text-sm font-medium">{t("context.agentStatus")}</h3>
           {agent ? (
             <div className="rounded-lg border bg-background/50 px-3 py-2.5">
               <AgentIdentity agentId={agent} avatarSize="sm" />
@@ -49,18 +52,18 @@ export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps)
 
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-medium">Active jobs</h3>
+            <h3 className="text-sm font-medium">{t("context.activeJobs")}</h3>
             <Button
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs"
               render={<Link to="/jobs" />}
             >
-              View all
+              {tc("actions.viewAll")}
             </Button>
           </div>
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p>
           ) : agentJobs.length === 0 ? (
             <p className="text-sm text-muted-foreground">—</p>
           ) : (

@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as chatApi from "@/features/chat/api";
 import { ChatPage } from "@/features/chat/chat-page";
+import i18n from "@/i18n";
 import { renderWithRouter } from "@/test-utils/router";
 
 describe("ChatPage", () => {
@@ -16,8 +17,6 @@ describe("ChatPage", () => {
     const { ui } = renderWithRouter(<ChatPage />);
     render(ui);
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain(
-      "Failed to load agents. Chat is unavailable until the roster can be fetched.",
-    );
+    expect(alert.textContent).toContain(i18n.t("chat:agentsLoadError"));
   });
 });

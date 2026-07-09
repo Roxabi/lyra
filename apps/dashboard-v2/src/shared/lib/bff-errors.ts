@@ -1,16 +1,25 @@
+import type { TFunction } from "i18next";
 import { BffApiError } from "@/shared/api/client";
 
-const CODE_MESSAGES: Record<string, string> = {
-  email_conflict: "Email already registered.",
-  platform_conflict: "Platform identity already linked.",
-  unknown_agent: "Unknown agent.",
-  agent_conflict: "Agent already exists.",
-  not_found: "Not found.",
-};
+type FormMode = "create" | "edit";
 
-export function bffErrorMessage(err: unknown, fallback = "Request failed."): string {
-  if (err instanceof BffApiError) {
-    return CODE_MESSAGES[err.code] ?? err.detail ?? fallback;
+export function bffErrorMessage(err: unknown, t: TFunction, mode: FormMode): string {
+  if (!(err instanceof BffApiError)) {
+    return t(mode === "edit" ? "editError" : "createError");
   }
-  return fallback;
+
+  switch (err.code) {
+    case "email_conflict":
+      return t("errorEmailConflict");
+    case "platform_conflict":
+      return t("errorPlatformConflict");
+    case "unknown_agent":
+      return t("errorUnknownAgent");
+    case "agent_conflict":
+      return t("errorAgentConflict");
+    case "not_found":
+      return t("errorNotFound");
+    default:
+      return t(mode === "edit" ? "editError" : "createError");
+  }
 }

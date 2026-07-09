@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import type { AgentHealth } from "@/shared/api/bff-types";
 
@@ -6,9 +7,10 @@ interface AgentStatusBadgeProps {
 }
 
 export function AgentStatusBadge({ health }: AgentStatusBadgeProps) {
+  const { t } = useTranslation("common");
   if (!health) return null;
   if (health.online) {
-    return <Badge variant="default">Online</Badge>;
+    return <Badge variant="default">{t("status.online")}</Badge>;
   }
-  return <Badge variant="destructive">Offline</Badge>;
+  return <Badge variant="destructive">{t("status.offline")}</Badge>;
 }

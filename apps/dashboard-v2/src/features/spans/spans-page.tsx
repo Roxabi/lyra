@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +8,8 @@ import { fetchSpans, type SpanRow } from "@/features/spans/api";
 import { PageIntro } from "@/shared/components/page-intro";
 
 export function SpansPage() {
+  const { t } = useTranslation("spans");
+  const { t: tc } = useTranslation("common");
   const [poolId, setPoolId] = useState("");
   const [jobId, setJobId] = useState("");
   const [component, setComponent] = useState("");
@@ -25,32 +28,32 @@ export function SpansPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <PageIntro>Raw OTel spans from otel-raw store (JSONL + SQLite).</PageIntro>
+      <PageIntro>{t("subtitle")}</PageIntro>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-2">
-          <Label htmlFor="pool-id">pool_id</Label>
+          <Label htmlFor="pool-id">{t("filters.poolId")}</Label>
           <Input
             id="pool-id"
-            placeholder="pool_id"
+            placeholder={t("filters.poolId")}
             value={poolId}
             onChange={(e) => setPoolId(e.target.value)}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="job-id">job_id</Label>
+          <Label htmlFor="job-id">{t("filters.jobId")}</Label>
           <Input
             id="job-id"
-            placeholder="job_id"
+            placeholder={t("filters.jobId")}
             value={jobId}
             onChange={(e) => setJobId(e.target.value)}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="component">component</Label>
+          <Label htmlFor="component">{t("filters.component")}</Label>
           <Input
             id="component"
-            placeholder="component"
+            placeholder={t("filters.component")}
             value={component}
             onChange={(e) => setComponent(e.target.value)}
           />
@@ -60,18 +63,18 @@ export function SpansPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium">
-            Spans {data ? `(${data.total})` : ""}
+            {data ? t("titleCount", { count: data.total }) : t("title")}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {isLoading && <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p>}
           {isError && (
             <p className="text-sm text-destructive" role="alert">
-              Failed to load spans.
+              {t("loadError")}
             </p>
           )}
           {data && data.items.length === 0 && (
-            <p className="text-sm text-muted-foreground">No spans match filters.</p>
+            <p className="text-sm text-muted-foreground">{t("empty")}</p>
           )}
           {data && data.items.length > 0 && (
             <ul className="divide-y text-sm">
@@ -98,7 +101,7 @@ export function SpansPage() {
       {selected ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Raw JSON</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("rawJson")}</CardTitle>
           </CardHeader>
           <CardContent>
             <pre className="max-h-96 overflow-auto rounded bg-muted p-3 text-xs">

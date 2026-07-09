@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, LayoutGrid, Pencil, Plus, Table as TableIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,10 +44,13 @@ function formatUpdated(iso: string): string {
   }
 }
 
-function formatSoulSize(bytes: number | null): string {
+function formatSoulSize(
+  bytes: number | null,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   if (bytes == null || bytes === 0) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024) return t("soulSizeBytes", { bytes });
+  return t("soulSizeKb", { size: (bytes / 1024).toFixed(1) });
 }
 
 function filterAgents(agents: AgentSummary[], query: string): AgentSummary[] {
@@ -68,10 +72,16 @@ function filterAgents(agents: AgentSummary[], query: string): AgentSummary[] {
 }
 
 function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
+  const { t } = useTranslation("common");
   if (view === "table") {
     return (
       <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-        <div role="status" className="divide-y px-4" aria-busy="true" aria-label="Loading">
+        <div
+          role="status"
+          className="divide-y px-4"
+          aria-busy="true"
+          aria-label={t("actions.loading")}
+        >
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex items-center gap-4 py-3">
               <Skeleton className="size-8 shrink-0 rounded-full" />
@@ -90,7 +100,7 @@ function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
       role="status"
       className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
       aria-busy="true"
-      aria-label="Loading"
+      aria-label={t("actions.loading")}
     >
       {[0, 1, 2].map((i) => (
         <li key={i}>
@@ -113,6 +123,7 @@ function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
 }
 
 function EditAffordance({ className }: { className?: string }) {
+  const { t } = useTranslation("agents");
   return (
     <span
       className={cn(
@@ -121,7 +132,7 @@ function EditAffordance({ className }: { className?: string }) {
       )}
     >
       <Pencil className="size-3.5" aria-hidden />
-      Edit
+      {t("edit")}
       <ChevronRight className="size-3.5 opacity-60" aria-hidden />
     </span>
   );
@@ -134,6 +145,8 @@ interface AgentsListPanelProps {
 }
 
 export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelProps) {
+  const { t } = useTranslation("agents");
+  const { t: tc } = useTranslation("common");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [view, setView] = useState<"cards" | "table">("cards");
@@ -148,9 +161,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
 
       <ListToolbar>
         <ListToolbarHeader
-          meta={
-            isLoading ? "Loading…" : `${filtered.length} agent${filtered.length === 1 ? "" : "s"}`
-          }
+          meta={isLoading ? tc("actions.loading") : t("count", { count: filtered.length })}
           actions={
             <Button
               type="button"
@@ -159,15 +170,15 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
               onClick={() => setCreateOpen(true)}
             >
               <Plus className="size-3.5" aria-hidden />
-              Create agent
+              {t("createAgent")}
             </Button>
           }
         />
         <ListToolbarSearch
           value={search}
           onChange={setSearch}
-          placeholder="Search agents…"
-          aria-label="Search"
+          placeholder={t("searchPlaceholder")}
+          aria-label={tc("search")}
         />
         <ListToolbarControls
           view={
@@ -180,13 +191,13 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
               variant="outline"
               size="sm"
             >
-              <ToggleGroupItem value="cards" aria-label="Cards view">
+              <ToggleGroupItem value="cards" aria-label={t("viewCards")}>
                 <LayoutGrid className="size-3.5" />
-                Cards
+                {t("viewCards")}
               </ToggleGroupItem>
-              <ToggleGroupItem value="table" aria-label="Table view">
+              <ToggleGroupItem value="table" aria-label={t("viewTable")}>
                 <TableIcon className="size-3.5" />
-                Table
+                {t("viewTable")}
               </ToggleGroupItem>
             </ToggleGroup>
           }
@@ -197,14 +208,14 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
 
       {isError ? (
         <p className="text-sm text-destructive" role="alert">
-          Failed to load agents.
+          {t("listLoadError")}
         </p>
       ) : null}
 
       {!isLoading && !isError && filtered.length === 0 ? (
         <EmptyState
-          title={hasFilters ? "No matching agents" : "No agents yet"}
-          description={hasFilters ? undefined : "Create your first agent to get started."}
+          title={hasFilters ? t("emptyFiltered") : t("empty")}
+          description={hasFilters ? undefined : t("emptyHint")}
           action={
             hasFilters ? undefined : (
               <Button
@@ -214,7 +225,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                 onClick={() => setCreateOpen(true)}
               >
                 <Plus className="size-3.5" aria-hidden />
-                Create agent
+                {t("createAgent")}
               </Button>
             )
           }
@@ -235,7 +246,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                   <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2">
                     <AgentIdentity agentId={a.name} subtitle={persona.tagline} />
                     <Badge variant={a.has_soul ? "default" : "secondary"} className="shrink-0">
-                      {a.has_soul ? "Soul" : "No soul"}
+                      {a.has_soul ? t("hasSoul") : t("noSoul")}
                     </Badge>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
@@ -246,20 +257,20 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                       {a.model}
                     </Badge>
                     <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                      TG
+                      {t("colTelegram")}
                       <PresenceBadge platform="telegram" present={a.has_telegram} />
                     </span>
                     <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                      DC
+                      {t("colDiscord")}
                       <PresenceBadge platform="discord" present={a.has_discord} />
                     </span>
                     <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                      Email
+                      {t("colEmail")}
                       <PresenceBadge platform="email" present={a.has_email} />
                     </span>
                     {a.soul_document_bytes ? (
                       <span className="text-[10px] tabular-nums text-muted-foreground">
-                        {formatSoulSize(a.soul_document_bytes)}
+                        {formatSoulSize(a.soul_document_bytes, t)}
                       </span>
                     ) : null}
                   </div>
@@ -281,17 +292,17 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
           <Table className="min-w-[980px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Agent</TableHead>
-                <TableHead>Tagline</TableHead>
-                <TableHead>Harness</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>TG</TableHead>
-                <TableHead>DC</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Soul</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead>Updated</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead>{t("colAgent")}</TableHead>
+                <TableHead>{t("colTagline")}</TableHead>
+                <TableHead>{t("colHarness")}</TableHead>
+                <TableHead>{t("colModel")}</TableHead>
+                <TableHead>{t("colTelegram")}</TableHead>
+                <TableHead>{t("colDiscord")}</TableHead>
+                <TableHead>{t("colEmail")}</TableHead>
+                <TableHead>{t("colSoul")}</TableHead>
+                <TableHead>{t("colSoulSize")}</TableHead>
+                <TableHead>{t("colUpdated")}</TableHead>
+                <TableHead className="text-right">{t("colAction")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -332,11 +343,11 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                     </TableCell>
                     <TableCell>
                       <Badge variant={a.has_soul ? "default" : "secondary"}>
-                        {a.has_soul ? "Soul" : "No soul"}
+                        {a.has_soul ? t("hasSoul") : t("noSoul")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground tabular-nums">
-                      {formatSoulSize(a.soul_document_bytes)}
+                      {formatSoulSize(a.soul_document_bytes, t)}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground tabular-nums">
                       {formatUpdated(a.updated_at)}
@@ -349,7 +360,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                         render={<Link to="/agents/$name" params={{ name: a.name }} />}
                       >
                         <Pencil className="size-3.5" aria-hidden />
-                        Edit
+                        {t("edit")}
                       </Button>
                     </TableCell>
                   </TableRow>

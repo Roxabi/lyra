@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,22 +10,6 @@ import { filterPipelineRuns, isPipelineRowStale, type PipelineFilter } from "@/s
 
 const FILTER_OPTIONS: PipelineFilter[] = ["ci_red", "awaiting_reviewed", "deploy_pending"];
 
-const FILTER_LABELS: Record<PipelineFilter, string> = {
-  ci_red: "CI failing",
-  awaiting_reviewed: "Awaiting review",
-  deploy_pending: "Deploy pending",
-};
-
-const STAGE_LABELS: Record<PipelineStageStatus, string> = {
-  pending: "Pending",
-  running: "Running",
-  success: "Success",
-  failure: "Failure",
-  skipped: "Skipped",
-  unknown: "Unknown",
-  "n/a": "N/A",
-};
-
 function stageVariant(status: PipelineStageStatus): "default" | "destructive" | "outline" {
   if (status === "success") return "default";
   if (status === "failure") return "destructive";
@@ -32,11 +17,12 @@ function stageVariant(status: PipelineStageStatus): "default" | "destructive" | 
 }
 
 function StageBadge({ label, status }: { label: string; status: PipelineStageStatus }) {
+  const { t } = useTranslation("dashboard");
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[10px] tracking-wide text-muted-foreground uppercase">{label}</span>
       <Badge variant={stageVariant(status)} className="w-fit text-xs">
-        {STAGE_LABELS[status]}
+        {t(`pipeline.stage.${status}`)}
       </Badge>
     </div>
   );
@@ -53,6 +39,7 @@ function formatLastEvent(iso: string | null): string {
 }
 
 export function PipelinePage() {
+  const { t } = useTranslation("dashboard");
   const { runs, isError, isLoading } = usePipelineRuns();
   const [activeFilters, setActiveFilters] = useState<Set<PipelineFilter>>(new Set());
 
@@ -69,21 +56,21 @@ export function PipelinePage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <PageIntro>PR pipeline status across CI, merge, publish, and deploy stages.</PageIntro>
+      <PageIntro>{t("pipeline.subtitle")}</PageIntro>
 
       <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
-        Pipeline data is best-effort from GitHub webhooks. Stale rows may not reflect current state.
+        {t("pipeline.disclaimer")}
       </p>
 
       {isError ? (
         <p className="text-sm text-destructive" role="alert">
-          Failed to load pipeline runs.
+          {t("pipeline.loadError")}
         </p>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Pull requests</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("pipeline.tableTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
@@ -97,17 +84,17 @@ export function PipelinePage() {
                   variant={active ? "default" : "outline"}
                   onClick={() => toggleFilter(filter)}
                 >
-                  {FILTER_LABELS[filter]}
+                  {t(`pipeline.filters.${filter}`)}
                 </Button>
               );
             })}
           </div>
 
           {isLoading ? (
-            <p className="py-4 text-sm text-muted-foreground">Loading pipeline runs…</p>
+            <p className="py-4 text-sm text-muted-foreground">{t("pipeline.loading")}</p>
           ) : visibleRuns.length === 0 ? (
             <p className="py-4 text-sm text-muted-foreground">
-              {runs.length === 0 ? "No pipeline runs yet." : "No runs match the selected filters."}
+              {runs.length === 0 ? t("pipeline.empty") : t("pipeline.noMatches")}
             </p>
           ) : (
             visibleRuns.map((row: PipelineRun) => (
@@ -136,25 +123,25 @@ export function PipelinePage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {isPipelineRowStale(row.last_event_at) ? (
-                      <Badge variant="destructive">Stale</Badge>
+                      <Badge variant="destructive">{t("pipeline.stale")}</Badge>
                     ) : null}
                     {row.reviewed ? (
-                      <Badge variant="default">Reviewed</Badge>
+                      <Badge variant="default">{t("pipeline.reviewed")}</Badge>
                     ) : (
-                      <Badge variant="outline">Not reviewed</Badge>
+                      <Badge variant="outline">{t("pipeline.notReviewed")}</Badge>
                     )}
-                    {!row.open ? <Badge variant="outline">Merged</Badge> : null}
+                    {!row.open ? <Badge variant="outline">{t("pipeline.merged")}</Badge> : null}
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                  <StageBadge label="CI" status={row.ci_status} />
-                  <StageBadge label="Merge" status={row.merge_status} />
-                  <StageBadge label="Publish" status={row.publish_status} />
-                  <StageBadge label="M1 deploy" status={row.m1_deploy_status} />
-                  <StageBadge label="CF deploy" status={row.cf_deploy_status} />
+                  <StageBadge label={t("pipeline.columns.ci")} status={row.ci_status} />
+                  <StageBadge label={t("pipeline.columns.merge")} status={row.merge_status} />
+                  <StageBadge label={t("pipeline.columns.publish")} status={row.publish_status} />
+                  <StageBadge label={t("pipeline.columns.m1")} status={row.m1_deploy_status} />
+                  <StageBadge label={t("pipeline.columns.cf")} status={row.cf_deploy_status} />
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Last event {formatLastEvent(row.last_event_at)} ago
+                  {t("pipeline.lastEvent", { age: formatLastEvent(row.last_event_at) })}
                 </p>
                 {row.checks.length > 0 ? (
                   <p className="mt-1 text-xs text-muted-foreground">

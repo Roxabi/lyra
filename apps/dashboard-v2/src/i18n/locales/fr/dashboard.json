@@ -1,0 +1,110 @@
+{
+  "subtitle": "État du control plane — agents, jobs et chats actifs.",
+  "alerts": {
+    "title": "Alertes",
+    "agentsOffline_one": "{{count}} agent hors ligne",
+    "agentsOffline_other": "{{count}} agents hors ligne",
+    "jobsActive_one": "{{count}} job actif",
+    "jobsActive_other": "{{count}} jobs actifs",
+    "enginesDown_one": "{{count}} moteur d'observabilité injoignable",
+    "enginesDown_other": "{{count}} moteurs d'observabilité injoignables",
+    "allClear": "Tous les systèmes répondent."
+  },
+  "agents": {
+    "title": "Agents",
+    "loadError": "Échec du chargement du roster agents.",
+    "empty": "Aucun agent dans le roster.",
+    "emptyHint": "Les agents du hub apparaîtront ici avec leur statut harness.",
+    "colAgent": "Agent",
+    "colHarness": "Harness",
+    "colStatus": "Statut"
+  },
+  "jobs": {
+    "title": "Jobs actifs",
+    "loadError": "Échec du chargement des jobs.",
+    "empty": "Aucun job en cours.",
+    "emptyHint": "Les jobs OMP actifs s'affichent ici en temps réel.",
+    "colJob": "Job",
+    "colAgent": "Agent",
+    "colStatus": "Statut"
+  },
+  "fleet": {
+    "subtitle": "État des containers M₁ — les unités Roxabi publient via NATS ; les tierces apparaissent comme non instrumentées.",
+    "tableTitle": "Flotte",
+    "count": "{{count}} container(s)",
+    "searchPlaceholder": "Rechercher un container…",
+    "emptyFiltered": "Aucun container ne correspond aux filtres.",
+    "filters": {
+      "status": "Statut"
+    },
+    "loadError": "Impossible de charger la flotte.",
+    "empty": "Aucune ligne dans le catalogue.",
+    "emptyHint": "Les containers instrumentés apparaîtront ici via NATS.",
+    "columns": {
+      "name": "Container",
+      "status": "Statut",
+      "health": "Santé",
+      "image": "Image",
+      "revision": "Révision",
+      "age": "Âge",
+      "imageDigest": "Digest image"
+    },
+    "status": {
+      "ok": "OK",
+      "stale": "Stale",
+      "unknown": "Inconnu",
+      "pinned": "Épinglé"
+    },
+    "imageDigest": {
+      "current": "À jour",
+      "stale": "Obsolète",
+      "unknown_compare": "Inconnu",
+      "n/a": "N/A"
+    }
+  },
+  "pipeline": {
+    "subtitle": "PR ouvertes et merges récents — CI, publish, M₁ et Cloudflare via events ingress.",
+    "disclaimer": "Indicatif seulement — pas pour décider d'un merge. Les checks GitHub font foi.",
+    "tableTitle": "Chaîne release",
+    "loadError": "Impossible de charger le pipeline.",
+    "loading": "Connexion au flux pipeline…",
+    "empty": "Aucune PR suivie — en attente d'events GitHub ingress.",
+    "noMatches": "Aucune PR ne correspond aux filtres actifs.",
+    "stale": "stale",
+    "lastEvent": "Dernier event il y a {{age}}",
+    "filters": {
+      "ci_red": "CI rouge",
+      "awaiting_reviewed": "Sans reviewed",
+      "deploy_pending": "Deploy en attente"
+    },
+    "reviewed": "reviewed",
+    "notReviewed": "sans label reviewed",
+    "merged": "mergé",
+    "columns": {
+      "ci": "CI",
+      "merge": "Merge",
+      "publish": "Publish",
+      "m1": "M₁",
+      "cf": "CF"
+    },
+    "stage": {
+      "pending": "en attente",
+      "running": "en cours",
+      "success": "ok",
+      "failure": "échec",
+      "skipped": "ignoré",
+      "unknown": "inconnu",
+      "n/a": "n/a"
+    }
+  },
+  "engines": {
+    "loadError": "Échec du chargement de la santé ops.",
+    "loading": "Chargement de la santé ops…"
+  },
+  "chats": {
+    "title": "Chats récents",
+    "empty": "Aucun chat ouvert.",
+    "emptyHint": "Ouvrez un onglet chat pour démarrer une session opérateur.",
+    "openChat": "Ouvrir le chat"
+  }
+}

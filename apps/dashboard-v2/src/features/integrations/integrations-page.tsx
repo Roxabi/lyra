@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,10 +27,12 @@ function InstallationTable({
   onDisconnect: (externalId: string) => void;
   disconnectingId: string | null;
 }) {
+  const { t } = useTranslation("integrations");
+
   if (installations.length === 0) {
     return (
       <p className="rounded-lg bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-        No installations registered.
+        {t("table.empty")}
       </p>
     );
   }
@@ -42,12 +45,12 @@ function InstallationTable({
           className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2"
         >
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">External ID</p>
+            <p className="text-xs text-muted-foreground">{t("table.externalId")}</p>
             <p className="truncate font-mono text-sm">{row.external_id}</p>
           </div>
           <div className="flex items-center gap-3">
             <Badge variant={row.enabled ? "default" : "outline"}>
-              {row.enabled ? "Enabled" : "Disabled"}
+              {row.enabled ? t("table.enabled") : t("table.disabled")}
             </Badge>
             {row.enabled ? (
               <Button
@@ -57,7 +60,7 @@ function InstallationTable({
                 onClick={() => onDisconnect(row.external_id)}
               >
                 {disconnectingId === row.external_id ? <Spinner className="mr-1" /> : null}
-                Disconnect
+                {t("table.disconnect")}
               </Button>
             ) : null}
           </div>
@@ -82,6 +85,8 @@ function ConnectorSection({
   fieldLabel: string;
   children?: ReactNode;
 }) {
+  const { t } = useTranslation("integrations");
+  const { t: tc } = useTranslation("common");
   const queryClient = useQueryClient();
   const [externalId, setExternalId] = useState("");
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
@@ -138,10 +143,12 @@ function ConnectorSection({
             </Button>
           </div>
         </div>
-        {isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p>
+        ) : null}
         {isError ? (
           <p className="text-sm text-destructive" role="alert">
-            Failed to load installations.
+            {t("errors.load")}
           </p>
         ) : null}
         {data ? (
@@ -157,6 +164,8 @@ function ConnectorSection({
 }
 
 export function IntegrationsPage() {
+  const { t } = useTranslation("integrations");
+  const { t: tc } = useTranslation("common");
   const [tokenDraft, setTokenDraft] = useState(getOperatorToken() ?? "");
 
   const {
@@ -182,58 +191,59 @@ export function IntegrationsPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <PageIntro>Connect GitHub and Cloudflare to your factory tenant.</PageIntro>
+      <PageIntro>{t("subtitle")}</PageIntro>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Operator token</CardTitle>
-          <CardDescription>
-            Bearer token for BFF admin and connector endpoints. Stored in session storage.
-          </CardDescription>
+          <CardTitle className="text-sm font-medium">{t("auth.title")}</CardTitle>
+          <CardDescription>{t("auth.hint")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-64 flex-1 space-y-2">
-              <Label htmlFor="operator-token">Token</Label>
+              <Label htmlFor="operator-token">{t("auth.placeholder")}</Label>
               <Input
                 id="operator-token"
                 type="password"
                 value={tokenDraft}
                 onChange={(e) => setTokenDraft(e.target.value)}
-                placeholder="Bearer token"
+                placeholder={t("auth.placeholder")}
               />
             </div>
             <Button variant="outline" onClick={() => setOperatorToken(tokenDraft)}>
-              Save token
+              {t("auth.save")}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {catalogLoading ? <p className="text-sm text-muted-foreground">Loading connectors…</p> : null}
+      {catalogLoading ? (
+        <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p>
+      ) : null}
 
       {authError ? (
         <p className="text-sm text-destructive" role="alert">
-          Authentication required. Set a valid operator token above.
+          {t("errors.auth")}
         </p>
       ) : catalogError && !authError ? (
         <p className="text-sm text-destructive" role="alert">
-          Failed to load connector catalog.
+          {t("errors.load")}
         </p>
       ) : null}
 
       {catalog ? (
         <p className="text-sm text-muted-foreground">
-          Tenant: <span className="font-mono text-foreground">{catalog.factory_tenant}</span>
+          {t("tenantLabel")}:{" "}
+          <span className="font-mono text-foreground">{catalog.factory_tenant}</span>
         </p>
       ) : null}
 
       <ConnectorSection
         connector="github"
-        title="GitHub"
-        description="Install the GitHub App or register an installation ID manually."
-        registerLabel="Register installation"
-        fieldLabel="Installation ID"
+        title={t("github.title")}
+        description={t("github.description")}
+        registerLabel={t("github.register")}
+        fieldLabel={t("github.installationId")}
       >
         <div className="space-y-2">
           {githubInstall ? (
@@ -241,23 +251,21 @@ export function IntegrationsPage() {
               variant="default"
               render={<a href={githubInstall.url} target="_blank" rel="noopener noreferrer" />}
             >
-              Install GitHub App
+              {t("github.install")}
             </Button>
           ) : githubInstallError ? (
-            <p className="text-sm text-muted-foreground">GitHub App install URL unavailable.</p>
+            <p className="text-sm text-muted-foreground">{t("github.installUnavailable")}</p>
           ) : null}
-          <p className="text-xs text-muted-foreground">
-            Or register an installation ID manually below.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("github.manualTitle")}</p>
         </div>
       </ConnectorSection>
 
       <ConnectorSection
         connector="cloudflare"
-        title="Cloudflare"
-        description="Register your Cloudflare account ID for deploy integrations."
-        registerLabel="Register account"
-        fieldLabel="Account ID"
+        title={t("cloudflare.title")}
+        description={t("cloudflare.description")}
+        registerLabel={t("cloudflare.register")}
+        fieldLabel={t("cloudflare.accountId")}
       />
     </div>
   );

@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as overviewApi from "@/features/overview/api";
 import { OverviewPage } from "@/features/overview/overview-page";
+import i18n from "@/i18n";
 import { renderWithRouter } from "@/test-utils/router";
 
 describe("OverviewPage", () => {
@@ -28,7 +29,7 @@ describe("OverviewPage", () => {
     const { ui } = renderWithRouter(<OverviewPage />);
     render(ui);
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Failed to load agent roster.");
+    expect(alert.textContent).toContain(i18n.t("dashboard:agents.loadError"));
   });
 
   it("shows jobs error when jobs fetch fails", async () => {
@@ -36,6 +37,6 @@ describe("OverviewPage", () => {
     const { ui } = renderWithRouter(<OverviewPage />);
     render(ui);
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Failed to load jobs.");
+    expect(alert.textContent).toContain(i18n.t("dashboard:jobs.loadError"));
   });
 });

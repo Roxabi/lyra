@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ interface CreateAgentDialogProps {
 }
 
 export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps) {
+  const { t } = useTranslation("agents");
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -59,7 +61,7 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
         tagline: tagline.trim(),
       }),
     onSuccess: (cfg) => {
-      toast.info(`Agent "${cfg.name}" created.`);
+      toast.info(t("createSuccess", { name: cfg.name }));
       void qc.invalidateQueries({ queryKey: ["agents-config"] });
       onOpenChange(false);
       reset();
@@ -76,10 +78,8 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create agent</DialogTitle>
-          <DialogDescription>
-            Add a new agent to the factory roster. The slug is used in API paths and storage keys.
-          </DialogDescription>
+          <DialogTitle>{t("createTitle")}</DialogTitle>
+          <DialogDescription>{t("createDescription")}</DialogDescription>
         </DialogHeader>
 
         <form
@@ -92,35 +92,29 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
         >
           {createMut.isError ? (
             <Alert variant="destructive">
-              <AlertDescription>
-                {bffErrorMessage(createMut.error, "Failed to create agent.")}
-              </AlertDescription>
+              <AlertDescription>{bffErrorMessage(createMut.error, t, "create")}</AlertDescription>
             </Alert>
           ) : null}
 
           <div className="space-y-2">
-            <Label htmlFor="agent-slug">Slug</Label>
+            <Label htmlFor="agent-slug">{t("createName")}</Label>
             <Input
               id="agent-slug"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="my-agent"
+              placeholder={t("createNamePlaceholder")}
               autoComplete="off"
             />
             {!slugValid && slug.length > 0 ? (
-              <p className="text-xs text-destructive">
-                Lowercase letters, numbers, and hyphens only. Must start with a letter.
-              </p>
+              <p className="text-xs text-destructive">{t("createNameInvalid")}</p>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Used in URLs and config keys (e.g. lyra, field-bot).
-              </p>
+              <p className="text-xs text-muted-foreground">{t("createNameHint")}</p>
             )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="agent-display-name">Display name</Label>
+              <Label htmlFor="agent-display-name">{t("displayName")}</Label>
               <Input
                 id="agent-display-name"
                 value={displayName}
@@ -128,7 +122,7 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="agent-tagline">Tagline</Label>
+              <Label htmlFor="agent-tagline">{t("tagline")}</Label>
               <Input
                 id="agent-tagline"
                 value={tagline}
@@ -144,11 +138,11 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("createCancel")}
             </Button>
             <Button type="submit" disabled={!slugValid || createMut.isPending}>
               {createMut.isPending ? <Spinner className="mr-1.5" /> : null}
-              Create
+              {t("createSubmit")}
             </Button>
           </DialogFooter>
         </form>

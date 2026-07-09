@@ -3,6 +3,8 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 @import "@fontsource/outfit";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
 @import "./theme/forge.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -11,6 +13,7 @@
   --font-heading: var(--font-head);
   --font-head: "Outfit", system-ui, sans-serif;
   --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --color-status-open: var(--status-open);
   --color-status-closing: var(--status-closing);
   --color-status-error: var(--status-error);

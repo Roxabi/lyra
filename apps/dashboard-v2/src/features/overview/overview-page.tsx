@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, Bot, Briefcase, MessageCircle } from "lucide-react";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import {
 import { fetchAgentStatus, fetchAgents, fetchJobs, fetchOpsHealth } from "@/features/overview/api";
 import type { AgentHealth } from "@/shared/api/bff-types";
 import { AgentIdentity } from "@/shared/components/agent-identity";
+import { AgentStatusBadge } from "@/shared/components/agent-status-badge";
 import { ListRowsSkeleton, TableRowsSkeleton } from "@/shared/components/data-table";
 import { EmptyState } from "@/shared/components/empty-state";
 import { JobStatusBadge } from "@/shared/components/job-status-badge";
@@ -25,6 +27,8 @@ import type { HarnessKind } from "@/shared/lib/chats-storage";
 import { loadTabs } from "@/shared/lib/chats-storage";
 
 export function OverviewPage() {
+  const { t } = useTranslation("dashboard");
+  const { t: tc } = useTranslation("common");
   const tabs = loadTabs();
 
   const {
@@ -65,13 +69,13 @@ export function OverviewPage() {
   const alertParts: string[] = [];
 
   if (offlineAgents > 0) {
-    alertParts.push(`${offlineAgents} agent${offlineAgents === 1 ? "" : "s"} offline`);
+    alertParts.push(t("alerts.agentsOffline", { count: offlineAgents }));
   }
   if (jobs.length > 0) {
-    alertParts.push(`${jobs.length} active job${jobs.length === 1 ? "" : "s"}`);
+    alertParts.push(t("alerts.jobsActive", { count: jobs.length }));
   }
   if (enginesDown > 0) {
-    alertParts.push(`${enginesDown} engine${enginesDown === 1 ? "" : "s"} down`);
+    alertParts.push(t("alerts.enginesDown", { count: enginesDown }));
   }
 
   const rosterAgents = useMemo((): AgentHealth[] => {
@@ -93,9 +97,7 @@ export function OverviewPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <PageIntro>
-        Factory operator overview — agents, jobs, and platform health at a glance.
-      </PageIntro>
+      <PageIntro>{t("subtitle")}</PageIntro>
 
       <section
         className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-card px-4 py-3"
@@ -106,7 +108,7 @@ export function OverviewPage() {
           {alertParts.length > 0 ? (
             <span className="font-medium text-foreground">{alertParts.join(" · ")}</span>
           ) : (
-            <span className="text-muted-foreground">All systems nominal.</span>
+            <span className="text-muted-foreground">{t("alerts.allClear")}</span>
           )}
         </p>
       </section>
@@ -114,7 +116,7 @@ export function OverviewPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium">Agents</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("agents.title")}</CardTitle>
             <Badge variant="outline" className="tabular-nums">
               {rosterAgents.length}
             </Badge>
@@ -122,7 +124,7 @@ export function OverviewPage() {
           <CardContent className="px-0 pb-0">
             {agentsError || statusError ? (
               <p className="px-4 pb-4 text-sm text-destructive" role="alert">
-                Failed to load agent roster.
+                {t("agents.loadError")}
               </p>
             ) : null}
             {!agentsError && !statusError && (statusLoading || agentsLoading) ? (
@@ -136,8 +138,8 @@ export function OverviewPage() {
               <div className="px-4 pb-4">
                 <EmptyState
                   icon={Bot}
-                  title="No agents"
-                  description="Configure agents to see roster status here."
+                  title={t("agents.empty")}
+                  description={t("agents.emptyHint")}
                   className="py-8"
                 />
               </div>
@@ -150,9 +152,9 @@ export function OverviewPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="pl-6">Agent</TableHead>
-                    <TableHead>Harness</TableHead>
-                    <TableHead className="pr-6">Status</TableHead>
+                    <TableHead className="pl-6">{t("agents.colAgent")}</TableHead>
+                    <TableHead>{t("agents.colHarness")}</TableHead>
+                    <TableHead className="pr-6">{t("agents.colStatus")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -163,9 +165,7 @@ export function OverviewPage() {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{s.harness}</TableCell>
                       <TableCell className="pr-6">
-                        <Badge variant={s.online ? "default" : "destructive"}>
-                          {s.online ? "Online" : "Offline"}
-                        </Badge>
+                        <AgentStatusBadge health={s} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -177,7 +177,7 @@ export function OverviewPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium">Jobs</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("jobs.title")}</CardTitle>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="tabular-nums">
                 {jobs.length}
@@ -188,14 +188,14 @@ export function OverviewPage() {
                 className="h-8 text-xs"
                 render={<Link to="/jobs" />}
               >
-                View all
+                {tc("actions.viewAll")}
               </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
             {jobsError ? (
               <p className="text-sm text-destructive" role="alert">
-                Failed to load jobs.
+                {t("jobs.loadError")}
               </p>
             ) : null}
             {!jobsError && jobsLoading ? (
@@ -204,8 +204,8 @@ export function OverviewPage() {
             {!jobsError && !jobsLoading && jobs.length === 0 ? (
               <EmptyState
                 icon={Briefcase}
-                title="No active jobs"
-                description="Launch a job from the Jobs page."
+                title={t("jobs.empty")}
+                description={t("jobs.emptyHint")}
                 className="py-8"
               />
             ) : null}
@@ -231,29 +231,29 @@ export function OverviewPage() {
 
       {enginesError ? (
         <p className="text-sm text-destructive" role="alert">
-          Failed to load ops engine health.
+          {t("engines.loadError")}
         </p>
       ) : enginesLoading ? (
-        <p className="text-sm text-muted-foreground">Loading ops health…</p>
+        <p className="text-sm text-muted-foreground">{t("engines.loading")}</p>
       ) : null}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-medium">Chat tabs</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("chats.title")}</CardTitle>
           <Button variant="ghost" size="sm" className="h-8 text-xs" render={<Link to="/chat" />}>
-            Open chat
+            {t("chats.openChat")}
           </Button>
         </CardHeader>
         <CardContent className="space-y-2">
           {previewTabs.length === 0 ? (
             <EmptyState
               icon={MessageCircle}
-              title="No chat tabs"
-              description="Open chat to start a session with an agent."
+              title={t("chats.empty")}
+              description={t("chats.emptyHint")}
               action={
                 agents.length > 0 ? (
                   <Button size="sm" render={<Link to="/chat" />}>
-                    Open chat
+                    {t("chats.openChat")}
                   </Button>
                 ) : undefined
               }
@@ -276,7 +276,7 @@ export function OverviewPage() {
                   className="h-8 shrink-0 text-xs"
                   render={<Link to="/chat" />}
                 >
-                  Open
+                  {tc("actions.open")}
                 </Button>
               </div>
             ))

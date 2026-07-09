@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -40,24 +41,19 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function DesignSystemPage() {
+  const { t } = useTranslation("designSystem");
+  const { t: tc } = useTranslation("common");
   const [checked, setChecked] = useState(true);
 
   return (
     <div className="space-y-10">
-      <PageHeader
-        title="Design system"
-        description="shadcn/Base UI + thème Forge natif (variables sémantiques --primary, surfaces Obsidian)."
-      />
+      <PageHeader title={t("title")} description={t("subtitle")} />
 
-      <Section title="Forge theme (shadcn native)">
+      <Section title={t("forgeTheme")}>
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Semantic tokens</CardTitle>
-            <CardDescription>
-              Mappés depuis <code className="rounded bg-muted px-1">brand/tokens/</code> via{" "}
-              <code className="rounded bg-muted px-1">src/theme/forge.css</code> — pas de couche
-              parallèle <code className="rounded bg-muted px-1">--brand-*</code>.
-            </CardDescription>
+            <CardDescription>{t("forgeThemeHint")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <div className="flex size-16 flex-col items-center justify-center rounded-lg bg-primary text-xs font-medium text-primary-foreground">
@@ -84,7 +80,7 @@ export function DesignSystemPage() {
         </div>
       </Section>
 
-      <Section title="Buttons">
+      <Section title={t("buttons")}>
         <div className="flex flex-wrap gap-2">
           <Button>Default</Button>
           <Button variant="secondary">Secondary</Button>
@@ -95,7 +91,7 @@ export function DesignSystemPage() {
         </div>
       </Section>
 
-      <Section title="Badges">
+      <Section title={t("badges")}>
         <div className="flex flex-wrap gap-2">
           <Badge>Default</Badge>
           <Badge variant="secondary">Secondary</Badge>
@@ -177,8 +173,8 @@ export function DesignSystemPage() {
           <ListToolbarSearch
             value=""
             onChange={() => {}}
-            placeholder="Search…"
-            aria-label="Search"
+            placeholder={`${tc("search")}…`}
+            aria-label={tc("search")}
           />
           <ListToolbarControls
             filters={
@@ -212,10 +208,7 @@ export function DesignSystemPage() {
 
       <Separator />
 
-      <p className="text-xs text-muted-foreground">
-        Polices : Inter (body) · Outfit (headings). Composants via{" "}
-        <code className="rounded bg-muted px-1 py-0.5">shadcn add</code>.
-      </p>
+      <p className="text-xs text-muted-foreground">{t("typographyHint")}</p>
     </div>
   );
 }

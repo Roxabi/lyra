@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Container } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { fetchFleet } from "@/features/fleet/api";
@@ -31,20 +32,6 @@ import {
 } from "@/shared/lib/fleet-filters";
 import { type SortDirection, toggleSort } from "@/shared/lib/sort";
 
-const STATUS_LABELS: Record<FleetStatus, string> = {
-  ok: "OK",
-  stale: "Stale",
-  unknown: "Unknown",
-  pinned: "Pinned",
-};
-
-const DIGEST_LABELS: Record<ImageDigestStatus, string> = {
-  current: "Current",
-  stale: "Stale",
-  unknown_compare: "Unknown",
-  "n/a": "N/A",
-};
-
 function statusVariant(status: FleetStatus): "default" | "destructive" | "outline" {
   if (status === "ok") return "default";
   if (status === "stale") return "destructive";
@@ -64,6 +51,8 @@ function formatAge(ageS: number | null | undefined): string {
 }
 
 export function FleetPage() {
+  const { t } = useTranslation("dashboard");
+  const { t: tc } = useTranslation("common");
   const [search, setSearch] = useState("");
   const [statusFilters, setStatusFilters] = useState<FleetStatus[]>([]);
   const [sortKey, setSortKey] = useState<FleetSortKey>("container_name");
@@ -101,36 +90,32 @@ export function FleetPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <PageIntro>Container fleet status — image revisions, health, and staleness.</PageIntro>
+      <PageIntro>{t("fleet.subtitle")}</PageIntro>
 
       {isError ? (
         <p className="text-sm text-destructive" role="alert">
-          Failed to load fleet data.
+          {t("fleet.loadError")}
         </p>
       ) : null}
 
       <ListToolbar>
         <ListToolbarHeader
-          meta={
-            isLoading
-              ? "Loading…"
-              : `${visibleRows.length} container${visibleRows.length === 1 ? "" : "s"}`
-          }
+          meta={isLoading ? tc("actions.loading") : t("fleet.count", { count: visibleRows.length })}
         />
         <ListToolbarSearch
           value={search}
           onChange={setSearch}
-          placeholder="Search containers…"
-          aria-label="Search"
+          placeholder={t("fleet.searchPlaceholder")}
+          aria-label={tc("search")}
         />
         <ListToolbarControls
           filters={
             <>
-              <span className="text-xs text-muted-foreground">Status</span>
+              <span className="text-xs text-muted-foreground">{t("fleet.filters.status")}</span>
               {FLEET_STATUSES.map((fleetStatus) => (
                 <FilterChip
                   key={fleetStatus}
-                  label={STATUS_LABELS[fleetStatus]}
+                  label={t(`fleet.status.${fleetStatus}`)}
                   active={statusFilters.includes(fleetStatus)}
                   onToggle={() => toggleStatusFilter(fleetStatus)}
                 />
@@ -145,8 +130,8 @@ export function FleetPage() {
       {!isLoading && visibleRows.length === 0 ? (
         <EmptyState
           icon={hasFilters ? undefined : Container}
-          title={hasFilters ? "No matching containers" : "No fleet data"}
-          description={hasFilters ? undefined : "Fleet reports will appear when agents report in."}
+          title={hasFilters ? t("fleet.emptyFiltered") : t("fleet.empty")}
+          description={hasFilters ? undefined : t("fleet.emptyHint")}
         />
       ) : null}
 
@@ -154,28 +139,28 @@ export function FleetPage() {
         <DataTable>
           <DataTableHeader>
             <SortableTableHeader
-              label="Name"
+              label={t("fleet.columns.name")}
               active={sortKey === "container_name"}
               direction={sortDirection}
               onClick={() => onSort("container_name")}
             />
             <SortableTableHeader
-              label="Status"
+              label={t("fleet.columns.status")}
               active={sortKey === "status"}
               direction={sortDirection}
               onClick={() => onSort("status")}
             />
-            <TableHead>Image digest</TableHead>
+            <TableHead>{t("fleet.columns.imageDigest")}</TableHead>
             <SortableTableHeader
-              label="Health"
+              label={t("fleet.columns.health")}
               active={sortKey === "health"}
               direction={sortDirection}
               onClick={() => onSort("health")}
             />
-            <TableHead>Image</TableHead>
-            <TableHead>Revision</TableHead>
+            <TableHead>{t("fleet.columns.image")}</TableHead>
+            <TableHead>{t("fleet.columns.revision")}</TableHead>
             <SortableTableHeader
-              label="Age"
+              label={t("fleet.columns.age")}
               active={sortKey === "age_s"}
               direction={sortDirection}
               onClick={() => onSort("age_s")}
@@ -194,11 +179,13 @@ export function FleetPage() {
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={statusVariant(row.status)}>{STATUS_LABELS[row.status]}</Badge>
+                  <Badge variant={statusVariant(row.status)}>
+                    {t(`fleet.status.${row.status}`)}
+                  </Badge>
                 </TableCell>
                 <TableCell>
                   <Badge variant={digestVariant(row.image_digest_status)}>
-                    {DIGEST_LABELS[row.image_digest_status]}
+                    {t(`fleet.imageDigest.${row.image_digest_status}`)}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground capitalize">{row.health}</TableCell>

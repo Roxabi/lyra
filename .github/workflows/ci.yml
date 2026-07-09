@@ -194,6 +194,11 @@ jobs:
       - name: Build dashboard SPA
         run: bun run build:dashboard
 
+      # The visual e2e fixture pytest.skip()s when apps/dashboard-v2/dist is
+      # missing — build explicitly here so the suite never silently skips.
+      - name: Build dashboard-v2 SPA
+        run: bun run build:dashboard-v2
+
       # --only-shell: the visual tests launch default-headless chromium, which
       # executes the headless-shell binary — the 175 MiB full Chrome download is
       # never exercised.
@@ -206,6 +211,10 @@ jobs:
         run: |
           uv run playwright install chromium --only-shell
           uv run pytest tests/e2e/dashboard/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-e2e.xml
+
+      - name: Dashboard-v2 visual e2e
+        run: |
+          uv run pytest tests/e2e/dashboard-v2/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-e2e-dashboard-v2.xml
 
       # tests/integration runs in the dedicated integration job (against real
       # docker NATS) and tests/e2e in the step above — excluded here so each

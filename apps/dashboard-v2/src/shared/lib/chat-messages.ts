@@ -38,10 +38,10 @@ export function turnsToInitialMessages(turns: TurnRecord[]): Array<{
   parts: Array<{ type: "text"; content: string }>;
 }> {
   return turns
-    .filter((turn) => turn.role === "user" || turn.role === "assistant")
+    .filter((turn) => turn.role === "user" || turn.role === "assistant" || turn.role === "error")
     .map((turn, index) => ({
-      id: `turn-${index}`,
-      role: turn.role as "user" | "assistant",
+      id: turn.role === "error" ? `error-${index}` : `turn-${index}`,
+      role: (turn.role === "error" ? "assistant" : turn.role) as "user" | "assistant",
       parts: [{ type: "text" as const, content: turn.content }],
     }));
 }

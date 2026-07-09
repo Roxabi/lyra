@@ -41,5 +41,16 @@
     "model": "Modèle",
     "offline": "Hors ligne",
     "dbOverride": "≠ défaut DB ({{default}})"
+  },
+  "errors": {
+    "adapterNotReady": "Adaptateur indisponible — réessayez dans un instant.",
+    "sendFailed": "Échec de l'envoi du message.",
+    "agentsFetchFailed": "Échec du chargement des agents.",
+    "statusFetchFailed": "Échec du chargement du statut agent.",
+    "sessionsFetchFailed": "Échec du chargement des sessions.",
+    "turnsFetchFailed": "Échec du chargement de l'historique.",
+    "resumeFailed": "Échec de la reprise de session.",
+    "resumeRejected": "Reprise refusée : {{message}}",
+    "streamFailed": "Échec de la connexion au flux."
   }
 }

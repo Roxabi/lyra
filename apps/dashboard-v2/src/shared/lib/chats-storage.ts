@@ -30,14 +30,16 @@ export function loadTabs(): ChatTab[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as ChatTab[];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((tab) => ({ ...tab, streamToken: null }));
   } catch {
     return [];
   }
 }
 
 export function saveTabs(tabs: ChatTab[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));
+  const persisted = tabs.map(({ streamToken: _token, ...tab }) => tab);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
 }
 
 export interface AgentDefaults {

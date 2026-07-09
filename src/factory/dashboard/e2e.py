@@ -49,8 +49,8 @@ def stub_agents_status(agents: list[str]) -> AgentHealthResponse:
                 agent=name,
                 in_roster=True,
                 harness=_e2e_agent_backend(name),
-                harness_reachable=name.lower().startswith("lyr"),
-                online=name.lower().startswith("lyr"),
+                harness_reachable=True,
+                online=True,
             )
             for name in agents
         ]

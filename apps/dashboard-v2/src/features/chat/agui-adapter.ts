@@ -1,6 +1,7 @@
 import type { ModelMessage, StreamChunk, TextPart, UIMessage } from "@tanstack/ai/client";
 import type { ConnectConnectionAdapter } from "@tanstack/ai-react";
 import { postChat } from "@/features/chat/api";
+import { ChatApiError } from "@/features/chat/chat-errors";
 import type { HarnessKind } from "@/shared/lib/chats-storage";
 
 export interface AguiTabConfig {
@@ -82,26 +83,35 @@ export function makeAguiAdapter(
       const streamUrl = `/api/stream/${encodeURIComponent(session_id)}?token=${encodeURIComponent(stream_token)}&format=agui`;
       const response = await fetch(streamUrl, { signal: abortSignal });
       if (!response.ok) {
-        throw new Error(`stream failed: HTTP ${response.status}`);
+        throw new ChatApiError("stream_failed");
       }
       if (!response.body) {
-        throw new Error("stream response has no body");
+        throw new ChatApiError("stream_failed");
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
+      const flushBuffer = function* (): Generator<StreamChunk> {
+        if (!buffer) return;
+        const { events, rest } = parseSseBuffer(buffer);
+        buffer = rest;
+        for (const event of events) {
+          yield event;
+        }
+      };
+
       try {
         while (!abortSignal?.aborted) {
           const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const { events, rest } = parseSseBuffer(buffer);
-          buffer = rest;
-          for (const event of events) {
-            yield event;
+          if (done) {
+            buffer += decoder.decode(undefined, { stream: false });
+            yield* flushBuffer();
+            break;
           }
+          buffer += decoder.decode(value, { stream: true });
+          yield* flushBuffer();
         }
       } finally {
         reader.releaseLock();

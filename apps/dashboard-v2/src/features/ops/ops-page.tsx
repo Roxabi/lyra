@@ -24,12 +24,6 @@ import { SelectField } from "@/shared/components/select-field";
 import { useDebouncedValue } from "@/shared/hooks/use-debounced-value";
 import { displayAgentName } from "@/shared/lib/agents";
 
-const LOG_PRESET_OPTIONS: { value: OpsLogPreset; label: string }[] = [
-  { value: "hub-errors", label: "Hub errors (1h)" },
-  { value: "operator-events", label: "Operator events" },
-  { value: "deploy-failures", label: "Deploy failures (24h)" },
-];
-
 const opsRouteApi = getRouteApi("/ops");
 
 function EngineCardsSkeleton() {
@@ -68,6 +62,15 @@ export function OpsPage() {
   const { t } = useTranslation("ops");
   const { t: tc } = useTranslation("common");
   const { container } = opsRouteApi.useSearch();
+  const logPresetOptions = useMemo(
+    () =>
+      [
+        { value: "hub-errors" as OpsLogPreset, label: t("logs.presets.hubErrors") },
+        { value: "operator-events" as OpsLogPreset, label: t("logs.presets.operatorEvents") },
+        { value: "deploy-failures" as OpsLogPreset, label: t("logs.presets.deployFailures") },
+      ] satisfies { value: OpsLogPreset; label: string }[],
+    [t],
+  );
   const [logPreset, setLogPreset] = useState<OpsLogPreset>("hub-errors");
   const [agentSearch, setAgentSearch] = useState("");
   const debouncedAgentSearch = useDebouncedValue(agentSearch, 300);
@@ -200,7 +203,7 @@ export function OpsPage() {
             <SelectField
               label={t("logs.presetLabel")}
               value={logPreset}
-              options={LOG_PRESET_OPTIONS}
+              options={logPresetOptions}
               onChange={(v) => setLogPreset(v as OpsLogPreset)}
               className="min-w-48"
             />

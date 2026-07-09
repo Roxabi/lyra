@@ -58,4 +58,20 @@ describe("turnsToInitialMessages", () => {
       { id: "turn-1", role: "assistant", parts: [{ type: "text", content: "Hello" }] },
     ]);
   });
+
+  it("maps error turns for hydration", () => {
+    expect(
+      turnsToInitialMessages([
+        { role: "user", content: "Oops" },
+        { role: "error", content: "harness down" },
+      ]),
+    ).toEqual([
+      { id: "turn-0", role: "user", parts: [{ type: "text", content: "Oops" }] },
+      {
+        id: "error-1",
+        role: "assistant",
+        parts: [{ type: "text", content: "harness down" }],
+      },
+    ]);
+  });
 });

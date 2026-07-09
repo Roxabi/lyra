@@ -77,7 +77,7 @@ def main() -> None:
     bus.put = AsyncMock()
     adapter = WebAdapter(
         inbound_bus=bus,
-        agent_names=["alpha", "beta"],
+        agent_names=["lyra", "aryl"],
         port=19999,
     )
     listener = MagicMock()

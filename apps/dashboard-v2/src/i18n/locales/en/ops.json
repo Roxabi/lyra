@@ -21,6 +21,11 @@
   "logs": {
     "title": "Loki logs",
     "presetLabel": "Preset",
+    "presets": {
+      "hubErrors": "Hub errors (1h)",
+      "operatorEvents": "Operator events",
+      "deployFailures": "Deploy failures (24h)"
+    },
     "loadError": "Could not load logs.",
     "empty": "No entries for this preset.",
     "emptyHint": "Try another preset or wait for new events.",

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { ServerResponse } from "node:http";
 import type { Connect, Plugin } from "vite";
 import {
@@ -57,6 +58,17 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(body));
+}
+
+function verifyOperatorAuth(authorization: string | undefined): boolean {
+  const expected = process.env.FACTORY_DASHBOARD_OPERATOR_TOKEN?.trim();
+  if (!expected) return true;
+  if (!authorization?.startsWith("Bearer ")) return false;
+  const presented = authorization.slice(7).trim();
+  const a = Buffer.from(presented);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 function sendSseChatStream(res: ServerResponse, userText: string) {
@@ -239,8 +251,7 @@ async function handleMockApi(
 
     // GET /api/bff/connectors
     if (method === "GET" && path === "/api/bff/connectors") {
-      const auth = req.headers.authorization;
-      if (!auth) {
+      if (!verifyOperatorAuth(req.headers.authorization)) {
         sendJson(res, 401, { detail: "missing operator token" });
         return;
       }
@@ -250,8 +261,7 @@ async function handleMockApi(
 
     // GET /api/bff/connectors/github/install-url
     if (method === "GET" && path === "/api/bff/connectors/github/install-url") {
-      const auth = req.headers.authorization;
-      if (!auth) {
+      if (!verifyOperatorAuth(req.headers.authorization)) {
         sendJson(res, 401, { detail: "missing operator token" });
         return;
       }
@@ -264,8 +274,7 @@ async function handleMockApi(
     );
     if (connectorInstallationsMatch) {
       const connector = decodeURIComponent(connectorInstallationsMatch[1]);
-      const auth = req.headers.authorization;
-      if (!auth) {
+      if (!verifyOperatorAuth(req.headers.authorization)) {
         sendJson(res, 401, { detail: "missing operator token" });
         return;
       }
@@ -292,8 +301,7 @@ async function handleMockApi(
     if (connectorInstallDelete && method === "DELETE") {
       const connector = decodeURIComponent(connectorInstallDelete[1]);
       const externalId = decodeURIComponent(connectorInstallDelete[2]);
-      const auth = req.headers.authorization;
-      if (!auth) {
+      if (!verifyOperatorAuth(req.headers.authorization)) {
         sendJson(res, 401, { detail: "missing operator token" });
         return;
       }

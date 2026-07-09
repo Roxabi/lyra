@@ -41,5 +41,16 @@
     "model": "Model",
     "offline": "Offline",
     "dbOverride": "≠ DB default ({{default}})"
+  },
+  "errors": {
+    "adapterNotReady": "Adapter not ready — try again shortly.",
+    "sendFailed": "Failed to send message.",
+    "agentsFetchFailed": "Failed to load agents.",
+    "statusFetchFailed": "Failed to load agent status.",
+    "sessionsFetchFailed": "Failed to load sessions.",
+    "turnsFetchFailed": "Failed to load session history.",
+    "resumeFailed": "Failed to resume session.",
+    "resumeRejected": "Resume rejected: {{message}}",
+    "streamFailed": "Stream connection failed."
   }
 }

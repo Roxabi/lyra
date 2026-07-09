@@ -1,7 +1,9 @@
 import type { UIMessage } from "@tanstack/ai/client";
 import { useChat } from "@tanstack/ai-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { makeAguiAdapter } from "@/features/chat/agui-adapter";
+import { chatErrorMessage } from "@/features/chat/chat-errors";
 import { ChatComposer } from "@/features/chat/components/chat-composer";
 import { MessageList } from "@/features/chat/components/message-list";
 import type { AgentHealth } from "@/shared/api/bff-types";
@@ -18,10 +20,19 @@ interface ChatPaneProps {
   health: AgentHealth | undefined;
   initialMessages?: UIMessage[];
   onUpdate: (patch: Partial<ChatTab>) => void;
+  onMessagesUpdate?: (messages: UIMessage[]) => void;
   dbDefaults?: AgentDefaults;
 }
 
-export function ChatPane({ tab, health, initialMessages, onUpdate, dbDefaults }: ChatPaneProps) {
+export function ChatPane({
+  tab,
+  health,
+  initialMessages,
+  onUpdate,
+  onMessagesUpdate,
+  dbDefaults,
+}: ChatPaneProps) {
+  const { t } = useTranslation("chat");
   const [text, setText] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const tabRef = useRef(tab);
@@ -31,7 +42,6 @@ export function ChatPane({ tab, health, initialMessages, onUpdate, dbDefaults }:
     (patch: { sessionId: string; streamToken: string }) => {
       onUpdate({
         sessionId: patch.sessionId,
-        streamToken: patch.streamToken,
         lastActive: Date.now(),
       });
     },
@@ -56,9 +66,13 @@ export function ChatPane({ tab, health, initialMessages, onUpdate, dbDefaults }:
   const { messages, sendMessage, isLoading, error, stop } = useChat({
     connection,
     initialMessages,
-    threadId: tab.id,
-    onError: (err) => setSendError(err.message),
+    threadId: tab.sessionId ?? tab.id,
+    onError: (err) => setSendError(chatErrorMessage(err, t)),
   });
+
+  useEffect(() => {
+    onMessagesUpdate?.(messages);
+  }, [messages, onMessagesUpdate]);
 
   const send = async () => {
     if (!text.trim() || isLoading) return;
@@ -67,13 +81,13 @@ export function ChatPane({ tab, health, initialMessages, onUpdate, dbDefaults }:
       await sendMessage(text.trim());
       setText("");
     } catch (e) {
-      setSendError(e instanceof Error ? e.message : "send failed");
+      setSendError(chatErrorMessage(e, t));
     }
   };
 
   const offline = health?.online === false;
   const label = displayAgentName(tab.agent);
-  const displayError = sendError ?? error?.message ?? null;
+  const displayError = sendError ?? (error ? chatErrorMessage(error, t) : null);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

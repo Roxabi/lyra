@@ -1,5 +1,6 @@
+import type { UIMessage } from "@tanstack/ai/client";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchAgentDefaults } from "@/features/agents/api";
 import { fetchAgents, fetchSessionTurns } from "@/features/chat/api";
@@ -20,9 +21,8 @@ export function ChatPage() {
   const { t } = useTranslation("chat");
   const [tabs, setTabs] = useState<ChatTab[]>(() => loadTabs());
   const [activeId, setActiveId] = useState<string | null>(() => loadTabs()[0]?.id ?? null);
-  const [hydratedMessages, setHydratedMessages] = useState<ReturnType<
-    typeof turnsToInitialMessages
-  > | null>(null);
+  const [messagesByTab, setMessagesByTab] = useState<Record<string, UIMessage[]>>({});
+  const [resumeHydration, setResumeHydration] = useState<Record<string, UIMessage[]>>({});
   const [defaultsWarning, setDefaultsWarning] = useState<string | null>(null);
 
   const {
@@ -81,7 +81,6 @@ export function ChatPage() {
       const tab = newTab(agent, defaults);
       setTabs((prev) => [...prev, tab]);
       setActiveId(tab.id);
-      setHydratedMessages(null);
     })();
   };
 
@@ -91,11 +90,23 @@ export function ChatPage() {
       if (activeId === id) setActiveId(next[0]?.id ?? null);
       return next;
     });
+    setMessagesByTab((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setResumeHydration((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   const onResumed = async (agent: string, sessionId: string) => {
+    let tabId: string;
     const existing = tabs.find((tab) => tab.sessionId === sessionId);
     if (existing) {
+      tabId = existing.id;
       setActiveId(existing.id);
     } else {
       let defaults: AgentDefaults | undefined;
@@ -105,18 +116,39 @@ export function ChatPage() {
         defaults = undefined;
       }
       const tab = newTab(agent, defaults, sessionId);
+      tabId = tab.id;
       setTabs((prev) => [...prev, tab]);
       setActiveId(tab.id);
     }
     try {
       const turns = await fetchSessionTurns(sessionId);
-      setHydratedMessages(turnsToInitialMessages(turns));
+      setResumeHydration((prev) => ({
+        ...prev,
+        [tabId]: turnsToInitialMessages(turns),
+      }));
     } catch {
-      setHydratedMessages(null);
+      setResumeHydration((prev) => {
+        const next = { ...prev };
+        delete next[tabId];
+        return next;
+      });
     }
   };
 
+  const onMessagesUpdate = useCallback((tabId: string, messages: UIMessage[]) => {
+    setMessagesByTab((prev) => ({ ...prev, [tabId]: messages }));
+    setResumeHydration((prev) => {
+      if (!prev[tabId]) return prev;
+      const next = { ...prev };
+      delete next[tabId];
+      return next;
+    });
+  }, []);
+
   const activeHealth = activeTab ? healthFor(activeTab.agent, activeTab.harness) : undefined;
+  const paneInitialMessages = activeTab
+    ? (resumeHydration[activeTab.id] ?? messagesByTab[activeTab.id])
+    : undefined;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
@@ -125,10 +157,7 @@ export function ChatPage() {
         activeId={activeId}
         agents={agents}
         healthByAgent={healthByAgent}
-        onSelect={(id) => {
-          setActiveId(id);
-          setHydratedMessages(null);
-        }}
+        onSelect={setActiveId}
         onClose={closeTab}
         onNew={addTab}
         onResumed={onResumed}
@@ -151,12 +180,13 @@ export function ChatPage() {
           </div>
         ) : activeTab ? (
           <ChatPane
-            key={`${activeTab.id}-${hydratedMessages ? "h" : "f"}`}
+            key={activeTab.id}
             tab={activeTab}
             health={activeHealth}
-            initialMessages={hydratedMessages ?? undefined}
+            initialMessages={paneInitialMessages}
             dbDefaults={dbDefaults}
             onUpdate={(patch) => updateTab(activeTab.id, patch)}
+            onMessagesUpdate={(messages) => onMessagesUpdate(activeTab.id, messages)}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

@@ -597,6 +597,14 @@ else
   fail "dashboard filter identity" "dashboard_build='$build_files' vs dashboard_dist_assert='$dist_files'"
 fi
 
+build_v2_files="$(yq -r '.quality_gates.dashboard_v2_build.files // ""' "$STACK_FILE")"
+dist_v2_files="$(yq -r '.quality_gates.dashboard_v2_dist_assert.files // ""' "$STACK_FILE")"
+if [[ -n "$build_v2_files" && "$build_v2_files" == "$dist_v2_files" ]]; then
+  pass "dashboard_v2_build.files is byte-identical to dashboard_v2_dist_assert.files"
+else
+  fail "dashboard-v2 filter identity" "dashboard_v2_build='$build_v2_files' vs dashboard_v2_dist_assert='$dist_v2_files'"
+fi
+
 # ---------------------------------------------------------------------------
 echo "----"
 echo "Results: $PASS passed, $FAIL failed"

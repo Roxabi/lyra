@@ -69,6 +69,7 @@ function TextBlock({ content }: { content: string }) {
 
 export function MessageBubble({ message, agentLabel }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const isError = message.id.startsWith("error-");
 
   return (
     <div className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -84,17 +85,28 @@ export function MessageBubble({ message, agentLabel }: MessageBubbleProps) {
       <div
         className={cn(
           "flex max-w-[min(72ch,85%)] flex-col gap-2 rounded-2xl px-3.5 py-2.5 text-sm",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted/50 text-foreground",
+          isUser
+            ? "bg-primary text-primary-foreground"
+            : isError
+              ? "border border-destructive/30 bg-destructive/10 text-destructive"
+              : "bg-muted/50 text-foreground",
         )}
       >
-        {message.parts.map((part) => {
+        {message.parts.map((part, index) => {
+          const partKey = `${message.id}-${index}`;
           if (part.type === "text") {
-            const key = `${message.id}-text-${part.content.length}-${part.content.slice(0, 24)}`;
-            return <TextBlock key={key} content={part.content} />;
+            if (isError) {
+              return (
+                <div key={partKey} className="inline-flex items-center gap-2 text-xs">
+                  <AlertCircle className="size-3.5 shrink-0" aria-hidden />
+                  <span>{part.content}</span>
+                </div>
+              );
+            }
+            return <TextBlock key={partKey} content={part.content} />;
           }
           if (part.type === "thinking") {
-            const key = `${message.id}-think-${part.content.length}-${part.content.slice(0, 24)}`;
-            return <ThinkingBlock key={key} content={part.content} />;
+            return <ThinkingBlock key={partKey} content={part.content} />;
           }
           if (part.type === "tool-call") {
             return <ToolCallBlock key={part.id} part={part} />;
@@ -107,11 +119,10 @@ export function MessageBubble({ message, agentLabel }: MessageBubbleProps) {
                     .filter((block) => block.type === "text")
                     .map((block) => block.content)
                     .join("\n");
-            const key = `${message.id}-tool-result-${part.toolCallId}`;
             if (part.error) {
               return (
                 <div
-                  key={key}
+                  key={partKey}
                   className="inline-flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive"
                 >
                   <AlertCircle className="size-3.5 shrink-0" aria-hidden />
@@ -119,7 +130,7 @@ export function MessageBubble({ message, agentLabel }: MessageBubbleProps) {
                 </div>
               );
             }
-            return <TextBlock key={key} content={content} />;
+            return <TextBlock key={partKey} content={content} />;
           }
           return null;
         })}

@@ -17,6 +17,7 @@ from factory.adapters.shared.inbound import (
     get_or_create_parser,
     run_inbound_guarded,
 )
+from factory.adapters.web.e2e_stub import e2e_enabled, publish_e2e_agui_reply
 from factory.adapters.web.web_agui import StreamFormat, is_stream_terminal, run_error
 from factory.inbound.wire_parser_web import WebWireParser
 from roxabi_contracts.dashboard import ChatRequest, ChatResponse
@@ -46,7 +47,6 @@ def build_chat_router(  # noqa: C901
         format: StreamFormat = Query(default="legacy"),
     ) -> ChatResponse:
         session_id = req.session_id or uuid4().hex
-        adapter.sessions.set_stream_format(session_id, format)
         raw = {
             "agent": req.agent,
             "text": req.text,
@@ -60,6 +60,7 @@ def build_chat_router(  # noqa: C901
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not adapter.ready:
             raise HTTPException(status_code=503, detail="adapter not ready")
+        adapter.sessions.set_stream_format(session_id, format)
 
         kit = get_inbound_pipeline_kit()
         parser = get_or_create_parser(kit.parser_cache, adapter, WebWireParser)
@@ -82,6 +83,10 @@ def build_chat_router(  # noqa: C901
             send_backpressure=_web_backpressure,
             on_drop=None,
         )
+        if e2e_enabled() and format == "agui":
+            asyncio.create_task(
+                publish_e2e_agui_reply(adapter.sessions, session_id, req.text)
+            )
         stream_token = tokens.mint(session_id)
         return ChatResponse(session_id=session_id, stream_token=stream_token)
 

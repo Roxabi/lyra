@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetchSessions, resumeSession } from "@/features/chat/api";
@@ -44,7 +45,7 @@ export function ChatSidebar({
   const { t: tc } = useTranslation("common");
   const activeTab = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
   const agent = activeTab?.agent ?? agents[0] ?? null;
-  const [pickerAgent, setPickerAgent] = useState(agents[0] ?? "lyra");
+  const [pickerAgent, setPickerAgent] = useState(agents[0] ?? "");
 
   const agentOptions = agents.map((id) => {
     const health = healthByAgent.get(id);
@@ -69,10 +70,16 @@ export function ChatSidebar({
 
   const onResume = async (cliId: string | null, sessionId: string) => {
     if (!agent || !cliId) return;
-    const res = await resumeSession(agent, cliId);
-    if (res.accepted) {
-      onResumed(agent, sessionId);
-      void refetch();
+    try {
+      const res = await resumeSession(agent, cliId);
+      if (res.accepted) {
+        onResumed(agent, sessionId);
+        void refetch();
+        return;
+      }
+      toast.error(t("errors.resumeRejected", { message: res.message }));
+    } catch {
+      toast.error(t("errors.resumeFailed"));
     }
   };
 

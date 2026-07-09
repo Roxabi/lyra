@@ -96,6 +96,9 @@ class WebFormatter(BaseFormatter):
                         thread_id=self._session_id, run_id=self._run_id
                     )
                 )
+                self._run_id = ""
+                self._message_id = ""
+                self._buffer = ""
             return
         self._buffer = text
         await self._publish({"type": "delta", "text": text})
@@ -128,6 +131,9 @@ class WebFormatter(BaseFormatter):
                     thread_id=self._session_id, run_id=self._run_id
                 )
             )
+            self._run_id = ""
+            self._message_id = ""
+            self._buffer = ""
 
     async def send_message(self, text: str) -> int | None:
         if self._is_agui():
@@ -179,6 +185,7 @@ class WebFormatter(BaseFormatter):
         lines: list[str],
         done: bool,
     ) -> None:
+        # Lot 3: wire ToolCallBlock via TOOL_CALL_* AG-UI events (ADR-102 deferred).
         del trace_obj, lines, done
 
 

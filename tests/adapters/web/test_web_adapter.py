@@ -241,3 +241,40 @@ class TestChatStreamFormat:
             assert resp.status_code == 200
             body = "".join(resp.iter_text())
         assert "RUN_FINISHED" in body
+
+    def test_post_chat_sets_agui_format(self, chat_client: tuple) -> None:
+        client, adapter, _tokens = chat_client
+        listener = MagicMock()
+        listener.cache_inbound = MagicMock()
+        adapter._outbound_listener = listener
+        res = client.post(
+            "/api/chat?format=agui",
+            json={"agent": "lyra_default", "text": "hi"},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        session_id = body["session_id"]
+        assert adapter.sessions.get_or_create(session_id).stream_format == "agui"
+        token = body["stream_token"]
+        adapter.sessions.get_or_create(session_id).queue.put_nowait(
+            {"type": "RUN_FINISHED", "threadId": session_id, "runId": "r1"},
+        )
+        with client.stream(
+            "GET",
+            f"/api/stream/{session_id}?token={token}&format=agui",
+        ) as stream_resp:
+            assert stream_resp.status_code == 200
+            text = "".join(stream_resp.iter_text())
+        assert "RUN_FINISHED" in text
+
+    def test_post_chat_rejects_unknown_agent_before_format_set(
+        self, chat_client: tuple
+    ) -> None:
+        client, adapter, _tokens = chat_client
+        session_id = "sess-bad-agent"
+        res = client.post(
+            "/api/chat?format=agui",
+            json={"agent": "nope", "text": "hi", "session_id": session_id},
+        )
+        assert res.status_code == 400
+        assert adapter.sessions.get_or_create(session_id).stream_format == "legacy"

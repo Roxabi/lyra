@@ -32,6 +32,8 @@ COPY packages/shared/package.json packages/shared/
 COPY brand/ brand/
 COPY packages/shared/ packages/shared/
 COPY apps/dashboard/ apps/dashboard/
+# dashboard-v2 package.json is copied for workspace install integrity; runtime
+# image still ships only apps/dashboard/dist (v2 not deployed yet).
 RUN bun install --frozen-lockfile
 RUN bun run build:dashboard
 

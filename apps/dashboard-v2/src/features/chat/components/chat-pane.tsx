@@ -38,12 +38,25 @@ export function ChatPane({ tab, health, initialMessages, onUpdate, dbDefaults }:
     [onUpdate],
   );
 
-  const connection = useMemo(() => makeAguiAdapter(() => tabRef.current, onSession), [onSession]);
+  const connection = useMemo(
+    () =>
+      makeAguiAdapter(
+        () => ({
+          tabId: tabRef.current.id,
+          agent: tabRef.current.agent,
+          harness: tabRef.current.harness,
+          model: tabRef.current.model,
+          sessionId: tabRef.current.sessionId,
+        }),
+        onSession,
+      ),
+    [onSession],
+  );
 
   const { messages, sendMessage, isLoading, error, stop } = useChat({
     connection,
     initialMessages,
-    threadId: tab.sessionId ?? tab.id,
+    threadId: tab.id,
     onError: (err) => setSendError(err.message),
   });
 

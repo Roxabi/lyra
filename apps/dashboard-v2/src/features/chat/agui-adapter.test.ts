@@ -26,4 +26,12 @@ describe("parseSseBuffer", () => {
     expect(events).toHaveLength(0);
     expect(rest).toBe("");
   });
+
+  it("skips malformed JSON data frames", () => {
+    const buffer = "data: not-json\n\n" + 'data: {"type":"RUN_FINISHED"}\n\n';
+    const { events, rest } = parseSseBuffer(buffer);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "RUN_FINISHED" });
+    expect(rest).toBe("");
+  });
 });

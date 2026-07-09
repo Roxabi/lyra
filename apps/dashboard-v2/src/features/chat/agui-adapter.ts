@@ -2,9 +2,9 @@ import type { ModelMessage, StreamChunk, TextPart, UIMessage } from "@tanstack/a
 import type { ConnectConnectionAdapter } from "@tanstack/ai-react";
 import { postChat } from "@/features/chat/api";
 import type { HarnessKind } from "@/shared/lib/chats-storage";
-import { randomId } from "@/shared/lib/chats-storage";
 
 export interface AguiTabConfig {
+  tabId: string;
   agent: string;
   harness: HarnessKind;
   model: string;
@@ -48,7 +48,11 @@ export function parseSseBuffer(buffer: string): { events: StreamChunk[]; rest: s
       if (!line.startsWith("data:")) continue;
       const payload = line.slice(5).trim();
       if (!payload || payload === "[DONE]") continue;
-      events.push(JSON.parse(payload) as StreamChunk);
+      try {
+        events.push(JSON.parse(payload) as StreamChunk);
+      } catch {
+        // skip malformed SSE frames (keepalive glitches, partial writes)
+      }
     }
   }
 
@@ -65,7 +69,7 @@ export function makeAguiAdapter(
       const text = lastUserText(messages);
       if (!text.trim()) return;
 
-      const sessionId = tab.sessionId ?? randomId();
+      const sessionId = tab.sessionId ?? tab.tabId;
       const { session_id, stream_token } = await postChat({
         agent: tab.agent,
         text,

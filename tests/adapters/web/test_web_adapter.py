@@ -198,3 +198,46 @@ class TestWebOutboundAgui:
         }
         assert events[3]["type"] == "TEXT_MESSAGE_END"
         assert events[4]["type"] == "RUN_FINISHED"
+
+
+class TestChatStreamFormat:
+    @pytest.fixture
+    def chat_client(self) -> tuple:
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from factory.adapters.web.chat_routes import build_chat_router
+        from factory.dashboard.stream_tokens import StreamTokenRegistry
+
+        adapter = _make_adapter()
+        tokens = StreamTokenRegistry()
+        app = FastAPI()
+        app.include_router(build_chat_router(adapter, tokens))
+        return TestClient(app), adapter, tokens
+
+    def test_stream_format_mismatch_returns_403(self, chat_client: tuple) -> None:
+        client, adapter, tokens = chat_client
+        session_id = "sess-format-mismatch"
+        adapter.sessions.set_stream_format(session_id, "agui")
+        token = tokens.mint(session_id)
+        resp = client.get(
+            f"/api/stream/{session_id}?token={token}&format=legacy",
+        )
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "stream format mismatch"
+
+    def test_stream_format_match_allows_subscribe(self, chat_client: tuple) -> None:
+        client, adapter, tokens = chat_client
+        session_id = "sess-format-ok"
+        adapter.sessions.set_stream_format(session_id, "agui")
+        token = tokens.mint(session_id)
+        adapter.sessions.get_or_create(session_id).queue.put_nowait(
+            {"type": "RUN_FINISHED", "threadId": session_id, "runId": "r1"},
+        )
+        with client.stream(
+            "GET",
+            f"/api/stream/{session_id}?token={token}&format=agui",
+        ) as resp:
+            assert resp.status_code == 200
+            body = "".join(resp.iter_text())
+        assert "RUN_FINISHED" in body

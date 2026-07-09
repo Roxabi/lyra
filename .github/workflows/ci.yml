@@ -63,7 +63,7 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      # Astryx CLI (astryx_doctor gate) needs Node ≥22.13; provision Node 24.
+      # Dashboard Vitest needs Node ≥22; provision Node 24.
       - name: Install Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -188,36 +188,25 @@ jobs:
           uv sync --frozen --group dev
           bun install --frozen-lockfile
 
-      # The visual e2e fixture pytest.skip()s when apps/dashboard/dist is
+      # The visual e2e fixture pytest.skip()s when apps/dashboard-v2/dist is
       # missing — in the monolithic job the dashboard_build gate produced it;
       # build explicitly here so the suite never silently skips.
       - name: Build dashboard SPA
         run: bun run build:dashboard
 
-      # The visual e2e fixture pytest.skip()s when apps/dashboard-v2/dist is
-      # missing — build explicitly here so the suite never silently skips.
-      - name: Build dashboard-v2 SPA
-        run: bun run build:dashboard-v2
-
-      - name: Dashboard-v2 unit tests
+      - name: Dashboard unit tests
         run: bun run --filter @roxabi-factory/dashboard-v2 test
 
       # --only-shell: the visual tests launch default-headless chromium, which
       # executes the headless-shell binary — the 175 MiB full Chrome download is
       # never exercised.
       # --reruns is scoped to e2e (browser/screenshot timing flake) — NEVER add
-      # it to unit/coverage steps, where a retry would mask real bugs
-      # (exception: vitest dashboard unit retry — see apps/dashboard/vitest.config.ts).
+      # it to unit/coverage steps, where a retry would mask real bugs.
       # No --tracing flags: these tests drive sync_playwright() manually (no
       # pytest-playwright plugin), so plugin tracing options don't apply.
-      - name: Dashboard visual e2e (#1771)
+      - name: Dashboard visual + chat e2e
         run: |
           uv run playwright install chromium --only-shell
-          uv run pytest tests/e2e/dashboard/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-e2e.xml
-
-      # Reuses chromium headless-shell installed by the dashboard v1 e2e step above.
-      - name: Dashboard-v2 visual + chat e2e
-        run: |
           uv run pytest tests/e2e/dashboard-v2/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-e2e-dashboard-v2.xml
 
       # tests/integration runs in the dedicated integration job (against real
@@ -328,8 +317,7 @@ jobs:
 
       # --reruns is scoped to integration (real docker NATS — network/timing
       # flake) — NEVER add it to unit/coverage steps, where a retry would mask
-      # real bugs (exception: vitest dashboard unit retry — see
-      # apps/dashboard/vitest.config.ts). Caveat: future JetStream-using tests
+      # real bugs. Caveat: future JetStream-using tests
       # inherit rerun-pollution risk (fixed stream/durable names surviving
       # attempt 1) — use unique names or clean up before relying on --reruns.
       - name: Run integration tests

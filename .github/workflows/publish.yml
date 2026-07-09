@@ -90,4 +90,4 @@ jobs:
       - name: Verify dashboard SPA embedded in svc-runtime (#1771)
         run: |
           docker run --rm ${{ steps.tags.outputs.svc_tag }} \
-            sh -c 'test -f /app/apps/dashboard/dist/index.html'
+            sh -c 'test -f /app/apps/dashboard-v2/dist/index.html'

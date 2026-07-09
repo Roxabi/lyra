@@ -363,7 +363,7 @@ _code_change_is_inert() {
 
 # Decide whether a 'code-only' drift is IMAGE-CARRIED — i.e. every changed file is either
 # inert (same allowlist as _code_change_is_inert, kept in lockstep) or ships to the fleet
-# exclusively inside the tracked images (src/, packages/, apps/dashboard/, brand/ — baked
+# exclusively inside the tracked images (src/, packages/, apps/dashboard-v2/, brand/ — baked
 # in by publish.yml, never bind-mounted from the checkout: every bind-mounted runtime
 # config lives under deploy/, which is deliberately NOT in this allowlist; the %h/projects
 # mounts in clipool/omp are live agent workspaces a restart cannot refresh further).
@@ -407,10 +407,10 @@ _code_change_is_image_carried() {
         [ -z "${p}" ] && continue
         case "${p}" in
             # image-carried: reaches the fleet only via factory:staging-svc / factory:staging.
-            # apps/dashboard/ (not apps/*): only the dashboard is baked into an image —
+            # apps/dashboard-v2/ (not apps/*): only the dashboard SPA is baked into an image —
             # apps/artifacts/ etc. ship in NO tracked image, so their digest re-arm never
             # fires; anything else under apps/ falls through to structural (fail-safe).
-            src/*|packages/*|apps/dashboard/*|brand/*) continue ;;
+            src/*|packages/*|apps/dashboard-v2/*|brand/*) continue ;;
         esac
         # not image-carried → inert (shared allowlist) or host-carried → full converge now
         _path_is_inert "${p}" || return 1

@@ -1,4 +1,4 @@
-"""Static SPA mount for apps/dashboard/dist."""
+"""Static SPA mount for apps/dashboard-v2/dist."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-_DIST = Path(__file__).resolve().parents[3] / "apps" / "dashboard" / "dist"
+_DIST = Path(__file__).resolve().parents[3] / "apps" / "dashboard-v2" / "dist"
 
 
 def dist_dir() -> Path:

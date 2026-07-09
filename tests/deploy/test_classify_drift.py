@@ -284,12 +284,12 @@ def test_code_change_is_image_carried(tmp_path: Path) -> None:
     git("commit", "-qm", "base")
     base = head()
 
-    # image-carried commit: src/ + packages/ + apps/dashboard/ + brand/, mixed with inert docs/
-    for d in ("src", "packages", "apps/dashboard", "brand", "docs"):
+    # image-carried commit: src/ + packages/ + apps/dashboard-v2/ + brand/, mixed with inert docs/
+    for d in ("src", "packages", "apps/dashboard-v2", "brand", "docs"):
         (repo / d).mkdir(parents=True)
     (repo / "src" / "app.py").write_text("code\n")
     (repo / "packages" / "lib.py").write_text("lib\n")
-    (repo / "apps" / "dashboard" / "ui.tsx").write_text("ui\n")
+    (repo / "apps" / "dashboard-v2" / "ui.tsx").write_text("ui\n")
     (repo / "brand" / "theme.css").write_text("css\n")
     (repo / "docs" / "x.md").write_text("d\n")
     git("add", "-A")

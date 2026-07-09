@@ -16,6 +16,11 @@ from factory.core.messaging.message import (
     OutboundMessage,
     WebMeta,
 )
+from factory.core.messaging.render_events import (
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
+)
 
 
 def _make_adapter() -> WebAdapter:
@@ -103,3 +108,93 @@ class TestWebFormatter:
         while not q.empty():
             items.append(q.get_nowait())
         assert items[-1] == {"type": "done"}
+
+
+class TestWebFormatterAgui:
+    def _agui_hub(self) -> WebSessionHub:
+        hub = WebSessionHub()
+        hub.set_stream_format("s-agui", "agui")
+        return hub
+
+    async def test_incremental_text_deltas(self) -> None:
+        hub = self._agui_hub()
+        fmt = WebFormatter(hub, "s-agui")
+        await fmt.send_placeholder()
+        await fmt.edit_placeholder_text("s-agui", "hel")
+        await fmt.edit_placeholder_text("s-agui", "hello", finalize=True)
+        q = hub.get_or_create("s-agui").queue
+        items = []
+        while not q.empty():
+            items.append(q.get_nowait())
+        assert items[0]["type"] == "RUN_STARTED"
+        assert items[1]["type"] == "TEXT_MESSAGE_START"
+        content = [i for i in items if i["type"] == "TEXT_MESSAGE_CONTENT"]
+        assert [i["delta"] for i in content] == ["hel", "lo"]
+        assert items[-2]["type"] == "TEXT_MESSAGE_END"
+        assert items[-1]["type"] == "RUN_FINISHED"
+
+    async def test_reasoning_events(self) -> None:
+        hub = self._agui_hub()
+        fmt = WebFormatter(hub, "s-agui")
+        mid = "reason-1"
+        await fmt.edit_reasoning(None, ReasoningStartRenderEvent(message_id=mid))
+        await fmt.edit_reasoning(
+            None, ReasoningDeltaRenderEvent(message_id=mid, delta="think")
+        )
+        await fmt.edit_reasoning(None, ReasoningEndRenderEvent(message_id=mid))
+        q = hub.get_or_create("s-agui").queue
+        types = []
+        while not q.empty():
+            types.append(q.get_nowait()["type"])
+        assert types == [
+            "REASONING_START",
+            "REASONING_MESSAGE_START",
+            "REASONING_MESSAGE_CONTENT",
+            "REASONING_MESSAGE_END",
+            "REASONING_END",
+        ]
+
+    async def test_send_fallback_agui_terminal(self) -> None:
+        hub = self._agui_hub()
+        fmt = WebFormatter(hub, "s-agui")
+        await fmt.send_fallback("oops")
+        q = hub.get_or_create("s-agui").queue
+        items = []
+        while not q.empty():
+            items.append(q.get_nowait())
+        assert items[-1]["type"] == "RUN_FINISHED"
+
+
+class TestWebOutboundAgui:
+    async def test_send_publishes_agui_sequence(self) -> None:
+        adapter = _make_adapter()
+        adapter.sessions.set_stream_format("sess-agui", "agui")
+        inbound = InboundMessage(
+            id="1",
+            platform="web",
+            bot_id=WEB_BOT_ID,
+            scope_id="agent:lyra_default",
+            user_id="smoke",
+            user_name="Smoke",
+            is_mention=True,
+            text="hi",
+            text_raw="hi",
+            timestamp=datetime.now(timezone.utc),
+            platform_meta=WebMeta(session_id="sess-agui"),
+            trust_level=TrustLevel.TRUSTED,
+        )
+        outbound = OutboundMessage.from_text("pong")
+        await adapter.send(inbound, outbound)
+        session = adapter.sessions.get_or_create("sess-agui")
+        events = []
+        while not session.queue.empty():
+            events.append(session.queue.get_nowait())
+        assert events[0]["type"] == "RUN_STARTED"
+        assert events[1]["type"] == "TEXT_MESSAGE_START"
+        assert events[2] == {
+            "type": "TEXT_MESSAGE_CONTENT",
+            "messageId": events[2]["messageId"],
+            "delta": "pong",
+        }
+        assert events[3]["type"] == "TEXT_MESSAGE_END"
+        assert events[4]["type"] == "RUN_FINISHED"

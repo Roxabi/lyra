@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from factory.adapters.web import web_agui
 from factory.adapters.web.web_sessions import WebSessionHub
 from factory.core.messaging.message import WebMeta
 from factory.outbound.formatter import BaseFormatter
@@ -23,6 +24,20 @@ class WebFormatter(BaseFormatter):
         self._sessions = sessions
         self._session_id = session_id
         self._buffer = ""
+        self._run_id = ""
+        self._message_id = ""
+
+    def _is_agui(self) -> bool:
+        return (
+            self._sessions.get_or_create(self._session_id).stream_format == "agui"
+        )
+
+    async def _publish(self, event: dict[str, Any]) -> None:
+        await self._sessions.publish(self._session_id, event)
+
+    async def _publish_many(self, events: list[dict[str, Any]]) -> None:
+        for event in events:
+            await self._publish(event)
 
     def placeholder_text(self) -> str:
         return "…"
@@ -45,34 +60,88 @@ class WebFormatter(BaseFormatter):
         return fallback
 
     async def send_placeholder(self) -> tuple[Any, int | None]:
-        await self._sessions.publish(self._session_id, {"type": "delta", "text": ""})
+        if self._is_agui():
+            self._run_id = web_agui.new_run_id()
+            self._message_id = web_agui.new_message_id()
+            self._buffer = ""
+            await self._publish(
+                web_agui.run_started(
+                    thread_id=self._session_id, run_id=self._run_id
+                )
+            )
+            await self._publish(web_agui.text_start(message_id=self._message_id))
+            return (self._session_id, None)
+        await self._publish({"type": "delta", "text": ""})
         return (self._session_id, None)
 
     async def edit_placeholder_text(
         self, ph: Any, text: str, *, finalize: bool = False
     ) -> None:
         del ph
+        if self._is_agui():
+            increment = text[len(self._buffer) :]
+            self._buffer = text
+            if increment:
+                await self._publish(
+                    web_agui.text_content(
+                        message_id=self._message_id, delta=increment
+                    )
+                )
+            if finalize:
+                await self._publish(
+                    web_agui.text_end(message_id=self._message_id)
+                )
+                await self._publish(
+                    web_agui.run_finished(
+                        thread_id=self._session_id, run_id=self._run_id
+                    )
+                )
+            return
         self._buffer = text
-        await self._sessions.publish(self._session_id, {"type": "delta", "text": text})
+        await self._publish({"type": "delta", "text": text})
         if finalize:
-            # Terminal edit (graceful or error end) — close the SSE stream. This is
-            # the streaming counterpart of web_outbound.send()'s "done" on the
-            # non-streaming path; OutboundAdapterBase.send_streaming must NOT be
-            # overridden to inject it (stage-axis invariant, ADR-073).
-            await self._sessions.publish(self._session_id, {"type": "done"})
+            await self._publish({"type": "done"})
 
     async def send_trace_placeholder(self) -> tuple[Any, int | None]:
         return (None, None)
 
+    async def _send_agui_text(self, text: str, *, finalize: bool) -> None:
+        if not self._run_id:
+            self._run_id = web_agui.new_run_id()
+            self._message_id = web_agui.new_message_id()
+            self._buffer = ""
+            await self._publish(
+                web_agui.run_started(
+                    thread_id=self._session_id, run_id=self._run_id
+                )
+            )
+            await self._publish(web_agui.text_start(message_id=self._message_id))
+        if text:
+            await self._publish(
+                web_agui.text_content(message_id=self._message_id, delta=text)
+            )
+            self._buffer = text
+        if finalize:
+            await self._publish(web_agui.text_end(message_id=self._message_id))
+            await self._publish(
+                web_agui.run_finished(
+                    thread_id=self._session_id, run_id=self._run_id
+                )
+            )
+
     async def send_message(self, text: str) -> int | None:
-        await self._sessions.publish(self._session_id, {"type": "delta", "text": text})
+        if self._is_agui():
+            await self._send_agui_text(text, finalize=False)
+            return None
+        await self._publish({"type": "delta", "text": text})
         return None
 
     async def send_fallback(self, text: str) -> int | None:
-        # Empty-stream / fallback terminal path (_drain_fallback) — no finalize
-        # edit fires here, so close the SSE stream explicitly.
+        if self._is_agui():
+            await self._send_agui_text(text, finalize=True)
+            return None
         result = await self.send_message(text)
-        await self._sessions.publish(self._session_id, {"type": "done"})
+        await self._publish({"type": "done"})
         return result
 
     async def edit_reasoning(
@@ -80,7 +149,29 @@ class WebFormatter(BaseFormatter):
         trace_obj: Any,
         event: "ReasoningStartRenderEvent | ReasoningDeltaRenderEvent | ReasoningEndRenderEvent",  # noqa: E501
     ) -> None:
-        del trace_obj, event
+        del trace_obj
+        if not self._is_agui():
+            return
+        from factory.core.messaging.render_events import (
+            ReasoningDeltaRenderEvent,
+            ReasoningStartRenderEvent,
+        )
+
+        if isinstance(event, ReasoningStartRenderEvent):
+            await self._publish_many(
+                web_agui.reasoning_start(message_id=event.message_id)
+            )
+            return
+        if isinstance(event, ReasoningDeltaRenderEvent):
+            if event.delta:
+                await self._publish(
+                    web_agui.reasoning_content(
+                        message_id=event.message_id, delta=event.delta
+                    )
+                )
+            return
+        # ReasoningEndRenderEvent — only remaining variant
+        await self._publish_many(web_agui.reasoning_end(message_id=event.message_id))
 
     async def edit_tool_recap(
         self,

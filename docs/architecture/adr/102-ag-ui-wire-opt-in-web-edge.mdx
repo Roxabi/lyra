@@ -1,0 +1,124 @@
+---
+title: "ADR-102: AG-UI wire format — opt-in web edge serializer"
+description: "Adopt AG-UI as an opt-in SSE wire format on the web adapter edge (Lot 1), keep legacy {type:delta} default, TanStack useChat renderer in Lot 2, defer full tool-call fidelity to Lot 3"
+status: accepted
+date: 2026-07-09
+deciders: [Mickael]
+related: [070, 099, 100, 094]
+---
+
+> **Current truth** → [`docs/architecture/llm-streaming.md`](../llm-streaming.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date wire behavior, read the web adapter and domain page.
+
+## Status
+
+Accepted — 2026-07-09. Implements the server-side half of the TanStack AI adoption playbook
+(`artifacts/analyses/2026-07-09-tanstack-ai-adoption-playbook.claude.md`). Extends ADR-070's
+deferred « AG-UI HTTP/SSE adapter » as a thin edge serializer only — internal `RenderEvent`
+model and hub pipeline stay authoritative.
+
+## Context
+
+ADR-070 back-ported AG-UI's four modeling families into `RenderEvent` but explicitly kept
+AG-UI off the wire. The web smoke adapter (`src/factory/adapters/web/`) still emits ad-hoc
+SSE dicts (`{type:"delta", text}` cumulative buffer, `{type:"done"}`) with reasoning and
+tool-call formatters as no-ops. Dashboard v2 will adopt TanStack `useChat`, which consumes
+AG-UI events natively (`StreamChunk = AGUIEvent`).
+
+Industry alignment: AG-UI is an open event vocabulary (`ag-ui-protocol` on PyPI, `@ag-ui/core`
+on npm). TanStack AI uses it as the on-wire contract without requiring TanStack's Python
+`chat()` engine. The factory already owns routing, tool execution, and authz in Python —
+only the **edge serialization** and **client renderer** are missing.
+
+**Timing constraint:** `POST /api/chat` awaits the inbound pipeline before returning; outbound
+events are queued during POST, before the client opens `GET /api/stream`. Format negotiation
+must therefore be set at **POST** time (not only on GET).
+
+## Options Considered
+
+### Option A: Flip the wire globally to AG-UI
+
+Replace `{type:delta}` on `/api/stream` for all clients immediately.
+
+- **Pros:** Single code path; incremental deltas fixed everywhere at once.
+- **Cons:** Breaks legacy dashboard v1 and current dashboard-v2 raw `EventSource` clients;
+  flag-day deploy. Violates anti-flag-day guidance from the adoption playbook.
+
+### Option B: Opt-in AG-UI edge serializer (chosen)
+
+Add `?format=agui` on `POST /api/chat` and `GET /api/stream/{id}` (default `legacy`).
+`WebFormatter` / `web_outbound` branch on `session.stream_format`. Serializer uses
+`ag-ui-protocol` (`EventEncoder` shapes) in a new `web_agui.py` module. Lot 2 migrates
+dashboard-v2 to `useChat`; Lot 3 adds full tool-call fidelity via raw `RenderEvent` stream.
+
+- **Pros:** No client breakage; mechanical 1:1 mapping from existing `RenderEvent` modeling;
+  official Python SDK keeps wire aligned with spec; independent of client choice (any AG-UI
+  consumer can subscribe).
+- **Cons:** Dual wire maintenance until legacy removal; tool-call events still flattened by
+  `OutboundEmitter` recap (degraded or absent in Lot 1); POST+GET format param must stay in sync.
+
+### Option C: Adopt TanStack `chat()` engine end-to-end
+
+Run the agent loop in TypeScript via `@tanstack/ai` providers and client tools.
+
+- **Pros:** Ecosystem-native devtools and provider adapters.
+- **Cons:** Duplicates hub Stage-7 routing, tool execution, and authz; bypasses the factory's
+  authoritative Python pipeline. Rejected by playbook verdict.
+
+## Decision
+
+### 1. Wire format negotiation
+
+- `format` query param on **both** `POST /api/chat` and `GET /api/stream/{session_id}`:
+  `legacy` (default) | `agui`.
+- `WebSession.stream_format` is set on POST before `run_inbound_guarded()` runs.
+- GET validates `format` matches the session (403 on mismatch) and uses session format for
+  SSE framing (terminal detection, keepalive).
+
+### 2. Lot 1 scope (server edge — this ADR)
+
+| Surface | AG-UI events | Notes |
+|---------|--------------|-------|
+| Run lifecycle | `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR` | `threadId` = `session_id`; `runId` minted per turn |
+| Text streaming | `TEXT_MESSAGE_START/CONTENT/END` | **Incremental** `delta` (fix cumulative-buffer bug) |
+| Reasoning | `REASONING_START`, `REASONING_MESSAGE_CONTENT`, `REASONING_MESSAGE_END`, `REASONING_END` | De-noop `edit_reasoning` |
+| Tool calls | — (Lot 3) | Emitter recap flattening unchanged; optional degraded recap later |
+| Keepalive | SSE comment `: ping\n\n` | Replaces JSON `{type:"ping"}` in agui mode |
+
+Implementation files: `web_agui.py` (pure translation), `web_formatter.py`, `web_outbound.py`,
+`chat_routes.py`, `web_sessions.py`. Dependency: `ag-ui-protocol>=0.1.19`.
+
+### 3. Lot 2 (client — deferred)
+
+Dashboard-v2: `ConnectConnectionAdapter` + `useChat` + `message.parts` rendering. Requires
+`format=agui` on POST and GET. Dev-mock SSE must also emit AG-UI.
+
+### 4. Lot 3 (tool fidelity — deferred)
+
+Subscribe to raw `RenderEvent` on NATS before emitter recap flattening, or change shared emitter
+(cross-adapter cost). Full `TOOL_CALL_*` sequence.
+
+### 5. Explicit non-adoptions
+
+- TanStack `chat()` engine, provider adapters, client tools, MCP — factory Python stays authoritative.
+- Replacing internal `RenderEvent` with AG-UI types (ADR-070 Option C rejected rationale stands).
+
+## Consequences
+
+### Positive
+
+- Dashboard v2 can adopt `useChat` without a JS wire shim; Python emits spec-native AG-UI.
+- Reasoning surfaces in the browser (ThinkingPart) for the first time on web.
+- Incremental text deltas fix latent duplication bug when true streaming arrives.
+- Legacy clients unchanged until explicit migration.
+
+### Negative
+
+- Dual wire paths in web adapter until legacy sunset.
+- Tool-call UI in Lot 1 remains text-recap only (no structured ToolCallPart).
+- POST and GET must pass matching `format=agui` — client responsibility.
+
+### Neutral
+
+- `ag-ui-protocol` adds one PyPI dependency at the adapter edge only.
+- Axial label: **thin adapter** — no stage-axis or hub changes in Lot 1.

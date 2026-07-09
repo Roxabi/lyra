@@ -25,7 +25,11 @@
   "composer": {
     "placeholder": "Write your message…",
     "placeholderOffline": "Agent offline",
-    "send": "Send"
+    "send": "Send",
+    "stop": "Stop"
+  },
+  "message": {
+    "thinking": "Thinking"
   },
   "emptyState": {
     "title": "Conversation with {{agent}}",

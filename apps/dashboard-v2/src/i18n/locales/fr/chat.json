@@ -25,7 +25,11 @@
   "composer": {
     "placeholder": "Écrivez votre message…",
     "placeholderOffline": "Agent hors ligne",
-    "send": "Envoyer"
+    "send": "Envoyer",
+    "stop": "Arrêter"
+  },
+  "message": {
+    "thinking": "Réflexion"
   },
   "emptyState": {
     "title": "Conversation avec {{agent}}",

@@ -3,6 +3,7 @@ import type { Connect, Plugin } from "vite";
 import {
   createMockAdminUser,
   deleteMockConnectorInstallation,
+  getStreamFormat,
   mintJobsStreamToken,
   mintPipelineStreamToken,
   mintStreamToken,
@@ -76,6 +77,39 @@ function sendSseChatStream(res: ServerResponse, userText: string) {
       return;
     }
     res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+    res.end();
+  };
+  tick();
+}
+
+function sendSseAguiChatStream(res: ServerResponse, sessionId: string, userText: string) {
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const runId = `mock-run-${Date.now().toString(36)}`;
+  const messageId = `mock-msg-${Date.now().toString(36)}`;
+  const reply = `Réponse mock pour : « ${userText.slice(0, 80)} »`;
+  const chunks = reply.match(/.{1,12}/g) ?? [reply];
+
+  res.write(`data: ${JSON.stringify({ type: "RUN_STARTED", threadId: sessionId, runId })}\n\n`);
+  res.write(
+    `data: ${JSON.stringify({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" })}\n\n`,
+  );
+
+  let i = 0;
+  const tick = () => {
+    if (i < chunks.length) {
+      res.write(
+        `data: ${JSON.stringify({ type: "TEXT_MESSAGE_CONTENT", messageId, delta: chunks[i] })}\n\n`,
+      );
+      i += 1;
+      setTimeout(tick, 80);
+      return;
+    }
+    res.write(`data: ${JSON.stringify({ type: "TEXT_MESSAGE_END", messageId })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "RUN_FINISHED", threadId: sessionId, runId })}\n\n`);
     res.end();
   };
   tick();
@@ -449,8 +483,9 @@ async function handleMockApi(
         text?: string;
         session_id?: string | null;
       };
+      const format = url.searchParams.get("format") === "agui" ? "agui" : "legacy";
       const sessionId = body.session_id ?? `dev-${Date.now().toString(36)}`;
-      const streamToken = mintStreamToken(sessionId, body.text ?? "");
+      const streamToken = mintStreamToken(sessionId, body.text ?? "", format);
       sendJson(res, 200, { session_id: sessionId, stream_token: streamToken });
       return;
     }
@@ -464,7 +499,16 @@ async function handleMockApi(
         sendJson(res, 403, { detail: "invalid stream token" });
         return;
       }
-      sendSseChatStream(res, takeChatText(sessionId));
+      const format = url.searchParams.get("format") === "agui" ? "agui" : "legacy";
+      if (format !== getStreamFormat(sessionId)) {
+        sendJson(res, 403, { detail: "stream format mismatch" });
+        return;
+      }
+      if (format === "agui") {
+        sendSseAguiChatStream(res, sessionId, takeChatText(sessionId));
+      } else {
+        sendSseChatStream(res, takeChatText(sessionId));
+      }
       return;
     }
 

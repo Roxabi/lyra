@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { openChatStream, postChat } from "@/features/chat/api";
+import type { UIMessage } from "@tanstack/ai/client";
+import { useChat } from "@tanstack/ai-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { makeAguiAdapter } from "@/features/chat/agui-adapter";
 import { ChatComposer } from "@/features/chat/components/chat-composer";
 import { MessageList } from "@/features/chat/components/message-list";
 import type { AgentHealth } from "@/shared/api/bff-types";
@@ -14,56 +16,51 @@ import type { AgentDefaults, ChatTab } from "@/shared/lib/chats-storage";
 interface ChatPaneProps {
   tab: ChatTab;
   health: AgentHealth | undefined;
-  initialLog?: string;
+  initialMessages?: UIMessage[];
   onUpdate: (patch: Partial<ChatTab>) => void;
   dbDefaults?: AgentDefaults;
 }
 
-export function ChatPane({ tab, health, initialLog, onUpdate, dbDefaults }: ChatPaneProps) {
+export function ChatPane({ tab, health, initialMessages, onUpdate, dbDefaults }: ChatPaneProps) {
   const [text, setText] = useState("");
-  const [log, setLog] = useState(initialLog ?? "");
-  const [error, setError] = useState<string | null>(null);
-  const sourceRef = useRef<EventSource | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
 
-  const connectStream = useCallback((sessionId: string, streamToken: string) => {
-    sourceRef.current?.close();
-    sourceRef.current = openChatStream(sessionId, streamToken, (ev) => {
-      if (ev.type === "delta") setLog((l) => l + (ev.text ?? ""));
-      if (ev.type === "done") setLog((l) => `${l}\n---\n`);
-      if (ev.type === "error") setLog((l) => `${l}\n[error] ${ev.message ?? ""}\n`);
-    });
-  }, []);
-
-  useEffect(() => {
-    return () => sourceRef.current?.close();
-  }, []);
-
-  const send = async () => {
-    if (!text.trim()) return;
-    setError(null);
-    try {
-      const res = await postChat({
-        agent: tab.agent,
-        text,
-        session_id: tab.sessionId,
-        harness: tab.harness,
-        model: tab.model,
-      });
+  const onSession = useCallback(
+    (patch: { sessionId: string; streamToken: string }) => {
       onUpdate({
-        sessionId: res.session_id,
-        streamToken: res.stream_token,
+        sessionId: patch.sessionId,
+        streamToken: patch.streamToken,
         lastActive: Date.now(),
       });
-      connectStream(res.session_id, res.stream_token);
-      setLog((l) => `${l}> ${text}\n`);
+    },
+    [onUpdate],
+  );
+
+  const connection = useMemo(() => makeAguiAdapter(() => tabRef.current, onSession), [onSession]);
+
+  const { messages, sendMessage, isLoading, error, stop } = useChat({
+    connection,
+    initialMessages,
+    threadId: tab.sessionId ?? tab.id,
+    onError: (err) => setSendError(err.message),
+  });
+
+  const send = async () => {
+    if (!text.trim() || isLoading) return;
+    setSendError(null);
+    try {
+      await sendMessage(text.trim());
       setText("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "send failed");
+      setSendError(e instanceof Error ? e.message : "send failed");
     }
   };
 
   const offline = health?.online === false;
   const label = displayAgentName(tab.agent);
+  const displayError = sendError ?? error?.message ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -92,15 +89,22 @@ export function ChatPane({ tab, health, initialLog, onUpdate, dbDefaults }: Chat
         </div>
       </header>
 
-      <MessageList log={log} agent={label} offline={offline} />
+      <MessageList messages={messages} agent={label} offline={offline} />
 
-      {error ? (
+      {displayError ? (
         <p className="shrink-0 px-5 pb-1 text-xs text-destructive" role="alert">
-          {error}
+          {displayError}
         </p>
       ) : null}
 
-      <ChatComposer value={text} disabled={offline} onChange={setText} onSend={send} />
+      <ChatComposer
+        value={text}
+        disabled={offline}
+        isLoading={isLoading}
+        onChange={setText}
+        onSend={send}
+        onStop={stop}
+      />
     </div>
   );
 }

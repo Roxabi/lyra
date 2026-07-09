@@ -31,7 +31,7 @@ export async function postChat(body: {
   harness: HarnessKind;
   model: string;
 }): Promise<{ session_id: string; stream_token: string }> {
-  const res = await fetch("/api/chat", {
+  const res = await fetch("/api/chat?format=agui", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -41,19 +41,6 @@ export async function postChat(body: {
     throw new Error(detail);
   }
   return res.json() as Promise<{ session_id: string; stream_token: string }>;
-}
-
-export function openChatStream(
-  sessionId: string,
-  streamToken: string,
-  onEvent: (ev: { type: string; text?: string; message?: string }) => void,
-): EventSource {
-  const url = `/api/stream/${sessionId}?token=${encodeURIComponent(streamToken)}`;
-  const source = new EventSource(url);
-  source.onmessage = (msg) => {
-    onEvent(JSON.parse(msg.data) as { type: string; text?: string; message?: string });
-  };
-  return source;
 }
 
 export async function fetchSessions(agent: string): Promise<DashboardSession[]> {

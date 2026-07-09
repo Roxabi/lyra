@@ -31,6 +31,21 @@ export interface TurnRecord {
   content: string;
 }
 
+/** Map TurnStore rows to TanStack `UIMessage` history for `useChat` hydration. */
+export function turnsToInitialMessages(turns: TurnRecord[]): Array<{
+  id: string;
+  role: "user" | "assistant";
+  parts: Array<{ type: "text"; content: string }>;
+}> {
+  return turns
+    .filter((turn) => turn.role === "user" || turn.role === "assistant")
+    .map((turn, index) => ({
+      id: `turn-${index}`,
+      role: turn.role as "user" | "assistant",
+      parts: [{ type: "text" as const, content: turn.content }],
+    }));
+}
+
 /** Serialize TurnStore rows into the chat log format consumed by parseChatLog. */
 export function turnsToLog(turns: TurnRecord[]): string {
   let log = "";

@@ -378,12 +378,22 @@ export function mockSoulPreview(sections: Record<string, string>) {
 
 const streamTokens = new Map<string, string>();
 const pendingChatText = new Map<string, string>();
+const streamFormats = new Map<string, "legacy" | "agui">();
 
-export function mintStreamToken(sessionId: string, userText = ""): string {
+export function mintStreamToken(
+  sessionId: string,
+  userText = "",
+  format: "legacy" | "agui" = "legacy",
+): string {
   const token = `mock-${sessionId}`;
   streamTokens.set(sessionId, token);
   pendingChatText.set(sessionId, userText);
+  streamFormats.set(sessionId, format);
   return token;
+}
+
+export function getStreamFormat(sessionId: string): "legacy" | "agui" {
+  return streamFormats.get(sessionId) ?? "legacy";
 }
 
 export function takeChatText(sessionId: string): string {

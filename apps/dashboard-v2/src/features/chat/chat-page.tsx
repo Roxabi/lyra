@@ -7,7 +7,7 @@ import { ChatPane } from "@/features/chat/components/chat-pane";
 import { ChatSidebar } from "@/features/chat/components/chat-sidebar";
 import { CockpitContextPanel } from "@/features/chat/components/cockpit-context-panel";
 import { useAgentStatus } from "@/shared/hooks/use-agent-status";
-import { turnsToLog } from "@/shared/lib/chat-messages";
+import { turnsToInitialMessages } from "@/shared/lib/chat-messages";
 import {
   type AgentDefaults,
   type ChatTab,
@@ -20,7 +20,9 @@ export function ChatPage() {
   const { t } = useTranslation("chat");
   const [tabs, setTabs] = useState<ChatTab[]>(() => loadTabs());
   const [activeId, setActiveId] = useState<string | null>(() => loadTabs()[0]?.id ?? null);
-  const [hydratedLog, setHydratedLog] = useState<string | null>(null);
+  const [hydratedMessages, setHydratedMessages] = useState<ReturnType<
+    typeof turnsToInitialMessages
+  > | null>(null);
   const [defaultsWarning, setDefaultsWarning] = useState<string | null>(null);
 
   const {
@@ -79,7 +81,7 @@ export function ChatPage() {
       const tab = newTab(agent, defaults);
       setTabs((prev) => [...prev, tab]);
       setActiveId(tab.id);
-      setHydratedLog(null);
+      setHydratedMessages(null);
     })();
   };
 
@@ -108,9 +110,9 @@ export function ChatPage() {
     }
     try {
       const turns = await fetchSessionTurns(sessionId);
-      setHydratedLog(turnsToLog(turns));
+      setHydratedMessages(turnsToInitialMessages(turns));
     } catch {
-      setHydratedLog(null);
+      setHydratedMessages(null);
     }
   };
 
@@ -125,7 +127,7 @@ export function ChatPage() {
         healthByAgent={healthByAgent}
         onSelect={(id) => {
           setActiveId(id);
-          setHydratedLog(null);
+          setHydratedMessages(null);
         }}
         onClose={closeTab}
         onNew={addTab}
@@ -149,10 +151,10 @@ export function ChatPage() {
           </div>
         ) : activeTab ? (
           <ChatPane
-            key={`${activeTab.id}-${hydratedLog ? "h" : "f"}`}
+            key={`${activeTab.id}-${hydratedMessages ? "h" : "f"}`}
             tab={activeTab}
             health={activeHealth}
-            initialLog={hydratedLog ?? undefined}
+            initialMessages={hydratedMessages ?? undefined}
             dbDefaults={dbDefaults}
             onUpdate={(patch) => updateTab(activeTab.id, patch)}
           />

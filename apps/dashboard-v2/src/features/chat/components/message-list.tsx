@@ -1,22 +1,21 @@
-import { useEffect, useMemo, useRef } from "react";
+import type { UIMessage } from "@tanstack/ai/client";
+import { useEffect, useRef } from "react";
 import { ChatEmptyState } from "@/features/chat/components/chat-empty-state";
 import { MessageBubble } from "@/features/chat/components/message-bubble";
-import { parseChatLog } from "@/shared/lib/chat-messages";
 
 interface MessageListProps {
-  log: string;
+  messages: UIMessage[];
   agent: string;
   offline: boolean;
 }
 
-export function MessageList({ log, agent, offline }: MessageListProps) {
+export function MessageList({ messages, agent, offline }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const messages = useMemo(() => parseChatLog(log), [log]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when transcript grows
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [log]);
+  }, [messages]);
 
   if (messages.length === 0) {
     return <ChatEmptyState agent={agent} offline={offline} />;

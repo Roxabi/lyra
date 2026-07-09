@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChatLog, turnsToLog } from "@/shared/lib/chat-messages";
+import { parseChatLog, turnsToInitialMessages, turnsToLog } from "@/shared/lib/chat-messages";
 
 describe("parseChatLog", () => {
   it("returns empty for blank log", () => {
@@ -42,6 +42,20 @@ describe("parseChatLog", () => {
       { id: "user-0", role: "user", content: "Oops" },
       { id: "assistant-1", role: "assistant", content: "partial" },
       { id: "error-2", role: "error", content: "harness down" },
+    ]);
+  });
+});
+
+describe("turnsToInitialMessages", () => {
+  it("maps user and assistant turns to UIMessage parts", () => {
+    expect(
+      turnsToInitialMessages([
+        { role: "user", content: "Hi" },
+        { role: "assistant", content: "Hello" },
+      ]),
+    ).toEqual([
+      { id: "turn-0", role: "user", parts: [{ type: "text", content: "Hi" }] },
+      { id: "turn-1", role: "assistant", parts: [{ type: "text", content: "Hello" }] },
     ]);
   });
 });

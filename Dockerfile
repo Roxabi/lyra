@@ -27,6 +27,7 @@ FROM oven/bun:1.3.14 AS dashboard-builder
 WORKDIR /app
 COPY package.json bun.lock biome.json ./
 COPY apps/dashboard/package.json apps/dashboard/
+COPY apps/dashboard-v2/package.json apps/dashboard-v2/
 COPY packages/shared/package.json packages/shared/
 COPY brand/ brand/
 COPY packages/shared/ packages/shared/

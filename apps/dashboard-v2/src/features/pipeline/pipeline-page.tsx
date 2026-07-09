@@ -1,0 +1,171 @@
+import { useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { PipelineRun, PipelineStageStatus } from "@/shared/api/bff-types";
+import { PageIntro } from "@/shared/components/page-intro";
+import { usePipelineRuns } from "@/shared/hooks/use-pipeline-runs";
+import { filterPipelineRuns, isPipelineRowStale, type PipelineFilter } from "@/shared/lib/pipeline";
+
+const FILTER_OPTIONS: PipelineFilter[] = ["ci_red", "awaiting_reviewed", "deploy_pending"];
+
+const FILTER_LABELS: Record<PipelineFilter, string> = {
+  ci_red: "CI failing",
+  awaiting_reviewed: "Awaiting review",
+  deploy_pending: "Deploy pending",
+};
+
+const STAGE_LABELS: Record<PipelineStageStatus, string> = {
+  pending: "Pending",
+  running: "Running",
+  success: "Success",
+  failure: "Failure",
+  skipped: "Skipped",
+  unknown: "Unknown",
+  "n/a": "N/A",
+};
+
+function stageVariant(status: PipelineStageStatus): "default" | "destructive" | "outline" {
+  if (status === "success") return "default";
+  if (status === "failure") return "destructive";
+  return "outline";
+}
+
+function StageBadge({ label, status }: { label: string; status: PipelineStageStatus }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] tracking-wide text-muted-foreground uppercase">{label}</span>
+      <Badge variant={stageVariant(status)} className="w-fit text-xs">
+        {STAGE_LABELS[status]}
+      </Badge>
+    </div>
+  );
+}
+
+function formatLastEvent(iso: string | null): string {
+  if (!iso) return "—";
+  const ts = Date.parse(iso);
+  if (Number.isNaN(ts)) return "—";
+  const ageMin = Math.round((Date.now() - ts) / 60_000);
+  if (ageMin < 1) return "<1m";
+  if (ageMin < 60) return `${ageMin}m`;
+  return `${Math.round(ageMin / 60)}h`;
+}
+
+export function PipelinePage() {
+  const { runs, isError, isLoading } = usePipelineRuns();
+  const [activeFilters, setActiveFilters] = useState<Set<PipelineFilter>>(new Set());
+
+  const visibleRuns = useMemo(() => filterPipelineRuns(runs, activeFilters), [runs, activeFilters]);
+
+  function toggleFilter(filter: PipelineFilter) {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(filter)) next.delete(filter);
+      else next.add(filter);
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-6 pb-8">
+      <PageIntro>PR pipeline status across CI, merge, publish, and deploy stages.</PageIntro>
+
+      <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+        Pipeline data is best-effort from GitHub webhooks. Stale rows may not reflect current state.
+      </p>
+
+      {isError ? (
+        <p className="text-sm text-destructive" role="alert">
+          Failed to load pipeline runs.
+        </p>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Pull requests</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {FILTER_OPTIONS.map((filter) => {
+              const active = activeFilters.has(filter);
+              return (
+                <Button
+                  key={filter}
+                  type="button"
+                  size="sm"
+                  variant={active ? "default" : "outline"}
+                  onClick={() => toggleFilter(filter)}
+                >
+                  {FILTER_LABELS[filter]}
+                </Button>
+              );
+            })}
+          </div>
+
+          {isLoading ? (
+            <p className="py-4 text-sm text-muted-foreground">Loading pipeline runs…</p>
+          ) : visibleRuns.length === 0 ? (
+            <p className="py-4 text-sm text-muted-foreground">
+              {runs.length === 0 ? "No pipeline runs yet." : "No runs match the selected filters."}
+            </p>
+          ) : (
+            visibleRuns.map((row: PipelineRun) => (
+              <div
+                key={`${row.repo}:${row.pr_number}`}
+                className="rounded-lg border bg-muted/20 p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-muted-foreground">
+                      #{row.pr_number}
+                      {row.head_ref ? ` · ${row.head_ref}` : ""}
+                    </p>
+                    {row.html_url ? (
+                      <a
+                        href={row.html_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-medium hover:underline"
+                      >
+                        {row.title}
+                      </a>
+                    ) : (
+                      <p className="text-sm font-medium">{row.title}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isPipelineRowStale(row.last_event_at) ? (
+                      <Badge variant="destructive">Stale</Badge>
+                    ) : null}
+                    {row.reviewed ? (
+                      <Badge variant="default">Reviewed</Badge>
+                    ) : (
+                      <Badge variant="outline">Not reviewed</Badge>
+                    )}
+                    {!row.open ? <Badge variant="outline">Merged</Badge> : null}
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                  <StageBadge label="CI" status={row.ci_status} />
+                  <StageBadge label="Merge" status={row.merge_status} />
+                  <StageBadge label="Publish" status={row.publish_status} />
+                  <StageBadge label="M1 deploy" status={row.m1_deploy_status} />
+                  <StageBadge label="CF deploy" status={row.cf_deploy_status} />
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Last event {formatLastEvent(row.last_event_at)} ago
+                </p>
+                {row.checks.length > 0 ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {row.checks.map((c) => `${c.name}:${c.conclusion ?? c.status}`).join(" · ")}
+                  </p>
+                ) : null}
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

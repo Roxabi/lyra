@@ -79,12 +79,10 @@ uv run pytest            # tests — must pass
 ```bash
 bun run lint             # biome check — must pass (CI + pre-commit hook)
 bun run format           # biome check --write — auto-fix (run if lint-js fails, then re-stage)
-bun run --filter @roxabi-factory/dashboard test   # vitest — pre-push when dashboard changes
+bun run --filter @roxabi-factory/dashboard-v2 test   # vitest — pre-push when dashboard changes
 ```
 
-See [docs/standards/frontend-patterns.md](docs/standards/frontend-patterns.md) for Astryx
-component-API gotchas (`Stack`, `Card`, `Dialog`, `Toast`) worth knowing before touching
-`apps/dashboard/`.
+Dashboard SPA lives in `apps/dashboard-v2/` (shadcn + TanStack).
 
 Git hooks run quality gates locally:
 

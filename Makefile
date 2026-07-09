@@ -383,7 +383,7 @@ test-integration:
 voice-smoke:
 	uv run factory voice-smoke
 
-build-dashboard:       ## build apps/dashboard SPA (bun)
+build-dashboard:       ## build apps/dashboard-v2 SPA (bun)
 	bun run build:dashboard
 
 lint-js:               ## lint JS/TS workspaces (biome)

@@ -10,10 +10,10 @@ backend:
 
 frontend:
   package_manager: bun
-  workspaces: [apps/dashboard, packages, brand]
+  workspaces: [apps/dashboard-v2, packages, brand]
   lint_cmd: bun run lint
   format_cmd: bun run format
-  test_cmd: bun run --filter @roxabi-factory/dashboard test
+  test_cmd: bun run --filter @roxabi-factory/dashboard-v2 test
   build_cmd: bun run build:dashboard
 
 build:
@@ -162,60 +162,34 @@ quality_gates:
 
   dashboard_unit_test:
     enabled: true
-    script: bun run --filter @roxabi-factory/dashboard test
+    script: bun run --filter @roxabi-factory/dashboard-v2 test
     requires: bun
     stages: [pre-push, ci]
-    files: ^(apps/dashboard/|packages/shared/|brand/)|^(bun\.lock|package\.json)$
-    description: Vitest unit tests for dashboard SPA (#1771)
+    files: ^(apps/dashboard-v2/|brand/)|^(bun\.lock|package\.json)$
+    description: Vitest unit tests for dashboard SPA
 
   dashboard_build:
     enabled: true
     script: bun run build:dashboard
     requires: bun
     stages: [ci]
-    # Superset of dashboard_unit_test's filter (dashboard's only workspace dep
-    # is packages/shared — see apps/dashboard/package.json), plus the e2e
-    # inputs: src/factory/adapters/web/ serves the built SPA and ci.yml's
-    # "Dashboard visual e2e" step pytest.skips when apps/dashboard/dist/ is
-    # missing — a PR touching the web adapter or tests/e2e/dashboard/ must
-    # trigger this build or the e2e suite silently self-skips. MUST stay
-    # byte-identical to dashboard_dist_assert's filter (asserted by
-    # tests/scripts/test_qg.sh).
-    files: ^(apps/dashboard/|packages/shared/|brand/|src/factory/adapters/web/|tests/e2e/dashboard/)|^(bun\.lock|package\.json)$
-    description: Dashboard SPA production build (#1771)
+    # Superset of dashboard_unit_test's filter, plus e2e inputs:
+    # src/factory/adapters/web/ serves the built SPA and ci.yml's dashboard
+    # e2e step pytest.skips when apps/dashboard-v2/dist/ is missing — a PR
+    # touching the web adapter or tests/e2e/dashboard-v2/ must trigger this
+    # build or the e2e suite silently self-skips. MUST stay byte-identical to
+    # dashboard_dist_assert's filter (asserted by tests/scripts/test_qg.sh).
+    files: ^(apps/dashboard-v2/|brand/|src/factory/adapters/web/|tests/e2e/dashboard-v2/)|^(bun\.lock|package\.json)$
+    description: Dashboard SPA production build
 
   dashboard_dist_assert:
     enabled: true
-    script: test -f apps/dashboard/dist/index.html
+    script: test -f apps/dashboard-v2/dist/index.html
     stages: [ci]
     # MUST stay byte-identical to dashboard_build's filter: this gate asserts
     # the build output exists — running it when the build was skipped is a
     # guaranteed red. Identity asserted by tests/scripts/test_qg.sh.
-    files: ^(apps/dashboard/|packages/shared/|brand/|src/factory/adapters/web/|tests/e2e/dashboard/)|^(bun\.lock|package\.json)$
-
-  dashboard_v2_unit_test:
-    enabled: true
-    script: bun run --filter @roxabi-factory/dashboard-v2 test
-    requires: bun
-    stages: [pre-push, ci]
-    files: ^(apps/dashboard-v2/|packages/shared/|brand/)|^(bun\.lock|package\.json)$
-    description: Vitest unit tests for dashboard-v2 SPA
-
-  dashboard_v2_build:
-    enabled: true
-    script: bun run build:dashboard-v2
-    requires: bun
-    stages: [ci]
-    files: ^(apps/dashboard-v2/|packages/shared/|brand/|src/factory/adapters/web/|tests/e2e/dashboard-v2/)|^(bun\.lock|package\.json)$
-    description: Dashboard-v2 SPA production build
-
-  dashboard_v2_dist_assert:
-    enabled: true
-    script: test -f apps/dashboard-v2/dist/index.html
-    stages: [ci]
-    # MUST stay byte-identical to dashboard_v2_build's filter (asserted by
-    # tests/scripts/test_qg.sh).
-    files: ^(apps/dashboard-v2/|packages/shared/|brand/|src/factory/adapters/web/|tests/e2e/dashboard-v2/)|^(bun\.lock|package\.json)$
+    files: ^(apps/dashboard-v2/|brand/|src/factory/adapters/web/|tests/e2e/dashboard-v2/)|^(bun\.lock|package\.json)$
 
   trufflehog:
     enabled: true
@@ -366,22 +340,6 @@ quality_gates:
     script: bash scripts/check_subject_literals.sh
     stages: [ci]
 
-  astryx_doctor:
-    enabled: true
-    script: bash scripts/check-astryx-doctor.sh
-    requires: bun
-    stages: [ci]
-    files: ^(apps/dashboard/src/astryx-theme/|brand/)|^(bun\.lock|package\.json)$
-    description: Astryx design-system setup health (Node floor, core<->cli alignment, peer deps) — #2088
-
-  theme_build_drift:
-    enabled: true
-    script: bash scripts/check-theme-build-drift.sh
-    requires: bun
-    stages: [ci]
-    files: ^(apps/dashboard/src/astryx-theme/|brand/)|^(bun\.lock|package\.json)$
-    description: committed roxabi built/ theme artifacts must match a fresh build of the source (#2089)
-
 qg:
   change_classes:
     docs:
@@ -420,7 +378,6 @@ qg:
       - pytest_smoke
       - doc_drift_bundle
       - dashboard_unit_test
-      - dashboard_v2_unit_test
       - trufflehog
       - check_single_write_tool_display_config
       - no_runtime_toml_bots
@@ -437,12 +394,9 @@ qg:
       - test_sleep
     ci:
       - dashboard_build
-      - dashboard_v2_build
       - lint_js
       - dashboard_unit_test
-      - dashboard_v2_unit_test
       - dashboard_dist_assert
-      - dashboard_v2_dist_assert
       - file_length
       - file_exemptions
       - hardcoded_constants
@@ -474,17 +428,13 @@ qg:
       - acl_grants
       - inbox_prefix
       - subject_literals
-      - astryx_doctor
-      - theme_build_drift
   profiles:
     local:
       - lint_js
       - lint
       - typecheck
       - dashboard_build
-      - dashboard_v2_build
       - dashboard_unit_test
-      - dashboard_v2_unit_test
       - import_layers
       - acl_specs_drift
       - acl_authconf_drift

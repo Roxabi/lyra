@@ -12,8 +12,7 @@
       "!**/node_modules",
       "!**/.venv",
       "!**/brand/assets",
-      "!**/*.py",
-      "!**/apps/dashboard/src/astryx-theme/built"
+      "!**/*.py"
     ]
   },
   "formatter": {

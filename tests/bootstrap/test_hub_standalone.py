@@ -19,7 +19,7 @@ from nats.aio.client import Client as NATS
 
 from factory.bootstrap.infra.lockfile import acquire_lockfile as _acquire_lockfile
 from factory.bootstrap.infra.lockfile import release_lockfile as _release_lockfile
-from tests.nats.conftest import requires_nats_server
+from tests.factories.nats_server import requires_nats_server
 
 # ---------------------------------------------------------------------------
 # test_nats_url_guard_missing

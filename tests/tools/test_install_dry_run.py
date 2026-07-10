@@ -29,52 +29,14 @@ import os
 import subprocess
 from pathlib import Path
 
+from tests.helpers.secrets_manifest import (
+    factory_nats_seeds_expected,
+    parse_manifest_policy,
+    parse_manifest_sources,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SCRIPT = REPO_ROOT / "deploy" / "install.sh"
-MANIFEST_SH = REPO_ROOT / "deploy" / "generated" / "secrets-manifest.sh"
-
-
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
-
-
-def _parse_manifest_block(block_name: str) -> dict[str, str]:
-    """Parse a declare -A block from secrets-manifest.sh."""
-    entries: dict[str, str] = {}
-    in_block = False
-    for line in MANIFEST_SH.read_text().splitlines():
-        if f"{block_name}=(" in line:
-            in_block = True
-            continue
-        if in_block:
-            stripped = line.strip()
-            if stripped == ")":
-                break
-            if stripped.startswith("[") and "]=" in stripped:
-                name = stripped[1 : stripped.index("]=")]
-                val = stripped[stripped.index('="') + 2 : -1]
-                entries[name] = val
-    return entries
-
-
-def _parse_manifest_sources() -> dict[str, str]:
-    """Parse SECRET_SOURCES block from secrets-manifest.sh."""
-    return _parse_manifest_block("SECRET_SOURCES")
-
-
-def _parse_manifest_policy() -> dict[str, str]:
-    """Parse SECRET_POLICY block from secrets-manifest.sh (install.sh SSoT)."""
-    return _parse_manifest_block("SECRET_POLICY")
-
-
-def _factory_nats_seeds_expected() -> set[str]:
-    """All secrets with policy=nats-seed in the committed manifest."""
-    return {
-        name
-        for name, policy in _parse_manifest_policy().items()
-        if policy == "nats-seed"
-    }
 
 
 def _create_stub_seeds(home_tmp: Path) -> None:
@@ -85,8 +47,8 @@ def _create_stub_seeds(home_tmp: Path) -> None:
     Generated-policy secrets are skipped by the loop when DRY_RUN=1.
     Optional secrets are never validated (skipped by policy check).
     """
-    sources = _parse_manifest_sources()
-    policies = _parse_manifest_policy()
+    sources = parse_manifest_sources()
+    policies = parse_manifest_policy()
     factory_data = home_tmp / ".roxabi" / "factory"
 
     for name, rel in sources.items():
@@ -136,7 +98,7 @@ class TestDryRunListsAllNatsSecrets:
     def test_dry_run_mentions_all_nats_seed_secrets(self, tmp_path: Path) -> None:
         """[dry-run] lines must cover all manifest nats-seed secrets."""
         _create_stub_seeds(tmp_path)
-        expected = _factory_nats_seeds_expected()
+        expected = factory_nats_seeds_expected()
 
         result = _run_install_dry_run(tmp_path)
 

@@ -20,6 +20,21 @@ _V1_LEGACY_JSON = FIXTURES_DIR / "v1-legacy.json"
 _V2_WITH_RETIRED_JSON = FIXTURES_DIR / "v2-with-retired.json"
 _REAL_MATRIX_JSON = REPO / "deploy" / "nats" / "acl-matrix.json"
 
+_NK_TOOL_MODULES = frozenset({
+    "test_nk.py",
+    "test_genkeys_modes.py",
+    "test_genkeys_modes_add_identity.py",
+})
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        if "/tests/scripts/" not in str(item.fspath):
+            continue
+        if Path(item.fspath).name not in _NK_TOOL_MODULES:
+            continue
+        item.add_marker(pytest.mark.nk_tooling)
+
 
 # ── Path fixtures (copies to tmp_path for isolation) ─────────────────────────
 

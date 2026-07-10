@@ -185,16 +185,17 @@ jobs:
         run: |
           uv run pytest tests/e2e/dashboard-v2/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-e2e-dashboard-v2.xml
 
-      # tests/integration runs in the dedicated integration job (against real
-      # docker NATS) and tests/e2e in the step above — excluded here so each
-      # suite executes exactly once per run. Infra-marked suites (subprocess
-      # NATS, live ACL, deploy shell, nk tooling) run in the `infra` job.
-      # No --reruns: unit/coverage failures must surface on first occurrence.
+      # tests/integration nats_integration nodes run in the dedicated integration
+      # job (docker NATS); in-process integration suites run here. tests/e2e is
+      # excluded so each suite executes exactly once per run. Infra-marked
+      # suites (subprocess NATS, live ACL, deploy shell, nk tooling) run in
+      # the `infra` job. No --reruns: unit/coverage failures must surface on
+      # first occurrence.
       - name: Coverage — factory
         run: >-
           uv run pytest tests/
-          --ignore=tests/integration --ignore=tests/e2e
-          -m "not live_acl and not subprocess_nats and not deploy_contract and not nk_tooling"
+          --ignore=tests/e2e
+          -m "not live_acl and not subprocess_nats and not deploy_contract and not nk_tooling and not nats_integration"
           --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50
           --junitxml=reports/pytest-unit.xml
 
@@ -347,7 +348,10 @@ jobs:
       - name: Run integration tests
         env:
           NATS_URL: nats://localhost:4222
-        run: uv run pytest tests/integration/ -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-integration.xml
+        run: >-
+          uv run pytest tests/integration/
+          -m nats_integration
+          -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-integration.xml
 
       - name: Tear down Docker environment
         if: always()

@@ -296,6 +296,13 @@ quality_gates:
     stages: [pre-push]
     description: fast in-process smoke tests — the only local pytest net (full suites run in CI); PYTHONPATH=src so worktree pushes test the worktree src, not the main checkout's editable install
 
+  pytest_partition:
+    enabled: true
+    script: PYTHONPATH=src uv run python tools/check_pytest_partition.py
+    stages: [ci]
+    files: ^(tests/|packages/roxabi-nats/tests/|pyproject\.toml$|\.github/workflows/ci\.yml$|tools/check_pytest_partition\.py$)
+    description: CI pytest job partitions are disjoint and cover each pool (collect-only; mirrors ci.yml -m expressions)
+
   secrets_drift:
     enabled: true
     script: tools/check_secrets_drift.sh
@@ -443,6 +450,7 @@ qg:
       - omp_pin_lockstep
       - qg_conf_drift
       - duplicate_test_basenames
+      - pytest_partition
       - folder_size
       - no_runtime_toml_bots
       - doc_drift_bundle

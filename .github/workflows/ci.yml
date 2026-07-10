@@ -125,6 +125,9 @@ jobs:
       - name: Test omp-pin-lockstep gate
         run: bash tests/tools/test_check_omp_pin_lockstep.sh
 
+      - name: Test pytest-partition gate
+        run: bash tests/tools/test_check_pytest_partition.sh
+
       - name: Test qg runner
         run: bash tests/scripts/test_qg.sh
 

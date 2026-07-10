@@ -56,7 +56,7 @@ Rollback: edit `Image=` to previous semver tag → `systemctl --user daemon-relo
 
 The M₁ always-on cloud LLM gateway — **`factory-litellm`** (LiteLLM proxy :18091), **`llmcli-xai-forwarder`** (:18645, xAI/Grok OAuth relay), **`llmcli-fw-forwarder`** (:18646, Fireworks) — is deployed from this repo (`deploy/quadlet/{factory-litellm,llmcli-xai-forwarder,llmcli-fw-forwarder}.container` + `[component.litellm-proxy|xai-forwarder|fw-forwarder]`, `host_roles=["factory-hub"]`). The proxy container was renamed `llmcli`→`factory-litellm` (factory-`<component>` convention) to avoid a filename collision with llmCLI's own M₂ `llmcli.container` — `cluster_plan` matches by filename, so a shared name leaked llmCLI's M₂ proxy into M₁'s install-plan. Rationale: HA requires M₁ to answer LLM 24/7 (LiteLLM→cloud), so the always-on gateway belongs with the always-on hub.
 
-**Boundary** — factory owns *deployment* (host placement, converge lifecycle, digest pin, secret wiring); Roxabi/llmCLI owns *code + image* (`ghcr.io/roxabi/llmcli`, built + published by its CI) and the **M₂ local GPU worker** (`llmcli-nats-worker` + engines, `host_roles=["llm-worker"]`, unchanged — deferred). The units are byte-vendored from llmCLI; do not diverge them beyond the digest pin.
+**Boundary** — factory owns *deployment* (host placement, converge lifecycle, autoupdate wiring, secret wiring); Roxabi/llmCLI owns *code + image* (`ghcr.io/roxabi/llmcli`, built + published by its CI) and the **M₂ local GPU worker** (`llmcli-nats-worker` + engines, `host_roles=["llm-worker"]`, unchanged — deferred). The units are byte-vendored from llmCLI; M₁ gateway images track `:staging` via `io.containers.autoupdate=registry`.
 
 **Carve-outs from § Hardening invariants** (intentional — do not "normalize"):
 - `UserNS=keep-id:uid=1502,gid=1502` — the llmCLI image runs as uid 1502 (distinct from factory 1500 / voicecli 1501). The `NoNewPrivileges`/`ReadOnly`/`DropCapability=all` trio is present.
@@ -67,15 +67,10 @@ The M₁ always-on cloud LLM gateway — **`factory-litellm`** (LiteLLM proxy :1
 
 ### llmCLI cloud-gateway image
 
-Pinned by digest (¬autoupdate) so factory controls gateway bumps. To bump:
-
-```bash
-# 1. resolve the desired digest (current good staging on M₁, or a release tag)
-skopeo inspect docker://ghcr.io/roxabi/llmcli:staging --format '{{.Digest}}'
-# 2. set Image=ghcr.io/roxabi/llmcli@sha256:<digest> in all 3 deploy/quadlet/{factory-litellm,llmcli-xai-forwarder,llmcli-fw-forwarder}.container
-# 3. commit → merge staging → M₁ converge picks it up
-#    (or manual: systemctl --user restart factory-litellm llmcli-xai-forwarder llmcli-fw-forwarder)
-```
+`ghcr.io/roxabi/llmcli:staging` with `Label=io.containers.autoupdate=registry` in all three
+`deploy/quadlet/{factory-litellm,llmcli-xai-forwarder,llmcli-fw-forwarder}.container` files.
+`podman-auto-update.timer` pulls new staging builds and restarts the units (same as voiceCLI).
+Manual catch-up: `podman auto-update && systemctl --user restart factory-litellm llmcli-xai-forwarder llmcli-fw-forwarder`.
 
 ---
 

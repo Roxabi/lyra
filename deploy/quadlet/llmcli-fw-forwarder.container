@@ -5,9 +5,9 @@ StartLimitBurst=5
 
 [Container]
 # Vendored from Roxabi/llmCLI — deployment owned by roxabi-factory (M₁ cloud gateway).
-# Image built + published by llmCLI CI; pinned by digest here (¬autoupdate) so factory
-# controls bumps. Bump recipe → deploy/AGENTS.md § llmCLI cloud-gateway image.
-Image=ghcr.io/roxabi/llmcli@sha256:3d52ccf3397b7b6e487833869eeb3b6a9c01d68426b4a3aaf0452b2a706f8217
+# Image built + published by llmCLI CI; :staging + autoupdate (same pattern as voiceCLI).
+Image=ghcr.io/roxabi/llmcli:staging
+Label=io.containers.autoupdate=registry
 ContainerName=llmcli-fw-forwarder
 # No PublishPort — internal to roxabi.network only (reachable as
 # http://llmcli-fw-forwarder:18646 from other containers on roxabi.network)

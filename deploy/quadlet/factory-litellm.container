@@ -6,9 +6,9 @@ StartLimitBurst=5
 [Container]
 # Vendored from Roxabi/llmCLI (deploy/quadlet/). Deployment owned by roxabi-factory
 # (M₁ 24/7 cloud gateway, factory-hub role); the image is still built + published by
-# llmCLI CI. Pinned by digest so factory controls gateway bumps — ¬autoupdate label.
-# Bump recipe → deploy/AGENTS.md § llmCLI cloud-gateway image.
-Image=ghcr.io/roxabi/llmcli@sha256:3d52ccf3397b7b6e487833869eeb3b6a9c01d68426b4a3aaf0452b2a706f8217
+# llmCLI CI. :staging + autoupdate (same pattern as voiceCLI on M₁).
+Image=ghcr.io/roxabi/llmcli:staging
+Label=io.containers.autoupdate=registry
 ContainerName=factory-litellm
 # Renamed llmcli → factory-litellm: factory-<component> convention + avoids a filename
 # collision with llmCLI's own M₂ llmcli.container (cluster_plan matches by filename, so

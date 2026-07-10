@@ -143,8 +143,8 @@ host_roles = ["factory-hub"]
 # --- llmCLI cloud gateway (vendored from Roxabi/llmCLI) ----------------------
 # LiteLLM proxy (:18091) + xAI/Grok forwarder (:18645) + Fireworks forwarder
 # (:18646). Deployment owned here — M₁ always-on cloud LLM gateway (HA: M₁ must
-# answer LLM 24/7). Image is built + published by llmCLI CI, pinned by digest in
-# the .container files (¬autoupdate). Local GPU inference (llmcli-nats-worker,
+# answer LLM 24/7). Image is built + published by llmCLI CI; M₁ units use
+# ghcr.io/roxabi/llmcli:staging + autoupdate=registry. Local GPU inference (llmcli-nats-worker,
 # M₂) stays in Roxabi/llmCLI. required_secrets=[]: the proxy master key is read
 # from ~/.roxabi/llmcli/env/proxy.env (grandfathered llmcli data dir), not a
 # Podman secret — hardening to a type=mount _FILE secret is a tracked follow-up.

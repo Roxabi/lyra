@@ -49,9 +49,19 @@ _register_stub_fixture()
 pytestmark = pytest.mark.xdist_group(name="nats_server")
 
 
+_SUBPROCESS_NAT_MODULES = frozenset({
+    "test_readiness.py",
+    "test_driver_base.py",
+    "test_image_testing_doubles.py",
+    "test_voice_testing_doubles.py",
+})
+
+
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if "/packages/roxabi-nats/tests/" not in str(item.fspath):
+            continue
+        if Path(item.fspath).name not in _SUBPROCESS_NAT_MODULES:
             continue
         item.add_marker(pytest.mark.subprocess_nats)
         item.add_marker(pytest.mark.xdist_group(name="nats_server"))

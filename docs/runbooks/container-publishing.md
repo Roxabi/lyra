@@ -5,7 +5,7 @@
 factory containers are built and published to GHCR from this repo via a **bake pipeline**
 (`docker/bake-action` + `docker-bake.hcl` — see `.github/workflows/publish.yml`). Other Roxabi
 projects typically use a shared reusable workflow at
-`Roxabi/.github/.github/workflows/publish-container.yml@v1`. Registry convention:
+`Roxabi/.github/.github/workflows/publish-container.yml@staging`. Registry convention:
 `ghcr.io/roxabi/<project>`. Two triggers drive publishing: a push to `staging` produces floating
 tags for pre-release validation on M₁ (`:staging` + `:staging-svc` for factory); a release-please tag
 `<component>/vX.Y.Z` on `main` produces semver pins (`:X.Y.Z`, `:X`, `:latest` where applicable).
@@ -97,15 +97,15 @@ The reusable workflow accepts four inputs:
 ```yaml
 jobs:
   publish:
-    uses: Roxabi/.github/.github/workflows/publish-container.yml@v1
+    uses: Roxabi/.github/.github/workflows/publish-container.yml@staging
     with:
       image_name: ghcr.io/roxabi/<project>
       release_please_component: <project>
 ```
 
-Callers MUST pin `@v1`, never `@main`. The `main` branch of `Roxabi/.github` may receive
-breaking changes between major versions. The `v1` branch advances forward only for backward-
-compatible changes.
+Callers MUST pin `@staging` during beta (entire fleet on `staging`; `main` unused). Satellite
+images publish as `:staging`; Quadlets pull `:staging` via `podman auto-update`. Do not use a
+floating `v1` infra branch — it was retired 2026-07-10.
 
 ---
 
@@ -383,7 +383,7 @@ Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt t
 
 - `.github/workflows/publish.yml` — factory caller workflow
 - `.github/workflows/omp-base.yml` — path-triggered build+publish for the omp binary carrier image (`ghcr.io/roxabi/factory-omp-base`, immutable version tags); separate from the main bake pipeline — see `deploy/omp-base/README.md`
-- `Roxabi/.github/.github/workflows/publish-container.yml@v1` — reusable workflow (upstream)
+- `Roxabi/.github/.github/workflows/publish-container.yml@staging` — reusable workflow (upstream)
 - `deploy/quadlet/factory-hub.container` — `Image=` reference example
 - `deploy/quadlet/factory-telegram.container` — `Image=` reference example
 - `deploy/quadlet/factory-discord.container` — `Image=` reference example

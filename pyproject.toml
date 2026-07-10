@@ -130,6 +130,9 @@ filterwarnings = [
 markers = [
     "nats_integration: NATS integration tests requiring Docker Compose",
     "integration: cross-host integration tests requiring M1 Tailnet",
+    "subprocess_nats: tests spawning a local nats-server subprocess (no auth.conf)",
+    "live_acl: live nats-server with rendered auth.conf and nk seeds",
+    "deploy_contract: deploy/install/converge/quadlet bash contract tests",
     "audio_consumer_live: test exercises audio consumer directly; skip the autouse no-op neutralizer",
     "bot_store_live: test exercises real BotStore roster loading; skip autouse roster mocks",
     "smoke: fast in-process smoke tests for critical user-facing paths",

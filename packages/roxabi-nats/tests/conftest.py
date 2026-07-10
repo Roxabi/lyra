@@ -45,6 +45,17 @@ def _register_stub_fixture() -> None:
 
 _register_stub_fixture()
 
+# Serialize live-server tests on one xdist worker (see tests/nats/conftest.py).
+pytestmark = pytest.mark.xdist_group(name="nats_server")
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        if "/packages/roxabi-nats/tests/" not in str(item.fspath):
+            continue
+        item.add_marker(pytest.mark.subprocess_nats)
+        item.add_marker(pytest.mark.xdist_group(name="nats_server"))
+
 
 @pytest.fixture(autouse=True)
 def _reset_version_check_log_state() -> None:

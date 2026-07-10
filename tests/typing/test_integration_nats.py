@@ -13,7 +13,10 @@ from factory.transport.work_scope import WorkScope
 from factory.typing.listener import TypingListener
 from tests.nats.conftest import requires_nats_server
 
-pytestmark = pytest.mark.xdist_group(name="nats_server")
+pytestmark = [
+    pytest.mark.subprocess_nats,
+    pytest.mark.xdist_group(name="nats_server"),
+]
 
 
 @requires_nats_server

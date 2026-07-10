@@ -2,7 +2,7 @@
 
 T14 contract map:
   A — parse_unit_secret_names: name=value.split(",")[0]; {{bot_secrets}} excluded
-  B — manifest contains all 7 factory-nats-* (incl. factory-nats-gh-helper)
+  B — manifest contains all factory-nats-* nats-seed secrets
   C — policy classification correct (nats-seed / nats-auth / generated / optional)
   D — gate happy path: current tree → exit 0
   E — gate drift detection: unit Secret= with no required_secrets entry → exit non-zero
@@ -132,12 +132,12 @@ class TestParseUnitSecretNames:
 
 
 # ---------------------------------------------------------------------------
-# Section B — manifest completeness (all 7 factory-nats-* present)
+# Section B — manifest completeness (all factory-nats-* nats-seed present)
 # ---------------------------------------------------------------------------
 
 
 class TestManifestCompleteness:
-    """Verify the committed manifest covers all 7 factory-nats-* secrets."""
+    """Verify the committed manifest covers all factory-nats-* nats-seed secrets."""
 
     EXPECTED_NATS_SEEDS = {
         "factory-nats-hub",
@@ -147,7 +147,10 @@ class TestManifestCompleteness:
         "factory-nats-clipool",
         "factory-nats-turn-writer",
         "factory-nats-blobstore",
-        "factory-nats-gh-helper",  # the #9 miss this PR fixes
+        "factory-nats-gh-helper",
+        "factory-nats-ingress",
+        "factory-nats-omp",
+        "factory-nats-socialmedia",
     }
 
     def _parse_manifest_keys(self, manifest: Path) -> set[str]:
@@ -160,8 +163,8 @@ class TestManifestCompleteness:
                 keys.add(name)
         return keys
 
-    def test_all_seven_nats_seeds_present(self) -> None:
-        """Manifest must contain all 7 factory-nats-* seeds (incl. gh-helper)."""
+    def test_all_nats_seed_secrets_present(self) -> None:
+        """Manifest must contain every factory-nats-* nats-seed secret."""
         manifest_keys = self._parse_manifest_keys(MANIFEST_SH)
 
         missing = self.EXPECTED_NATS_SEEDS - manifest_keys
@@ -200,17 +203,7 @@ class TestPolicyClassification:
         with POLICY_TOML.open("rb") as f:
             policy = tomllib.load(f)
 
-        seed_names = [
-            "factory-nats-hub",
-            "factory-nats-telegram",
-            "factory-nats-discord",
-            "factory-nats-web",
-            "factory-nats-clipool",
-            "factory-nats-turn-writer",
-            "factory-nats-blobstore",
-            "factory-nats-gh-helper",
-            "factory-nats-ingress",
-        ]
+        seed_names = sorted(TestManifestCompleteness.EXPECTED_NATS_SEEDS)
         for name in seed_names:
             assert name in policy.get("secret", {}), f"{name} missing from policy"
             assert policy["secret"][name]["policy"] == "nats-seed", (

@@ -237,7 +237,37 @@ async def _settle_deny(
     return ok, actual
 
 
+async def _request_when_responders_ready(
+    req_nc: Any,
+    resp_nc: Any,
+    subject: str,
+    payload: bytes,
+    *,
+    request_timeout: float,
+) -> Any:
+    """Retry request() while the responder subscription propagates (#2275 flake).
+
+    NATS Core drops requests with no registered subscriber. flush() round-trips
+    the SUB to the server but cross-connection visibility can lag under CI load.
+    """
+    import asyncio
+
+    from nats.errors import NoRespondersError
+
+    last: NoRespondersError | None = None
+    for attempt in range(5):
+        try:
+            return await req_nc.request(subject, payload, timeout=request_timeout)
+        except NoRespondersError as exc:
+            last = exc
+            await resp_nc.flush(timeout=2)
+            await asyncio.sleep(0.1 * (attempt + 1))  # NATS delivery window
+    assert last is not None
+    raise last
+
+
 pytestmark = [
+    pytest.mark.live_acl,
     pytest.mark.skipif(
         not (NATS_AVAILABLE and NK_AVAILABLE),
         reason="nats-server and nk must be on PATH — CI installs both",
@@ -839,7 +869,16 @@ def test_flow_round_trip_positive(
 
                 await resp_nc.subscribe(concrete_subject, cb=_respond)
                 await resp_nc.flush(timeout=2)
-                reply = await req_nc.request(concrete_subject, b"ping", timeout=2)
+                request_timeout = (
+                    10.0 if os.environ.get("GITHUB_ACTIONS") == "true" else 2.0
+                )
+                reply = await _request_when_responders_ready(
+                    req_nc,
+                    resp_nc,
+                    concrete_subject,
+                    b"ping",
+                    request_timeout=request_timeout,
+                )
                 assert reply.data == b"pong", (
                     f"{requester}->{responder} on {concrete_subject!r}: "
                     f"unexpected reply {reply.data!r}"

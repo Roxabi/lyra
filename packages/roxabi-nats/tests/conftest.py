@@ -45,13 +45,10 @@ def _register_stub_fixture() -> None:
 
 _register_stub_fixture()
 
-# Serialize live-server tests on one xdist worker (see tests/nats/conftest.py).
-pytestmark = pytest.mark.xdist_group(name="nats_server")
-
-
+# Live-server modules only — mock-only suites (e.g. test_driver_base) stay in
+# package-coverage. xdist_group applied in modifyitems for subprocess modules.
 _SUBPROCESS_NAT_MODULES = frozenset({
     "test_readiness.py",
-    "test_driver_base.py",
     "test_image_testing_doubles.py",
     "test_voice_testing_doubles.py",
 })

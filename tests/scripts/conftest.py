@@ -20,11 +20,8 @@ _V1_LEGACY_JSON = FIXTURES_DIR / "v1-legacy.json"
 _V2_WITH_RETIRED_JSON = FIXTURES_DIR / "v2-with-retired.json"
 _REAL_MATRIX_JSON = REPO / "deploy" / "nats" / "acl-matrix.json"
 
-_NK_TOOL_MODULES = frozenset({
-    "test_nk.py",
-    "test_genkeys_modes.py",
-    "test_genkeys_modes_add_identity.py",
-})
+# Only suites that shell out to the nk binary — genkeys_modes* use FakeNkeyProvider.
+_NK_TOOL_MODULES = frozenset({"test_nk.py"})
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

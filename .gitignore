@@ -47,3 +47,6 @@ reports/
 # grok LSP tooling config (per-machine — keep out of the repo; it otherwise lands
 # as stray `chore(grok)` commits on staging)
 .grok/
+
+# Agent scratch workspace (local probes, review notes — not versioned)
+.scratch/

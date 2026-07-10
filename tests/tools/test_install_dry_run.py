@@ -1,7 +1,7 @@
 """Tests for deploy/install.sh --dry-run — T18.
 
 Contract map:
-  A — dry-run lists all 7 factory-nats-* (incl. factory-nats-gh-helper — the #9 miss)
+  A — dry-run lists all factory-nats-* nats-seed secrets from secrets-manifest.sh
   B — blobstore data dir: dry-run logs mkdir of ~/.roxabi/factory/blobstore;
       pre-existing content never blocks
   D — missing nkeys dir → exits 1 (pre-condition gate)
@@ -27,25 +27,11 @@ from __future__ import annotations
 
 import os
 import subprocess
-import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SCRIPT = REPO_ROOT / "deploy" / "install.sh"
 MANIFEST_SH = REPO_ROOT / "deploy" / "generated" / "secrets-manifest.sh"
-POLICY_TOML = REPO_ROOT / "deploy" / "secrets-policy.toml"
-
-# Secrets that require seed files (non-optional, non-generated, source != 'n/a')
-FACTORY_NATS_SEEDS_EXPECTED = {
-    "factory-nats-hub",
-    "factory-nats-telegram",
-    "factory-nats-discord",
-    "factory-nats-web",
-    "factory-nats-clipool",
-    "factory-nats-turn-writer",
-    "factory-nats-blobstore",
-    "factory-nats-gh-helper",  # the #9 miss fixed by this PR
-}
 
 
 # ---------------------------------------------------------------------------
@@ -53,34 +39,42 @@ FACTORY_NATS_SEEDS_EXPECTED = {
 # ---------------------------------------------------------------------------
 
 
-def _parse_manifest_sources() -> dict[str, str]:
-    """Parse SECRET_SOURCES block from secrets-manifest.sh.
-
-    Returns {name: rel_path} where rel_path may be 'n/a'.
-    Only reads entries from the SECRET_SOURCES block (not SECRET_POLICY).
-    """
-    sources: dict[str, str] = {}
-    in_sources_block = False
+def _parse_manifest_block(block_name: str) -> dict[str, str]:
+    """Parse a declare -A block from secrets-manifest.sh."""
+    entries: dict[str, str] = {}
+    in_block = False
     for line in MANIFEST_SH.read_text().splitlines():
-        if "SECRET_SOURCES=(" in line:
-            in_sources_block = True
+        if f"{block_name}=(" in line:
+            in_block = True
             continue
-        if in_sources_block:
+        if in_block:
             stripped = line.strip()
             if stripped == ")":
-                break  # end of SECRET_SOURCES block
+                break
             if stripped.startswith("[") and "]=" in stripped:
                 name = stripped[1 : stripped.index("]=")]
                 val = stripped[stripped.index('="') + 2 : -1]
-                sources[name] = val
-    return sources
+                entries[name] = val
+    return entries
 
 
-def _parse_policy() -> dict[str, str]:
-    """Return {name: policy} from secrets-policy.toml."""
-    with POLICY_TOML.open("rb") as f:
-        data = tomllib.load(f)
-    return {name: attrs["policy"] for name, attrs in data.get("secret", {}).items()}
+def _parse_manifest_sources() -> dict[str, str]:
+    """Parse SECRET_SOURCES block from secrets-manifest.sh."""
+    return _parse_manifest_block("SECRET_SOURCES")
+
+
+def _parse_manifest_policy() -> dict[str, str]:
+    """Parse SECRET_POLICY block from secrets-manifest.sh (install.sh SSoT)."""
+    return _parse_manifest_block("SECRET_POLICY")
+
+
+def _factory_nats_seeds_expected() -> set[str]:
+    """All secrets with policy=nats-seed in the committed manifest."""
+    return {
+        name
+        for name, policy in _parse_manifest_policy().items()
+        if policy == "nats-seed"
+    }
 
 
 def _create_stub_seeds(home_tmp: Path) -> None:
@@ -92,7 +86,7 @@ def _create_stub_seeds(home_tmp: Path) -> None:
     Optional secrets are never validated (skipped by policy check).
     """
     sources = _parse_manifest_sources()
-    policies = _parse_policy()
+    policies = _parse_manifest_policy()
     factory_data = home_tmp / ".roxabi" / "factory"
 
     for name, rel in sources.items():
@@ -132,16 +126,17 @@ def _run_install_dry_run(
 
 
 # ---------------------------------------------------------------------------
-# Section A — dry-run lists all 7 factory-nats-* secrets including gh-helper
+# Section A — dry-run lists all factory-nats-* nats-seed secrets
 # ---------------------------------------------------------------------------
 
 
 class TestDryRunListsAllNatsSecrets:
-    """dry-run output must reference all 7 factory-nats-* seeds."""
+    """dry-run output must reference every factory-nats-* nats-seed secret."""
 
-    def test_dry_run_mentions_all_seven_nats_seeds(self, tmp_path: Path) -> None:
-        """[dry-run] lines must cover all 7 factory-nats-* seed secrets."""
+    def test_dry_run_mentions_all_nats_seed_secrets(self, tmp_path: Path) -> None:
+        """[dry-run] lines must cover all manifest nats-seed secrets."""
         _create_stub_seeds(tmp_path)
+        expected = _factory_nats_seeds_expected()
 
         result = _run_install_dry_run(tmp_path)
 
@@ -151,7 +146,7 @@ class TestDryRunListsAllNatsSecrets:
         )
 
         combined = result.stdout + result.stderr
-        missing = [name for name in FACTORY_NATS_SEEDS_EXPECTED if name not in combined]
+        missing = [name for name in expected if name not in combined]
         assert not missing, (
             f"install.sh --dry-run did not mention these secrets: {missing}\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"

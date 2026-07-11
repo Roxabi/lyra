@@ -45,12 +45,15 @@ def _register_stub_fixture() -> None:
 
 _register_stub_fixture()
 
-# Live-server modules only — mock-only suites (e.g. test_driver_base) run in the
-# same job but outside this marker. xdist_group applied in modifyitems below.
-_SUBPROCESS_NAT_MODULES = frozenset({
-    "test_readiness.py",
-    "test_image_testing_doubles.py",
-    "test_voice_testing_doubles.py",
+# Live nats-server fixtures only — mock/in-process tests in mixed modules
+# (e.g. TestReadinessConstants, guard-only image/voice suites) stay untagged
+# so they collect under package-coverage (-m "not subprocess_nats").
+# Mirrors tests/bootstrap/conftest.py (per-suite, not per-module).
+_LIVE_NATS_FIXTURES = frozenset({
+    "nats_server_url",
+    "nats_server_jetstream_url",
+    "nc",
+    "nc_js",
 })
 
 
@@ -58,7 +61,8 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if "/packages/roxabi-nats/tests/" not in str(item.fspath):
             continue
-        if Path(item.fspath).name not in _SUBPROCESS_NAT_MODULES:
+        fixturenames = set(getattr(item, "fixturenames", ()))
+        if not fixturenames & _LIVE_NATS_FIXTURES:
             continue
         item.add_marker(pytest.mark.subprocess_nats)
         item.add_marker(pytest.mark.xdist_group(name="nats_server"))

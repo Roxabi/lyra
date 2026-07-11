@@ -22,14 +22,6 @@ NAT_COVERAGE_MARKERS = "not subprocess_nats"
 NAT_SUBPROCESS_MARKERS = "subprocess_nats"
 INTEGRATION_MARKERS = "nats_integration"
 
-# ci.yml must invoke scripts/ci-pytest.sh for these partitions (sync tripwire).
-CI_YML_PARTITION_CALLS: tuple[tuple[str, str], ...] = (
-    ("factory_unit", "ci-pytest.sh factory_unit"),
-    ("factory_infra", "ci-pytest.sh factory_infra"),
-    ("factory_integration", "ci-pytest.sh factory_integration"),
-    ("roxabi_nats", "ci-pytest.sh roxabi_nats"),
-)
-
 
 @dataclass(frozen=True)
 class PytestPartition:
@@ -80,6 +72,12 @@ CI_PARTITIONS: dict[str, PytestPartition] = {
         ("packages/roxabi-obs/tests",),
     ),
 }
+
+# Derived from CI_PARTITIONS so tripwire stays complete by construction.
+# ci.yml must invoke scripts/ci-pytest.sh for every runtime partition.
+CI_YML_PARTITION_CALLS: tuple[tuple[str, str], ...] = tuple(
+    (name, f"ci-pytest.sh {name}") for name in CI_PARTITIONS
+)
 
 
 def gate_partition_groups() -> tuple[

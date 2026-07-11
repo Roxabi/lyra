@@ -142,7 +142,14 @@ def _check_cover(
 def _validate_group(
     total_name: str,
     specs: list[tuple[PytestPartition, str]],
-) -> tuple[bool, dict[str, int]]:
+) -> tuple[bool | None, dict[str, int]]:
+    """Validate one partition group.
+
+    Returns:
+        (True, counts) — disjoint/cover OK
+        (False, counts) — partition math violation
+        (None, {}) — pytest collect failed (caller should exit 2)
+    """
     total_spec = specs[0][0]
     part_specs = specs[1:]
 
@@ -155,7 +162,7 @@ def _validate_group(
         total_ids = _collect_ids(total)
         part_ids = [(p, _collect_ids(p)) for p, _ in parts]
     except RuntimeError:
-        return False, {}
+        return None, {}
 
     ok = True
     for i, (a_part, a_ids) in enumerate(part_ids):
@@ -177,10 +184,14 @@ def main() -> int:
 
     factory_group, nats_group = gate_partition_groups()
     ok = not ci_errors
+    collect_failed = False
     counts: dict[str, int] = {}
 
     for total_name, specs in (factory_group, nats_group):
         group_ok, group_counts = _validate_group(total_name, list(specs))
+        if group_ok is None:
+            collect_failed = True
+            continue
         ok = group_ok and ok
         counts.update(group_counts)
 
@@ -195,6 +206,8 @@ def main() -> int:
         f"total={counts.get('roxabi_nats_total', 0)}",
     )
 
+    if collect_failed:
+        return 2
     if ok:
         print("check_pytest_partition: OK")
         return 0

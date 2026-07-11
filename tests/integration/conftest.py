@@ -1,10 +1,8 @@
-"""Integration test tier markers.
+"""In-process / mock integration suites under ``tests/integration/``.
 
-CI partition (Slice 4):
-- ``nats_integration`` — docker compose NATS; runs in the ``integration`` job only.
-- Unmarked modules — in-process mocks; run in the bulk ``tests`` job
-  (``-m "not nats_integration"``).
+Docker-compose NATS suites live under ``tests/nats/integration/`` (#2288)
+and use the ``nats_integration`` marker (CI ``integration`` job).
 
-New docker-NATS suites MUST declare ``pytestmark = pytest.mark.nats_integration``
-at module scope. See ``test_voice_routing.py``.
+Unmarked modules here run in the bulk ``tests`` job
+(``-m "not nats_integration"``).
 """

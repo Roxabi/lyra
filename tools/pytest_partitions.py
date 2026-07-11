@@ -56,9 +56,10 @@ CI_PARTITIONS: dict[str, PytestPartition] = {
     ),
     "factory_integration": PytestPartition(
         "factory_integration",
-        ("tests/integration/",),
+        ("tests/nats/integration/",),
         markers=INTEGRATION_MARKERS,
     ),
+
     "roxabi_nats": PytestPartition(
         "roxabi_nats",
         ("packages/roxabi-nats/tests",),
@@ -79,12 +80,11 @@ CI_YML_PARTITION_CALLS: tuple[tuple[str, str], ...] = tuple(
     (name, f"ci-pytest.sh {name}") for name in CI_PARTITIONS
 )
 
-# Directory↔marker layout (#2287). Each marker may only appear on tests whose
-# file path starts with one of the allowed prefixes (posix, relative to repo).
-# Keep in lockstep with where conftest / pytestmark apply these markers.
+# Directory↔marker layout (#2287 / #2288). Allowed path prefixes per marker;
+# DENYLIST entries take precedence (posix paths relative to repo root).
 MARKER_DIR_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "nats_integration": (
-        "tests/integration/",
+        "tests/nats/integration/",
     ),
     "subprocess_nats": (
         "packages/roxabi-nats/tests/",
@@ -100,6 +100,12 @@ MARKER_DIR_ALLOWLIST: dict[str, tuple[str, ...]] = {
     ),
     "live_acl": (
         "tests/scripts/",
+    ),
+}
+
+MARKER_DIR_DENYLIST: dict[str, tuple[str, ...]] = {
+    "subprocess_nats": (
+        "tests/nats/integration/",
     ),
 }
 

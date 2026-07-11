@@ -110,7 +110,8 @@ Explicit steps in `.github/workflows/ci.yml` after the QG bundle:
 - Dashboard Playwright e2e, package coverage thresholds
 - Pytest jobs via `scripts/ci-pytest.sh` (partitions from `tools/pytest_partitions.py`)
 - Directory↔marker layout (`tools/check_pytest_dir_markers.py` — markers only under
-  `MARKER_DIR_ALLOWLIST` prefixes in `tools/pytest_partitions.py`; see #2287)
+  `MARKER_DIR_ALLOWLIST` prefixes in `tools/pytest_partitions.py`; #2287 / #2288
+  docker tier = `tests/nats/integration/`)
 - Jobs `integration`, `docker-build` (`docker-build` is a required check on `staging`)
 
 ACL scanners (`acl_matrix_retired`, `request_reply_flows`, `acl_grants`, `inbox_prefix`, `subject_literals`) are declared in `stack.yml` and run inside `qg run --stage ci`.

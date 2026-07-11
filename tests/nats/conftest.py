@@ -15,9 +15,16 @@ pytestmark = pytest.mark.xdist_group(name="nats_server")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """conftest pytestmark does not tag child modules — apply at collection."""
+    """Tag local nats-server suites; leave docker integration tree alone.
+
+    ``tests/nats/integration/`` is the docker-compose ``nats_integration``
+    partition (#2288) — must not also carry ``subprocess_nats``.
+    """
     for item in items:
-        if "/tests/nats/" not in str(item.fspath):
+        path = str(item.fspath)
+        if "/tests/nats/" not in path:
+            continue
+        if "/tests/nats/integration/" in path:
             continue
         item.add_marker(pytest.mark.subprocess_nats)
         item.add_marker(pytest.mark.xdist_group(name="nats_server"))

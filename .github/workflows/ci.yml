@@ -14,9 +14,8 @@ on:
   merge_group: {}
   workflow_dispatch: {}  # dispatch resolves from default branch — per-branch re-triggers require the branch to contain a compatible ci.yml
 
-# Single declaration site: the installer step is duplicated in the tests and
-# package-coverage jobs — a per-step env would let the two copies drift on a
-# version bump (coverage floors would then measure against different servers).
+# Single declaration site: nats-server install is duplicated in infra (and was
+# formerly in tests/package-coverage) — keep NATS_VERSION in sync on bumps.
 env:
   NATS_VERSION: "2.10.22"
 
@@ -30,9 +29,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'merge_group' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/staging' }}
 
 jobs:
-  # 3-way split of the former monolithic `ci` job (~4m50 serial → ~2m45 wall):
-  # gates / tests / package-coverage run in parallel; the aggregate `ci` job
-  # below keeps the required-check context stable.
+  # 4-way split: gates / tests / infra / package-coverage run in parallel; the
+  # aggregate `ci` job below keeps the required-check context stable. Infra
+  # isolates live-nats + deploy-contract suites from the bulk unit/coverage job.
 
   # No nats-server/nk here: no ci-stage gate shells out to either binary —
   # acl_authconf_drift runs `factory-acl genkeys --template-only`, which
@@ -129,48 +128,14 @@ jobs:
       - name: Test qg runner
         run: bash tests/scripts/test_qg.sh
 
-  # Dashboard e2e + factory unit coverage. Default-depth checkout: these
-  # pytest suites stub git (tests/deploy/test_converge_nats_restart.py) —
-  # only check_debt_expiry (gates job) needs full history.
+  # Dashboard e2e + in-process factory unit coverage (no live nats-server/nk).
+  # Live-infra suites run in the `infra` job. Default-depth checkout: these
+  # pytest suites stub git — only check_debt_expiry (gates job) needs full history.
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      # tests/nats + tests/bootstrap/test_embedded_nats.py spawn a real
-      # nats-server subprocess (tests/factories/nats_server.py).
-      - name: Install nats-server
-        run: |
-          ARCH=$(dpkg --print-architecture)
-          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
-          TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
-            -o "${TMPDIR}/${TARBALL}"
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
-            -o "${TMPDIR}/SHA256SUMS"
-          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
-          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
-          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
-          nats-server --version
-
-      # tests/scripts/test_nk.py + test_genkeys_modes.py exercise the real
-      # nk binary.
-      - name: Install nk
-        env:
-          NK_VERSION: "0.4.15"
-        run: |
-          ARCH=$(dpkg --print-architecture)
-          ZIPFILE="nkeys-v${NK_VERSION}-linux-${ARCH}.zip"
-          TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${ZIPFILE}" \
-            -o "${TMPDIR}/${ZIPFILE}"
-          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/nkeys-v${NK_VERSION}-checksums.txt" \
-            -o "${TMPDIR}/checksums.txt"
-          cd "${TMPDIR}" && grep -F "${ZIPFILE}" checksums.txt | sha256sum --check
-          unzip -q "${TMPDIR}/${ZIPFILE}" -d "${TMPDIR}"
-          sudo install -m 755 "${TMPDIR}/nkeys-v${NK_VERSION}-linux-${ARCH}/nk" /usr/local/bin/nk
-          nk -v
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -222,10 +187,16 @@ jobs:
 
       # tests/integration runs in the dedicated integration job (against real
       # docker NATS) and tests/e2e in the step above — excluded here so each
-      # suite executes exactly once per run. No --reruns here: unit/coverage
-      # failures must surface on first occurrence.
+      # suite executes exactly once per run. Infra-marked suites (subprocess
+      # NATS, live ACL, deploy shell, nk tooling) run in the `infra` job.
+      # No --reruns: unit/coverage failures must surface on first occurrence.
       - name: Coverage — factory
-        run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/e2e --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50 --junitxml=reports/pytest-unit.xml
+        run: >-
+          uv run pytest tests/
+          --ignore=tests/integration --ignore=tests/e2e
+          -m "not live_acl and not subprocess_nats and not deploy_contract and not nk_tooling"
+          --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50
+          --junitxml=reports/pytest-unit.xml
 
       # always(): junit XML is most valuable when a rerun turned the job green —
       # flake-recurrence observability. run_attempt suffix: v4 artifact names
@@ -239,29 +210,13 @@ jobs:
           retention-days: 5
           if-no-files-found: ignore
 
-  # Workspace package suites. roxabi-nats tests spawn a real nats-server
-  # subprocess and auto-skip without the binary — install it so the 70%
-  # floor keeps measuring real-server coverage. No nk (zero references in
-  # packages/*/tests), no bun.
+  # In-process workspace packages only. roxabi-nats coverage runs in `infra`
+  # (full suite needs nats-server for readiness/testing modules). No nats-server/nk/bun.
   package-coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Install nats-server
-        run: |
-          ARCH=$(dpkg --print-architecture)
-          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
-          TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
-            -o "${TMPDIR}/${TARBALL}"
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
-            -o "${TMPDIR}/SHA256SUMS"
-          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
-          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
-          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
-          nats-server --version
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -269,22 +224,79 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
-      - name: Coverage — roxabi_nats
-        run: uv run pytest packages/roxabi-nats/tests --cov=roxabi_nats --cov-branch --cov-report=term-missing --cov-fail-under=70
-
       - name: Coverage — roxabi_contracts
         run: uv run pytest packages/roxabi-contracts/tests --cov=roxabi_contracts --cov-branch --cov-report=term-missing --cov-fail-under=80
 
       - name: Coverage — roxabi_obs
         run: uv run pytest packages/roxabi-obs/tests --cov=roxabi_obs --cov-branch --cov-report=term-missing --cov-fail-under=69
 
+  # Subprocess NATS, live ACL matrix, deploy shell contracts, nk tooling.
+  # Isolated from bulk unit/coverage so timing flakes don't block cov floors.
+  # No --reruns — structural fixes, not retry masking.
+  infra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install nats-server
+        uses: ./.github/actions/install-nats-server
+        with:
+          nats-version: ${{ env.NATS_VERSION }}
+
+      - name: Install nk
+        env:
+          NK_VERSION: "0.4.15"
+        run: |
+          ARCH=$(dpkg --print-architecture)
+          ZIPFILE="nkeys-v${NK_VERSION}-linux-${ARCH}.zip"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${ZIPFILE}" \
+            -o "${TMPDIR}/${ZIPFILE}"
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/nkeys-v${NK_VERSION}-checksums.txt" \
+            -o "${TMPDIR}/checksums.txt"
+          cd "${TMPDIR}" && grep -F "${ZIPFILE}" checksums.txt | sha256sum --check
+          unzip -q "${TMPDIR}/${ZIPFILE}" -d "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nkeys-v${NK_VERSION}-linux-${ARCH}/nk" /usr/local/bin/nk
+          nk -v
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      # Full roxabi-nats suite (in-process + subprocess_nats). Coverage floor
+      # applies here — splitting subprocess tests to this job dropped in-process-only
+      # coverage below 70% (readiness + testing/* need a live nats-server).
+      - name: Coverage — roxabi_nats
+        run: >-
+          uv run pytest packages/roxabi-nats/tests -n 1
+          --cov=roxabi_nats --cov-branch --cov-report=term-missing --cov-fail-under=70
+
+      - name: Infra pytest (live NATS + deploy + nk)
+        run: >-
+          uv run pytest tests/
+          --ignore=tests/integration --ignore=tests/e2e
+          -m "live_acl or subprocess_nats or deploy_contract or nk_tooling"
+          -v --junitxml=reports/pytest-infra.xml
+
+      - name: Upload infra test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: infra-failure-artifacts-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 5
+          if-no-files-found: ignore
+
   # Aggregate gate — staging branch protection requires the check context
-  # "ci" (strict). Keeping this job id `ci` means the 3-way split needs ZERO
+  # "ci" (strict). Keeping this job id `ci` means the split needs ZERO
   # branch-protection changes. `if: always()` is mandatory: without it, a
   # failed needed job leaves this job skipped, and a skipped required check
   # deadlocks merges exactly like a missing one.
   ci:
-    needs: [gates, tests, package-coverage]
+    needs: [gates, tests, infra, package-coverage]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

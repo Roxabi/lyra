@@ -45,13 +45,20 @@ def _register_stub_fixture() -> None:
 
 _register_stub_fixture()
 
-# Serialize live-server tests on one xdist worker (see tests/nats/conftest.py).
-pytestmark = pytest.mark.xdist_group(name="nats_server")
+# Live-server modules only — mock-only suites (e.g. test_driver_base) run in the
+# same job but outside this marker. xdist_group applied in modifyitems below.
+_SUBPROCESS_NAT_MODULES = frozenset({
+    "test_readiness.py",
+    "test_image_testing_doubles.py",
+    "test_voice_testing_doubles.py",
+})
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if "/packages/roxabi-nats/tests/" not in str(item.fspath):
+            continue
+        if Path(item.fspath).name not in _SUBPROCESS_NAT_MODULES:
             continue
         item.add_marker(pytest.mark.subprocess_nats)
         item.add_marker(pytest.mark.xdist_group(name="nats_server"))

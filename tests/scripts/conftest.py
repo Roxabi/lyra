@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -31,6 +32,42 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         if Path(item.fspath).name not in _NK_TOOL_MODULES:
             continue
         item.add_marker(pytest.mark.nk_tooling)
+
+
+_live_acl_ci_guard_checked = False
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    """Hard-fail before the first live_acl test when CI infra deps are absent.
+
+    Runs only for tests that survive the active ``-m`` filter, so the ``tests``
+    job (``not live_acl``) imports ``test_parity_e2e`` without nats-server/nk
+    while the ``infra`` job still fails loudly on a broken runner (#2247).
+    """
+    global _live_acl_ci_guard_checked
+    if _live_acl_ci_guard_checked or item.get_closest_marker("live_acl") is None:
+        return
+    _live_acl_ci_guard_checked = True
+
+    from tests.scripts.test_parity_e2e import (
+        NATS_AVAILABLE,
+        NATS_PY_AVAILABLE,
+        NK_AVAILABLE,
+        _ci_hardfail_missing_deps,
+    )
+
+    missing = _ci_hardfail_missing_deps(
+        github_actions=os.getenv("GITHUB_ACTIONS") == "true",
+        nats_available=NATS_AVAILABLE,
+        nk_available=NK_AVAILABLE,
+        nats_py_available=NATS_PY_AVAILABLE,
+    )
+    if missing:
+        pytest.fail(
+            f"GITHUB_ACTIONS=true but missing: {', '.join(missing)} — "
+            "CI must install nats-server + nk and have nats-py importable; a "
+            "silent skip here would mask a broken CI environment (#2247)."
+        )
 
 
 # ── Path fixtures (copies to tmp_path for isolation) ─────────────────────────

@@ -66,10 +66,9 @@ NATS_PY_AVAILABLE: bool = _nats_py_available
 #
 # The decision itself (not just the missing-deps list) is factored into a
 # pure function so it can be unit-tested directly below
-# (test_ci_hardfail_guard_*) — the guard fires once at module-import time
-# and can't be re-triggered in-process, so without this extraction neither
-# a deleted guard nor a silently-inverted `== "true"` condition would have
-# any automated regression coverage (#2251 review, N6 finding).
+# (test_ci_hardfail_guard_*). Enforcement lives in tests/scripts/conftest.py
+# (pytest_runtest_setup on the first live_acl test) — the tests job excludes
+# live_acl (no nats-server/nk), so import must not hard-fail there (#2251, N6).
 def _ci_hardfail_missing_deps(
     *,
     github_actions: bool,
@@ -95,19 +94,6 @@ def _ci_hardfail_missing_deps(
         if not available
     ]
 
-
-_ci_hardfail_missing = _ci_hardfail_missing_deps(
-    github_actions=os.getenv("GITHUB_ACTIONS") == "true",
-    nats_available=NATS_AVAILABLE,
-    nk_available=NK_AVAILABLE,
-    nats_py_available=NATS_PY_AVAILABLE,
-)
-if _ci_hardfail_missing:
-    pytest.fail(
-        f"GITHUB_ACTIONS=true but missing: {', '.join(_ci_hardfail_missing)} — "
-        "CI must install nats-server + nk and have nats-py importable; a "
-        "silent skip here would mask a broken CI environment (#2247)."
-    )
 
 # ── Matrix-driven parametrization (#2247) ───────────────────────────────────
 # Sourced directly from the SSoT (deploy/nats/acl-matrix.json), not from the
@@ -266,10 +252,17 @@ async def _request_when_responders_ready(
     raise last
 
 
+def _skip_without_nats_binaries() -> bool:
+    """Skip locally when binaries are absent; on GHA conftest guard fails instead."""
+    if os.getenv("GITHUB_ACTIONS") == "true":
+        return False
+    return not (NATS_AVAILABLE and NK_AVAILABLE)
+
+
 pytestmark = [
     pytest.mark.live_acl,
     pytest.mark.skipif(
-        not (NATS_AVAILABLE and NK_AVAILABLE),
+        _skip_without_nats_binaries(),
         reason="nats-server and nk must be on PATH — CI installs both",
     ),
     # Keep all tests in this file on a single pytest-xdist worker. Each test
@@ -687,12 +680,11 @@ def test_ci_hardfail_guard_noop_outside_github_actions() -> None:
 def test_ci_hardfail_guard_fires_in_github_actions_with_missing_deps() -> None:
     """N6 guard: `github_actions=True` reports every missing dep by name.
 
-    Regression coverage for the guard itself (module-level `pytest.fail`
-    fires once at import time and can't be re-triggered in-process) — a
-    future edit that deletes the guard, drops a dep from the check, or
-    silently inverts the `== "true"` condition it's built from now fails
-    this always-collected unit test instead of only a scenario nobody runs
-    by default (`GITHUB_ACTIONS=true PATH=/usr/bin`, per the PR Test Plan).
+    Regression coverage for the guard decision function — a future edit that
+    deletes the guard, drops a dep from the check, or silently inverts the
+    `== "true"` condition it's built from now fails this always-collected
+    unit test instead of only a scenario nobody runs by default
+    (`GITHUB_ACTIONS=true PATH=/usr/bin`, per the PR Test Plan).
     """
     assert _ci_hardfail_missing_deps(
         github_actions=True,

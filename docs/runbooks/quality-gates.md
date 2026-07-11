@@ -38,10 +38,25 @@ scripts/qg run --stage pre-commit           # commit hooks parity
 scripts/qg run --stage pre-push             # push hooks parity (incl. deploy gates)
 scripts/qg run --stage ci                   # CI gate bundle
 scripts/qg run lint_js                      # single gate
+make pre-pr                                 # pre-PR ritual (see below)
 make qg                                     # profile local + extra factory tests
 pre-commit run --all-files                  # upstream + pre-commit stage
 pre-commit run --hook-stage pre-push --all-files
 ```
+
+### Pre-PR ritual (`make pre-pr`)
+
+Before applying the `reviewed` label on a feature PR:
+
+1. **`scripts/qg run --stage pre-push`** — typecheck, smoke pytest, deploy gates, doc drift.
+2. **`scripts/qg plan --stage ci`** — diff-scoped gate/job plan (same contract CI logs on PRs).
+   Default diff for `make pre-pr`: `origin/staging...HEAD` (run `git fetch origin staging` first if
+   the ref is missing). Override with `QG_DIFF_RANGE=...`.
+3. **`tools/check_pytest_partition.py`** — collect-only check that CI pytest partitions stay
+   disjoint and that `ci.yml` still calls `scripts/ci-pytest.sh` for each runtime partition.
+
+Partition expressions live in **`tools/pytest_partitions.py`** (SSoT). CI invokes
+`scripts/ci-pytest.sh <partition>`; do not duplicate `-m` / `--ignore` strings in `ci.yml`.
 
 ---
 
@@ -93,6 +108,7 @@ Explicit steps in `.github/workflows/ci.yml` after the QG bundle:
 - `uv lock --check` in the `gates` job (pyproject.toml ↔ `uv.lock` desync tripwire; #2173)
 - Gate self-tests (`tests/tools/test_check_*.sh`, `tests/scripts/test_qg.sh`)
 - Dashboard Playwright e2e, package coverage thresholds
+- Pytest jobs via `scripts/ci-pytest.sh` (partitions from `tools/pytest_partitions.py`)
 - Jobs `integration`, `docker-build` (`docker-build` is a required check on `staging`)
 
 ACL scanners (`acl_matrix_retired`, `request_reply_flows`, `acl_grants`, `inbox_prefix`, `subject_literals`) are declared in `stack.yml` and run inside `qg run --stage ci`.

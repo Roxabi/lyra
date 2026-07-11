@@ -35,21 +35,26 @@ rc=0
 bash "$WRAPPER" >/dev/null 2>&1 || rc=$?
 [ "$rc" -ne 0 ] || fail "ci-pytest.sh with no args should fail"
 
-# 5. Wrapper: unknown partition → non-zero, fail-closed (must not start full suite).
+# 5. Wrapper: unknown partition → exit 2, fail-closed (must not start full suite).
 #    Bound wall time so a regression that runs default testpaths fails this case.
+tmp_out="$(mktemp)"
+tmp_err="$(mktemp)"
+trap 'rm -f "$tmp_out" "$tmp_err"' EXIT
 rc=0
 if command -v timeout >/dev/null 2>&1; then
   timeout 30s bash "$WRAPPER" not_a_real_partition --collect-only -q \
-    >/tmp/ci-pytest-bad.out 2>/tmp/ci-pytest-bad.err || rc=$?
+    >"$tmp_out" 2>"$tmp_err" || rc=$?
 else
   bash "$WRAPPER" not_a_real_partition --collect-only -q \
-    >/tmp/ci-pytest-bad.out 2>/tmp/ci-pytest-bad.err || rc=$?
+    >"$tmp_out" 2>"$tmp_err" || rc=$?
 fi
-[ "$rc" -ne 0 ] || fail "ci-pytest.sh unknown partition should exit non-zero"
-if grep -qE '::test_|collected [1-9]' /tmp/ci-pytest-bad.out 2>/dev/null; then
+# timeout returns 124 — treat as fail (should never need 30s for emit fail-closed)
+[ "$rc" -eq 124 ] && fail "ci-pytest.sh unknown partition timed out (likely full suite)"
+[ "$rc" -eq 2 ] || fail "ci-pytest.sh unknown partition should exit 2 (got $rc)"
+if grep -qE '::test_|collected [1-9]' "$tmp_out" 2>/dev/null; then
   fail "ci-pytest.sh unknown partition must not collect real tests"
 fi
-grep -q 'unknown partition\|ERROR' /tmp/ci-pytest-bad.err \
+grep -q 'unknown partition\|ERROR' "$tmp_err" \
   || fail "ci-pytest.sh unknown partition should report ERROR on stderr"
 
 echo "check_pytest_partition: all cases pass"

@@ -2,7 +2,7 @@
 
 T14 contract map:
   A — parse_unit_secret_names: name=value.split(",")[0]; {{bot_secrets}} excluded
-  B — manifest contains all 7 factory-nats-* (incl. factory-nats-gh-helper)
+  B — manifest contains all factory-nats-* nats-seed secrets
   C — policy classification correct (nats-seed / nats-auth / generated / optional)
   D — gate happy path: current tree → exit 0
   E — gate drift detection: unit Secret= with no required_secrets entry → exit non-zero
@@ -24,6 +24,8 @@ from pathlib import Path
 import pytest
 from tools.emit_secrets_manifest import parse_unit_secret_names
 
+from tests.helpers.secrets_manifest import MANIFEST_SH, factory_nats_seeds_expected
+
 # ── locate repo root so we can import and shell-out correctly ─────────────────
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -31,7 +33,6 @@ EMIT_SCRIPT = REPO_ROOT / "tools" / "emit_secrets_manifest.py"
 GATE_SCRIPT = REPO_ROOT / "tools" / "check_secrets_drift.sh"
 QUADLET_TOML = REPO_ROOT / "deploy" / "quadlet.toml"
 POLICY_TOML = REPO_ROOT / "deploy" / "secrets-policy.toml"
-MANIFEST_SH = REPO_ROOT / "deploy" / "generated" / "secrets-manifest.sh"
 ACL_MATRIX = REPO_ROOT / "deploy" / "nats" / "acl-matrix.json"
 QUADLET_DIR = REPO_ROOT / "deploy" / "quadlet"
 
@@ -132,23 +133,16 @@ class TestParseUnitSecretNames:
 
 
 # ---------------------------------------------------------------------------
-# Section B — manifest completeness (all 7 factory-nats-* present)
+# Section B — manifest completeness (all factory-nats-* nats-seed present)
 # ---------------------------------------------------------------------------
 
 
 class TestManifestCompleteness:
-    """Verify the committed manifest covers all 7 factory-nats-* secrets."""
+    """Verify the committed manifest covers all factory-nats-* nats-seed secrets."""
 
-    EXPECTED_NATS_SEEDS = {
-        "factory-nats-hub",
-        "factory-nats-telegram",
-        "factory-nats-discord",
-        "factory-nats-web",
-        "factory-nats-clipool",
-        "factory-nats-turn-writer",
-        "factory-nats-blobstore",
-        "factory-nats-gh-helper",  # the #9 miss this PR fixes
-    }
+    @staticmethod
+    def _expected_nats_seeds() -> set[str]:
+        return factory_nats_seeds_expected()
 
     def _parse_manifest_keys(self, manifest: Path) -> set[str]:
         """Extract key names from the SECRET_SOURCES declare -A block."""
@@ -160,11 +154,11 @@ class TestManifestCompleteness:
                 keys.add(name)
         return keys
 
-    def test_all_seven_nats_seeds_present(self) -> None:
-        """Manifest must contain all 7 factory-nats-* seeds (incl. gh-helper)."""
+    def test_all_nats_seed_secrets_present(self) -> None:
+        """Manifest must contain every factory-nats-* nats-seed secret."""
         manifest_keys = self._parse_manifest_keys(MANIFEST_SH)
 
-        missing = self.EXPECTED_NATS_SEEDS - manifest_keys
+        missing = self._expected_nats_seeds() - manifest_keys
         assert not missing, f"factory-nats-* seeds missing from manifest: {missing}"
 
     def test_factory_nats_gh_helper_present(self) -> None:
@@ -200,17 +194,7 @@ class TestPolicyClassification:
         with POLICY_TOML.open("rb") as f:
             policy = tomllib.load(f)
 
-        seed_names = [
-            "factory-nats-hub",
-            "factory-nats-telegram",
-            "factory-nats-discord",
-            "factory-nats-web",
-            "factory-nats-clipool",
-            "factory-nats-turn-writer",
-            "factory-nats-blobstore",
-            "factory-nats-gh-helper",
-            "factory-nats-ingress",
-        ]
+        seed_names = sorted(factory_nats_seeds_expected())
         for name in seed_names:
             assert name in policy.get("secret", {}), f"{name} missing from policy"
             assert policy["secret"][name]["policy"] == "nats-seed", (

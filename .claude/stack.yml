@@ -274,8 +274,8 @@ quality_gates:
     enabled: true
     script: PYTHONPATH=src uv run python tools/check_pytest_partition.py
     stages: [ci]
-    files: ^(tests/|packages/roxabi-nats/tests/|pyproject\.toml$|\.github/workflows/ci\.yml$|tools/check_pytest_partition\.py$)
-    description: CI pytest job partitions are disjoint and cover each pool (collect-only; mirrors ci.yml -m expressions)
+    files: ^(tests/|packages/roxabi-nats/tests/|pyproject\.toml$|\.github/workflows/ci\.yml$|scripts/ci-pytest\.sh$|tools/(check_pytest_partition|pytest_partitions)\.py$)
+    description: CI pytest job partitions are disjoint and cover each pool (collect-only; SSoT tools/pytest_partitions.py)
 
   secrets_drift:
     enabled: true

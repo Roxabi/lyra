@@ -37,7 +37,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity check-seed-age test test-integration voice-smoke lint typecheck format dev-setup hooks-install quality-debt-report quality-debt-classify qg fleet-obs-evidence build-dashboard lint-js
+.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity check-seed-age test test-integration voice-smoke lint typecheck format dev-setup hooks-install quality-debt-report quality-debt-classify qg pre-pr fleet-obs-evidence build-dashboard lint-js
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -393,6 +393,11 @@ lint-js:               ## lint JS/TS workspaces (biome)
 # Capture with: make qg 2>&1 | tee "${GOAL_1771_SCRATCH:-/tmp}/b3-qg.log"
 fleet-obs-evidence:  ## run scripts/goal-fleet-obs-evidence.sh (fleet goal verification plan steps 1–8)
 	bash scripts/goal-fleet-obs-evidence.sh
+
+pre-pr:  ## lightweight pre-PR check (pre-push gates + qg plan + pytest partitions)
+	scripts/qg run --stage pre-push
+	QG_DIFF_RANGE="$${QG_DIFF_RANGE:-origin/staging...HEAD}" scripts/qg plan --stage ci --format github
+	PYTHONPATH=src uv run python tools/check_pytest_partition.py
 
 qg:  ## local QG bundle (stack.yml qg.profiles.local + factory flows/tests)
 	scripts/qg run --profile local

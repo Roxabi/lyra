@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Verify CI pytest partitions are disjoint and cover each pool (collect-only).
 
-Mirrors the -m / --ignore expressions in .github/workflows/ci.yml:
-  tests job, infra job, integration job, package-coverage roxabi-nats step.
+Partition shapes come from tools/pytest_partitions.py (SSoT). Also verifies
+.github/workflows/ci.yml invokes scripts/ci-pytest.sh for each runtime partition.
 
-Exit 0 = partitions OK. Exit 1 = overlap or coverage gap. Exit 2 = pytest error.
+Exit 0 = partitions OK.
+Exit 1 = overlap, coverage gap, or ci.yml drift.
+Exit 2 = pytest error.
 
 Usage:
     PYTHONPATH=src uv run python tools/check_pytest_partition.py
@@ -12,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -20,18 +23,33 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Keep in sync with .github/workflows/ci.yml pytest invocations.
-_FACTORY_UNIT_MARKERS = (
-    "not live_acl and not subprocess_nats and not deploy_contract "
-    "and not nk_tooling and not nats_integration"
-)
-_FACTORY_INFRA_MARKERS = "live_acl or subprocess_nats or deploy_contract or nk_tooling"
+
+def _load_partitions():
+    path = REPO_ROOT / "tools" / "pytest_partitions.py"
+    spec = importlib.util.spec_from_file_location("pytest_partitions", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load partition SSoT: {path}")
+    mod = importlib.util.module_from_spec(spec)
+    # dataclasses look up the module in sys.modules during class body processing
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_partitions = _load_partitions()
+PytestPartition = _partitions.PytestPartition
+gate_partition_groups = _partitions.gate_partition_groups
+verify_ci_yml_sync = _partitions.verify_ci_yml_sync
 
 
 @dataclass(frozen=True)
 class Partition:
     name: str
     args: tuple[str, ...]
+
+
+def _partition_args(spec: PytestPartition) -> tuple[str, ...]:
+    return tuple(spec.pytest_args())
 
 
 def _collect_ids(partition: Partition) -> set[str]:
@@ -121,91 +139,60 @@ def _check_cover(
     return ok
 
 
-def main() -> int:
-    factory_total = Partition(
-        "factory_total",
-        ("tests/", "--ignore=tests/e2e"),
-    )
-    factory_unit = Partition(
-        "factory_unit",
-        (
-            "tests/",
-            "--ignore=tests/e2e",
-            "-m",
-            _FACTORY_UNIT_MARKERS,
-        ),
-    )
-    factory_infra = Partition(
-        "factory_infra",
-        (
-            "tests/",
-            "--ignore=tests/integration",
-            "--ignore=tests/e2e",
-            "-m",
-            _FACTORY_INFRA_MARKERS,
-        ),
-    )
-    factory_integration = Partition(
-        "factory_integration",
-        ("tests/integration/", "-m", "nats_integration"),
-    )
+def _validate_group(
+    total_name: str,
+    specs: list[tuple[PytestPartition, str]],
+) -> tuple[bool, dict[str, int]]:
+    total_spec = specs[0][0]
+    part_specs = specs[1:]
 
-    nats_total = Partition("roxabi_nats_total", ("packages/roxabi-nats/tests",))
-    nats_coverage = Partition(
-        "roxabi_nats_coverage",
-        ("packages/roxabi-nats/tests", "-m", "not subprocess_nats"),
-    )
-    nats_subprocess = Partition(
-        "roxabi_nats_subprocess",
-        ("packages/roxabi-nats/tests", "-m", "subprocess_nats"),
-    )
+    total = Partition(total_name, _partition_args(total_spec))
+    parts = [
+        (Partition(label, _partition_args(spec)), label) for spec, label in part_specs
+    ]
 
     try:
-        factory_total_ids = _collect_ids(factory_total)
-        factory_unit_ids = _collect_ids(factory_unit)
-        factory_infra_ids = _collect_ids(factory_infra)
-        factory_integration_ids = _collect_ids(factory_integration)
-        nats_total_ids = _collect_ids(nats_total)
-        nats_coverage_ids = _collect_ids(nats_coverage)
-        nats_subprocess_ids = _collect_ids(nats_subprocess)
+        total_ids = _collect_ids(total)
+        part_ids = [(p, _collect_ids(p)) for p, _ in parts]
     except RuntimeError:
-        return 2
+        return False, {}
 
     ok = True
-    factory_parts = [
-        (factory_unit, factory_unit_ids),
-        (factory_infra, factory_infra_ids),
-        (factory_integration, factory_integration_ids),
-    ]
-    for i, (a_part, a_ids) in enumerate(factory_parts):
-        for b_part, b_ids in factory_parts[i + 1 :]:
+    for i, (a_part, a_ids) in enumerate(part_ids):
+        for b_part, b_ids in part_ids[i + 1 :]:
             ok = _check_disjoint(a_part, a_ids, b_part, b_ids) and ok
-    ok = _check_cover("factory_total", factory_total_ids, factory_parts) and ok
+    ok = _check_cover(total_name, total_ids, part_ids) and ok
 
-    nats_parts = [
-        (nats_coverage, nats_coverage_ids),
-        (nats_subprocess, nats_subprocess_ids),
-    ]
-    ok = (
-        _check_disjoint(
-            nats_coverage,
-            nats_coverage_ids,
-            nats_subprocess,
-            nats_subprocess_ids,
-        )
-        and ok
-    )
-    ok = _check_cover("roxabi_nats_total", nats_total_ids, nats_parts) and ok
+    counts = {total_name: len(total_ids)}
+    for label, ids in zip((lbl for _, lbl in parts), (ids for _, ids in part_ids)):
+        counts[label] = len(ids)
+    return ok, counts
+
+
+def main() -> int:
+    ci_errors = verify_ci_yml_sync()
+    if ci_errors:
+        for err in ci_errors:
+            print(f"FAIL: {err}", file=sys.stderr)
+
+    factory_group, nats_group = gate_partition_groups()
+    ok = not ci_errors
+    counts: dict[str, int] = {}
+
+    for total_name, specs in (factory_group, nats_group):
+        group_ok, group_counts = _validate_group(total_name, list(specs))
+        ok = group_ok and ok
+        counts.update(group_counts)
 
     print(
         "check_pytest_partition:",
-        f"factory unit={len(factory_unit_ids)}",
-        f"infra={len(factory_infra_ids)}",
-        f"integration={len(factory_integration_ids)}",
-        f"total={len(factory_total_ids)};",
-        f"roxabi-nats coverage={len(nats_coverage_ids)}",
-        f"subprocess={len(nats_subprocess_ids)}",
-        f"total={len(nats_total_ids)}",
+        f"factory unit={counts.get('factory_unit', 0)}",
+        f"infra={counts.get('factory_infra', 0)}",
+        f"integration={counts.get('factory_integration', 0)}",
+        f"total={counts.get('factory_total', 0)};",
+        f"roxabi-nats coverage={counts.get('roxabi_nats_coverage', 0)}",
+        f"subprocess={counts.get('roxabi_nats_subprocess', 0)}",
+        f"total={counts.get('roxabi_nats_total', 0)}",
     )
 
     if ok:

@@ -86,6 +86,16 @@ PRs labelled `roxabi-sdk` (grouped `git-refs` bumps for `roxabi-contracts` / `ro
 - CI (+ `docker-build` on factory) is the actual safety gate, not the label: a labelled PR with
   a breaking bump still needs green required checks to merge.
 
+## Pre-`reviewed` checklist
+
+Before adding `reviewed` on a human-authored PR:
+
+1. **`make pre-pr`** — pre-push gates, `qg plan --stage ci` on `origin/staging...HEAD`, and the
+   pytest-partition collect-only gate (`docs/runbooks/quality-gates.md` § Pre-PR ritual).
+2. Confirm PR-level required checks (`ci`, `trufflehog`, `docker-build`) are green.
+3. Apply `reviewed` only after both — the label arms merge-when-ready; the merge queue then runs
+   the **full** suite on a temporary queue ref (fail-open: empty `QG_DIFF_RANGE`).
+
 ## Troubleshooting
 
 If a human-authored PR "won't merge" despite green CI: check for the `reviewed` label — that's

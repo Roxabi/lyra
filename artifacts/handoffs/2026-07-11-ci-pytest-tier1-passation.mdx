@@ -1,0 +1,219 @@
+---
+title: "Passation — CI pytest Tier 1 + follow-ups axial"
+date: 2026-07-11
+branch: staging
+commit: 9ef2dcf3a3ffcb9bbcf9e868781ab6dfd24eec4d
+status: tier1-code-local — PR non ouverte (à vérifier git status)
+---
+
+# Passation session — infra-test-debt / Tier 1
+
+## Contexte
+
+Stack **infra-test-debt** (#2278–#2281) **MERGED** sur `staging` (2026-07-11). CI verte post-merge.
+
+Panel (devops + architect + axial) a recommandé :
+
+1. **Tier 1 d'abord** — SSoT partitions, `qg plan`, `make pre-pr`, doc merge queue
+2. **Axial ensuite** — via #2285 + nouvelles issues
+
+**Tier 1 est implémenté localement** dans cette session. Les issues axial ont été créées manuellement par l'utilisateur (shell agent cassé pendant toute la session).
+
+---
+
+## Issues GitHub
+
+| Issue | Titre | État | Notes |
+|-------|-------|------|-------|
+| [#2285](https://github.com/Roxabi/roxabi-factory/issues/2285) | per-class `subprocess_nats` roxabi-nats | OPEN | Ancre axial ; commentaire Tier 1 ajouté |
+| [#2287](https://github.com/Roxabi/roxabi-factory/issues/2287) | directory↔marker gate | OPEN | blocked-by #2285 |
+| [#2288](https://github.com/Roxabi/roxabi-factory/issues/2288) | split `tests/nats/` | OPEN | blocked-by #2285 |
+
+Issues **fermées / livrées** (ne pas refaire) :
+
+- #2249 phase 0–1 (`qg plan`) — CLOSED
+- #2278–#2281 infra-test-debt — MERGED
+
+**Gaps sans issue** (hors scope Tier 1 actuel) :
+
+- #2249 phase 2 — jobs `tests`/`package-coverage` conditionnels selon `qg plan`
+
+---
+
+## Tier 1 — ce qui a été fait
+
+### SSoT partitions
+
+- **`tools/pytest_partitions.py`** — expressions `-m` / `--ignore`, partitions nommées, tripwire `verify_ci_yml_sync()`
+- **`scripts/ci-pytest.sh`** — `bash scripts/ci-pytest.sh <partition> [args pytest…]`
+- **`tools/check_pytest_partition.py`** — collect-only disjoint/cover + vérifie que `ci.yml` référence `ci-pytest.sh`
+
+### CI
+
+`.github/workflows/ci.yml` délègue les 6 invocations pytest :
+
+| Job | Partition | Extra args typiques |
+|-----|-----------|---------------------|
+| `tests` | `factory_unit` | `--cov=factory … --cov-fail-under=50` |
+| `infra` | `factory_infra` | `-v --junitxml=…` |
+| `infra` | `roxabi_nats` | `-n 1 --cov=roxabi_nats … --cov-fail-under=70` |
+| `integration` | `factory_integration` | `--reruns 1 …` |
+| `package-coverage` | `roxabi_contracts` / `roxabi_obs` | cov floors |
+
+### Ergonomie locale
+
+- **`make pre-pr`** — `pre-push` + `qg plan --stage ci` (`QG_DIFF_RANGE=origin/staging...HEAD`) + `check_pytest_partition`
+- Docs : `docs/runbooks/quality-gates.md` (§ Pre-PR ritual), `docs/runbooks/pr-automation.md` (checklist avant `reviewed`)
+- **`.claude/stack.yml`** — gate `pytest_partition` : `files:` étendu à `scripts/ci-pytest.sh` + `pytest_partitions.py`
+
+### Fichiers modifiés / créés
+
+```
+tools/pytest_partitions.py          # NEW — SSoT
+scripts/ci-pytest.sh                # NEW
+tools/check_pytest_partition.py     # refacto → import SSoT
+.github/workflows/ci.yml            # bash scripts/ci-pytest.sh …
+.claude/stack.yml                   # pytest_partition files:
+Makefile                            # target pre-pr
+docs/runbooks/quality-gates.md
+docs/runbooks/pr-automation.md
+```
+
+**À supprimer** (temporaire, déjà exécuté) :
+
+```
+.tmp-create-infra-followup-issues.sh
+```
+
+---
+
+## État git (à confirmer en nouvelle session)
+
+- Branche lue statiquement : **`staging`** @ `9ef2dcf3`
+- `origin/staging` même SHA au moment de la passation
+- **Statut working tree inconnu** — Tier 1 peut être **non commité**
+
+Première action nouvelle session :
+
+```bash
+cd /home/mickael/projects/roxabi-factory
+git status -sb
+git diff --stat
+```
+
+---
+
+## Checklist démarrage nouvelle session
+
+### 1. Vérifier que le shell agent fonctionne
+
+```bash
+echo ok && pwd
+```
+
+Si `failed to spawn` → problème harness Grok, pas le repo. L'utilisateur peut toujours exécuter en local.
+
+### 2. Valider Tier 1
+
+```bash
+cd /home/mickael/projects/roxabi-factory
+git fetch origin staging
+
+bash tests/tools/test_check_pytest_partition.sh
+PYTHONPATH=src uv run python tools/check_pytest_partition.py
+
+# optionnel — long (~pre-push)
+make pre-pr
+```
+
+Attendu : `check_pytest_partition: OK` + counts factory/nats cohérents.
+
+### 3. Commit + PR (si pas déjà fait)
+
+```bash
+git checkout -b feat/ci-pytest-partitions-tier1
+
+git add \
+  tools/pytest_partitions.py \
+  scripts/ci-pytest.sh \
+  tools/check_pytest_partition.py \
+  .github/workflows/ci.yml \
+  .claude/stack.yml \
+  Makefile \
+  docs/runbooks/quality-gates.md \
+  docs/runbooks/pr-automation.md \
+  artifacts/handoffs/2026-07-11-ci-pytest-tier1-passation.mdx
+
+git commit -m "feat(ci): pytest partition SSoT + make pre-pr"
+
+git push -u origin feat/ci-pytest-partitions-tier1
+```
+
+**PR** → base `staging`. Corps suggéré :
+
+- SSoT `tools/pytest_partitions.py` + `scripts/ci-pytest.sh`
+- Gate `check_pytest_partition` vérifie disjoint/cover + sync `ci.yml`
+- `make pre-pr` + doc rituel avant `reviewed`
+- Follow-ups : #2285, #2287, #2288 (hors scope PR)
+
+### 4. Après merge Tier 1
+
+Ordre recommandé axial :
+
+1. **#2285** — markers per-class roxabi-nats
+2. **#2287** — gate directory↔marker
+3. **#2288** — split `tests/nats/`
+
+---
+
+## Référence CI partitions (post #2281)
+
+| Job | Sélection |
+|-----|-----------|
+| `tests` | `factory_unit` — exclut infra markers + `nats_integration` |
+| `infra` | `factory_infra` + `roxabi_nats` full suite |
+| `integration` | `factory_integration` — `tests/integration/` `-m nats_integration` |
+| `package-coverage` | `roxabi_contracts`, `roxabi_obs` (pas roxabi-nats) |
+
+Aggregate `ci` : `needs: [gates, tests, infra, package-coverage]`.
+
+Required checks `staging` : **`ci`**, **`trufflehog`**, **`docker-build`** (`infra` pas required nommé, bloque via aggregate `ci`).
+
+---
+
+## Rejets panel (ne pas réintroduire)
+
+- `pytest_partition` sur chaque pre-push (trop lourd)
+- Makefile dupliquant les `-m` en dur
+- Rituel humain lourd obligatoire avant `reviewed` (doc légère OK, pas de cérémonie)
+
+---
+
+## SECRET_POLICY / secrets-policy.toml
+
+Chaîne compile, pas doublon SSoT :
+
+`deploy/secrets-policy.toml` → `emit_secrets_manifest.py` → `deploy/generated/secrets-manifest.sh` → `install.sh`
+
+Gate existant : `check_secrets_drift`. Pas de gate manifest↔TOML supplémentaire recommandé.
+
+---
+
+## Prompt suggéré pour la nouvelle session
+
+```
+Lis artifacts/handoffs/2026-07-11-ci-pytest-tier1-passation.mdx
+
+1. Vérifie git status — Tier 1 commité ou pas ?
+2. Lance bash tests/tools/test_check_pytest_partition.sh + make pre-pr si shell OK
+3. Si pas de PR : commit, push, ouvre PR feat/ci-pytest-partitions-tier1 → staging
+4. Supprime .tmp-create-infra-followup-issues.sh si présent
+```
+
+---
+
+## Historique session précédente
+
+- Shell agent : **cassé** (`failed to spawn`) pendant toute la session — tests/PR non exécutés par l'agent
+- Issues #2287/#2288 + commentaire #2285 : créés par l'utilisateur via `.tmp-create-infra-followup-issues.sh`
+- Conversation summary : overlap Tier 1 / issues analysé ; Tier 1 recommandé avant axial

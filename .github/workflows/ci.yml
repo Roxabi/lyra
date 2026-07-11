@@ -185,9 +185,7 @@ jobs:
       # first occurrence.
       - name: Coverage — factory
         run: >-
-          uv run pytest tests/
-          --ignore=tests/e2e
-          -m "not live_acl and not subprocess_nats and not deploy_contract and not nk_tooling and not nats_integration"
+          bash scripts/ci-pytest.sh factory_unit
           --cov=factory --cov-branch --cov-report=term-missing --cov-fail-under=50
           --junitxml=reports/pytest-unit.xml
 
@@ -218,10 +216,14 @@ jobs:
         run: uv sync --frozen --group dev
 
       - name: Coverage — roxabi_contracts
-        run: uv run pytest packages/roxabi-contracts/tests --cov=roxabi_contracts --cov-branch --cov-report=term-missing --cov-fail-under=80
+        run: >-
+          bash scripts/ci-pytest.sh roxabi_contracts
+          --cov=roxabi_contracts --cov-branch --cov-report=term-missing --cov-fail-under=80
 
       - name: Coverage — roxabi_obs
-        run: uv run pytest packages/roxabi-obs/tests --cov=roxabi_obs --cov-branch --cov-report=term-missing --cov-fail-under=69
+        run: >-
+          bash scripts/ci-pytest.sh roxabi_obs
+          --cov=roxabi_obs --cov-branch --cov-report=term-missing --cov-fail-under=69
 
   # Subprocess NATS, live ACL matrix, deploy shell contracts, nk tooling.
   # Isolated from bulk unit/coverage so timing flakes don't block cov floors.
@@ -264,14 +266,12 @@ jobs:
       # coverage below 70% (readiness + testing/* need a live nats-server).
       - name: Coverage — roxabi_nats
         run: >-
-          uv run pytest packages/roxabi-nats/tests -n 1
+          bash scripts/ci-pytest.sh roxabi_nats -n 1
           --cov=roxabi_nats --cov-branch --cov-report=term-missing --cov-fail-under=70
 
       - name: Infra pytest (live NATS + deploy + nk)
         run: >-
-          uv run pytest tests/
-          --ignore=tests/integration --ignore=tests/e2e
-          -m "live_acl or subprocess_nats or deploy_contract or nk_tooling"
+          bash scripts/ci-pytest.sh factory_infra
           -v --junitxml=reports/pytest-infra.xml
 
       - name: Upload infra test reports
@@ -340,8 +340,7 @@ jobs:
         env:
           NATS_URL: nats://localhost:4222
         run: >-
-          uv run pytest tests/integration/
-          -m nats_integration
+          bash scripts/ci-pytest.sh factory_integration
           -v --reruns 1 --reruns-delay 5 --junitxml=reports/pytest-integration.xml
 
       - name: Tear down Docker environment

@@ -79,6 +79,36 @@ CI_YML_PARTITION_CALLS: tuple[tuple[str, str], ...] = tuple(
     (name, f"ci-pytest.sh {name}") for name in CI_PARTITIONS
 )
 
+# Directory↔marker layout (#2287). Each marker may only appear on tests whose
+# file path starts with one of the allowed prefixes (posix, relative to repo).
+# Keep in lockstep with where conftest / pytestmark apply these markers.
+MARKER_DIR_ALLOWLIST: dict[str, tuple[str, ...]] = {
+    "nats_integration": (
+        "tests/integration/",
+    ),
+    "subprocess_nats": (
+        "packages/roxabi-nats/tests/",
+        "tests/nats/",
+        "tests/bootstrap/",
+        "tests/typing/",
+    ),
+    "deploy_contract": (
+        "tests/deploy/",
+    ),
+    "nk_tooling": (
+        "tests/scripts/",
+    ),
+    "live_acl": (
+        "tests/scripts/",
+    ),
+}
+
+# Collect roots for the directory↔marker gate (factory + roxabi-nats tests).
+DIR_MARKER_COLLECT_PATHS: tuple[str, ...] = (
+    "tests/",
+    "packages/roxabi-nats/tests",
+)
+
 
 def gate_partition_groups() -> tuple[
     tuple[str, list[tuple[PytestPartition, str]]],

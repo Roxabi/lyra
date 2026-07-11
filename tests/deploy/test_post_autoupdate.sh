@@ -29,6 +29,25 @@ FAIL=0
 pass() { echo "[PASS] $1"; PASS=$((PASS + 1)); }
 fail() { echo "[FAIL] $1: $2"; FAIL=$((FAIL + 1)); exit 1; }
 
+# Match full log lines — avoid :staging matching inside :staging-svc.
+assert_line() {
+    local label="$1" haystack="$2" needle="$3"
+    if echo "$haystack" | grep -qxF "$needle"; then
+        pass "$label"
+    else
+        fail "$label" "expected line '$needle'; output:\n${haystack}"
+    fi
+}
+
+assert_not_line() {
+    local label="$1" haystack="$2" needle="$3"
+    if echo "$haystack" | grep -qxF "$needle"; then
+        fail "$label" "expected NOT to see line '$needle'; output:\n${haystack}"
+    else
+        pass "$label"
+    fi
+}
+
 assert_contains() {
     local label="$1" haystack="$2" needle="$3"
     if echo "$haystack" | grep -qF "$needle"; then
@@ -47,6 +66,16 @@ assert_not_contains() {
     fi
 }
 
+_unchanged_line() {
+    local image="$1"
+    echo "Image digest unchanged (${image})."
+}
+
+_drift_line_prefix() {
+    local image="$1"
+    echo "Image digest drift detected (${image}):"
+}
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -54,6 +83,8 @@ assert_not_contains() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HOOK_SRC="$REPO_ROOT/deploy/factory-post-autoupdate.sh"
+IMAGE_SVC="ghcr.io/roxabi/factory:staging-svc"
+IMAGE_STG="ghcr.io/roxabi/factory:staging"
 
 if [ ! -f "$HOOK_SRC" ]; then
     echo "ERROR: script not found at $HOOK_SRC" >&2
@@ -80,39 +111,88 @@ NEW_INDEX_DIGEST_SVC="sha256:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 # ---------------------------------------------------------------------------
 # Build a test-local copy of the hook under a temp deploy/ tree so that
 # `dirname "$0"` resolves correctly when the hook sources deploy-common.sh.
-# The hook file uses:  source "$(dirname "$0")/lib/deploy-common.sh"
-# When sourced by our wrapper, $0 is the wrapper — so we COPY (not symlink)
-# the hook into the temp deploy dir and place our stub lib there too.
+# FACTORY_DIR points at the real checkout so auxiliary deploy scripts
+# (fleet-digest-poll.sh) resolve; only podman/skopeo/make/uv are shimmed.
 # ---------------------------------------------------------------------------
 
 FAKE_DEPLOY_DIR="$TMPDIR_WORK/deploy"
 mkdir -p "$FAKE_DEPLOY_DIR/lib"
 
-# Stub deploy-common.sh — real digest helpers, test-local paths via HOME
 cat > "$FAKE_DEPLOY_DIR/lib/deploy-common.sh" <<EOF
 set -euo pipefail
 export HOME="$TMPDIR_WORK/home"
+export FACTORY_DIR="$REPO_ROOT"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-mkdir -p "\$HOME/projects/roxabi-factory" "\$HOME/.roxabi/factory/nkeys"
+mkdir -p "\$HOME/.roxabi/factory/nkeys"
 source "$REPO_ROOT/deploy/lib/deploy-common.sh"
 with_deploy_lock() { "\$@"; }
 EOF
 
-# Copy (not symlink) the hook so dirname "$0" → FAKE_DEPLOY_DIR
 cp "$HOOK_SRC" "$FAKE_DEPLOY_DIR/factory-post-autoupdate.sh"
 
-# ---------------------------------------------------------------------------
-# Helper: run main() by executing the hook from within $FAKE_DEPLOY_DIR.
-#
-# The hook sources "$(dirname "$0")/lib/deploy-common.sh". "$0" is the
-# *executing* script's path. By placing the wrapper inside $FAKE_DEPLOY_DIR
-# and calling the hook via `source ./factory-post-autoupdate.sh`, dirname "$0"
-# resolves to $FAKE_DEPLOY_DIR where our stub lib/ lives.
-# ---------------------------------------------------------------------------
+write_shims() {
+    local dest="$1"
+    local remote_svc="$2"
+    local remote_stg="$3"
+    local pull_ok="${4:-false}"
+    cat > "$dest" <<EOF
+_image_ref_tag() {
+    local ref="\$1"
+    ref="\${ref#docker://}"
+    case "\${ref##*:}" in
+        staging-svc) echo "staging-svc" ;;
+        staging)     echo "staging" ;;
+        *)           echo "other" ;;
+    esac
+}
+skopeo() {
+    local img="\$2"
+    case "\$(_image_ref_tag "\$img")" in
+        staging-svc) printf '{"Digest":"%s"}' "${remote_svc}" ;;
+        staging)     printf '{"Digest":"%s"}' "${remote_stg}" ;;
+        *)           return 1 ;;
+    esac
+}
+podman() {
+    if [ "\$1" = "image" ] && [ "\$2" = "inspect" ]; then
+        local img="\${*: -1}"
+        case "\$(_image_ref_tag "\$img")" in
+            staging-svc)
+                printf '%s\n' \
+                    "ghcr.io/roxabi/factory@${INDEX_DIGEST_SVC}" \
+                    "ghcr.io/roxabi/factory@${ARCH_DIGEST_SVC}"
+                ;;
+            staging)
+                printf '%s\n' \
+                    "ghcr.io/roxabi/factory@${INDEX_DIGEST_STG}" \
+                    "ghcr.io/roxabi/factory@${ARCH_DIGEST_STG}"
+                ;;
+            *) return 1 ;;
+        esac
+        return 0
+    fi
+    if [ "\$1" = "pull" ]; then
+        return 0
+    fi
+    return 0
+}
+jq() {
+    if [ "\$1" = "-r" ] && [ "\$2" = ".Digest" ]; then
+        grep -o '"Digest":"[^"]*"' | sed 's/"Digest":"//;s/"//'
+    else
+        command jq "\$@"
+    fi
+}
+uv() {
+    # fleet-digest-poll.sh is invoked at end of main(); keep the contract test hermetic.
+    return 0
+}
+export -f skopeo podman jq uv _image_ref_tag
+EOF
+}
 
 run_hook_main() {
     local shims_file="$1"
-    # Wrapper lives INSIDE FAKE_DEPLOY_DIR so dirname "$0" → FAKE_DEPLOY_DIR
     local wrapper="$FAKE_DEPLOY_DIR/run_main_$$.sh"
     cat > "$wrapper" <<WRAPPER
 #!/usr/bin/env bash
@@ -132,53 +212,19 @@ WRAPPER
 
 MAKE_CALLED_FILE_A="$TMPDIR_WORK/make_called_a"
 SHIMS_A="$TMPDIR_WORK/shims_a.sh"
-cat > "$SHIMS_A" <<EOF
-skopeo() {
-    # Called as: skopeo inspect "docker://<image>"
-    # \$1=inspect \$2=docker://<image>
-    local img="\$2"
-    case "\$img" in
-        *staging-svc*) printf '{"Digest":"%s"}' "${INDEX_DIGEST_SVC}" ;;
-        *staging*)     printf '{"Digest":"%s"}' "${INDEX_DIGEST_STG}" ;;
-    esac
-}
-podman() {
-    if [ "\$1" = "image" ] && [ "\$2" = "inspect" ]; then
-        local img="\${*: -1}"
-        case "\$img" in
-            *staging-svc*)
-                printf '%s\n' \
-                    "ghcr.io/roxabi/factory@${INDEX_DIGEST_SVC}" \
-                    "ghcr.io/roxabi/factory@${ARCH_DIGEST_SVC}"
-                ;;
-            *staging*)
-                printf '%s\n' \
-                    "ghcr.io/roxabi/factory@${INDEX_DIGEST_STG}" \
-                    "ghcr.io/roxabi/factory@${ARCH_DIGEST_STG}"
-                ;;
-        esac
-        return 0
-    fi
-    return 0
-}
-jq() {
-    if [ "\$1" = "-r" ] && [ "\$2" = ".Digest" ]; then
-        grep -o '"Digest":"[^"]*"' | sed 's/"Digest":"//;s/"//'
-    else
-        command jq "\$@"
-    fi
-}
+write_shims "$SHIMS_A" "$INDEX_DIGEST_SVC" "$INDEX_DIGEST_STG"
+cat >> "$SHIMS_A" <<EOF
 make() {
     touch "${MAKE_CALLED_FILE_A}"
     echo "make converge called"
 }
-export -f skopeo podman jq make
+export -f make
 EOF
 
 OUTPUT_A=$(run_hook_main "$SHIMS_A" 2>&1 || true)
 
-assert_contains     "A: staging-svc unchanged"    "$OUTPUT_A" "Image digest unchanged (ghcr.io/roxabi/factory:staging-svc)"
-assert_contains     "A: staging unchanged"         "$OUTPUT_A" "Image digest unchanged (ghcr.io/roxabi/factory:staging)"
+assert_line         "A: staging-svc unchanged"    "$OUTPUT_A" "$(_unchanged_line "$IMAGE_SVC")"
+assert_line         "A: staging unchanged"         "$OUTPUT_A" "$(_unchanged_line "$IMAGE_STG")"
 assert_contains     "A: no pull needed"            "$OUTPUT_A" "All tracked image digests unchanged — no pull needed."
 assert_not_contains "A: no drift"                  "$OUTPUT_A" "drift detected"
 assert_not_contains "A: no pull"                   "$OUTPUT_A" "==> Pulling"
@@ -191,120 +237,41 @@ assert_contains     "A: change-gated converge"     "$OUTPUT_A" "make converge ca
 # Case B — remote index digest ∉ RepoDigests (new push) → DRIFT, converge triggered
 # ---------------------------------------------------------------------------
 
-MAKE_CALLED_FILE="$TMPDIR_WORK/make_called_b"
+MAKE_CALLED_FILE_B="$TMPDIR_WORK/make_called_b"
 SHIMS_B="$TMPDIR_WORK/shims_b.sh"
-cat > "$SHIMS_B" <<EOF
-skopeo() {
-    # Called as: skopeo inspect "docker://<image>"
-    # \$1=inspect \$2=docker://<image>
-    local img="\$2"
-    case "\$img" in
-        *staging-svc*) printf '{"Digest":"%s"}' "${NEW_INDEX_DIGEST_SVC}" ;;
-        *staging*)     printf '{"Digest":"%s"}' "${INDEX_DIGEST_STG}" ;;
-    esac
-}
-podman() {
-    if [ "\$1" = "image" ] && [ "\$2" = "inspect" ]; then
-        local img="\${*: -1}"
-        case "\$img" in
-            *staging-svc*)
-                # Old digests — new push not yet pulled locally
-                printf '%s\n' \
-                    "ghcr.io/roxabi/factory@${INDEX_DIGEST_SVC}" \
-                    "ghcr.io/roxabi/factory@${ARCH_DIGEST_SVC}"
-                ;;
-            *staging*)
-                printf '%s\n' \
-                    "ghcr.io/roxabi/factory@${INDEX_DIGEST_STG}" \
-                    "ghcr.io/roxabi/factory@${ARCH_DIGEST_STG}"
-                ;;
-        esac
-        return 0
-    fi
-    if [ "\$1" = "pull" ]; then
-        return 0
-    fi
-    return 0
-}
-jq() {
-    if [ "\$1" = "-r" ] && [ "\$2" = ".Digest" ]; then
-        grep -o '"Digest":"[^"]*"' | sed 's/"Digest":"//;s/"//'
-    else
-        command jq "\$@"
-    fi
-}
+write_shims "$SHIMS_B" "$NEW_INDEX_DIGEST_SVC" "$INDEX_DIGEST_STG" true
+cat >> "$SHIMS_B" <<EOF
 make() {
-    touch "${MAKE_CALLED_FILE}"
+    touch "${MAKE_CALLED_FILE_B}"
     echo "make converge called"
 }
-export -f skopeo podman jq make
+export -f make
 EOF
 
 OUTPUT_B=$(run_hook_main "$SHIMS_B" 2>&1 || true)
 
-assert_contains     "B: staging-svc drift detected" "$OUTPUT_B" "Image digest drift detected (ghcr.io/roxabi/factory:staging-svc)"
-assert_contains     "B: staging unchanged"           "$OUTPUT_B" "Image digest unchanged (ghcr.io/roxabi/factory:staging)"
+assert_line         "B: staging-svc drift detected" "$OUTPUT_B" "$(_drift_line_prefix "$IMAGE_SVC")"
+assert_line         "B: staging unchanged"           "$OUTPUT_B" "$(_unchanged_line "$IMAGE_STG")"
 assert_contains     "B: make converge called"        "$OUTPUT_B" "make converge called"
-[ -f "$MAKE_CALLED_FILE" ] \
+[ -f "$MAKE_CALLED_FILE_B" ] \
     && pass "B: make sentinel file created" \
     || fail "B: make sentinel file" "not created — make was not called"
 
 # ---------------------------------------------------------------------------
 # Case C — per-arch .Digest differs from remote index digest, but index digest
 #           IS in RepoDigests → UNCHANGED (core regression guard for #1749).
-#
-#           Old code:  local_digest() returned podman .Digest (per-arch);
-#                      compared ARCH_DIGEST vs INDEX_DIGEST → always mismatch → DRIFT (BUG).
-#           New code:  local_repo_digests() returns all RepoDigests;
-#                      grep -Fxq INDEX_DIGEST in list that contains it → UNCHANGED (CORRECT).
 # ---------------------------------------------------------------------------
 
 SHIMS_C="$TMPDIR_WORK/shims_c.sh"
-cat > "$SHIMS_C" <<EOF
-skopeo() {
-    # Called as: skopeo inspect "docker://<image>"
-    # \$1=inspect \$2=docker://<image>
-    local img="\$2"
-    case "\$img" in
-        *staging-svc*) printf '{"Digest":"%s"}' "${INDEX_DIGEST_SVC}" ;;
-        *staging*)     printf '{"Digest":"%s"}' "${INDEX_DIGEST_STG}" ;;
-    esac
-}
-podman() {
-    if [ "\$1" = "image" ] && [ "\$2" = "inspect" ]; then
-        local img="\${*: -1}"
-        # RepoDigests has BOTH index and per-arch digests (realistic multi-arch state).
-        # Crucially, INDEX_DIGEST != ARCH_DIGEST — old code always reported drift here.
-        case "\$img" in
-            *staging-svc*)
-                printf '%s\n' \
-                    "ghcr.io/roxabi/factory@${INDEX_DIGEST_SVC}" \
-                    "ghcr.io/roxabi/factory@${ARCH_DIGEST_SVC}"
-                ;;
-            *staging*)
-                printf '%s\n' \
-                    "ghcr.io/roxabi/factory@${INDEX_DIGEST_STG}" \
-                    "ghcr.io/roxabi/factory@${ARCH_DIGEST_STG}"
-                ;;
-        esac
-        return 0
-    fi
-    return 0
-}
-jq() {
-    if [ "\$1" = "-r" ] && [ "\$2" = ".Digest" ]; then
-        grep -o '"Digest":"[^"]*"' | sed 's/"Digest":"//;s/"//'
-    else
-        command jq "\$@"
-    fi
-}
+write_shims "$SHIMS_C" "$INDEX_DIGEST_SVC" "$INDEX_DIGEST_STG"
+cat >> "$SHIMS_C" <<EOF
 make() { echo "make converge called"; }
-export -f skopeo podman jq make
+export -f make
 EOF
 
 OUTPUT_C=$(run_hook_main "$SHIMS_C" 2>&1 || true)
 
-assert_contains     "C: unchanged (index ∈ RepoDigests)"   "$OUTPUT_C" "Image digest unchanged (ghcr.io/roxabi/factory:staging-svc)"
+assert_line         "C: unchanged (index ∈ RepoDigests)"   "$OUTPUT_C" "$(_unchanged_line "$IMAGE_SVC")"
 assert_not_contains "C: no false drift"                    "$OUTPUT_C" "drift detected"
 assert_not_contains "C: no false pull"                     "$OUTPUT_C" "==> Pulling"
 assert_contains     "C: change-gated converge"             "$OUTPUT_C" "make converge called"

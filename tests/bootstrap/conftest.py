@@ -14,6 +14,7 @@ The patch targets are the *import sites* in the wiring modules (innermost
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -31,6 +32,30 @@ from tests.helpers.standalone_bot_store import (
 _PATCH_TARGETS = (
     "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
 )
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Tag live-nats bootstrap pipeline tests for the infra CI job."""
+    for item in items:
+        if Path(item.fspath).name != "test_hub_standalone.py":
+            continue
+        if "TestStandaloneHubPipeline" not in item.nodeid:
+            continue
+        item.add_marker(pytest.mark.subprocess_nats)
+        item.add_marker(pytest.mark.xdist_group(name="nats_server"))
+
+
+from tests.factories.nats_server import (  # noqa: F401,E402
+    nats_server_url,
+    nc,
+    requires_nats_server,
+)
+
+__all__ = [
+    "nats_server_url",
+    "nc",
+    "requires_nats_server",
+]
 
 
 @pytest.fixture(autouse=True)

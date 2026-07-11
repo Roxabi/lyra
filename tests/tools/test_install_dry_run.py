@@ -12,15 +12,10 @@ We override HOME to a tmp dir so tests don't touch the real ~/.roxabi/factory.
 The script sources deploy/generated/secrets-manifest.sh (SCRIPT_DIR-relative,
 not HOME-relative) so the manifests used are the real committed ones.
 
-Seed file creation: the validation loop in install.sh checks seed file existence
-under --dry-run for non-optional, file-based secrets.  We create stub files for
-all required (non-optional, non-generated, source != 'n/a') secrets.
-
-Generated-policy secrets (factory_blobstore_token) are skipped by the validation
-loop when DRY_RUN=1 (install.sh lines ~135-137), so no stub is needed for them.
-
-Optional secrets (factory-gh-pem, factory-claude-oauth) are resolved via the
-uniform SECRET_SOURCES map in install.sh; their absence is silently skipped.
+Seed file creation: _create_stub_seeds writes every manifest source path plus
+generated token targets (blobstore.tok, otel.tok) so install.sh --dry-run never
+fails on optional/generated entries that install.sh may still warn about before
+policy dispatch.
 """
 
 from __future__ import annotations
@@ -40,12 +35,11 @@ INSTALL_SCRIPT = REPO_ROOT / "deploy" / "install.sh"
 
 
 def _create_stub_seeds(home_tmp: Path) -> None:
-    """Create stub seed files for all non-optional, file-based secrets.
+    """Create stub seed files for every path install.sh may validate under --dry-run.
 
-    The validation loop in install.sh checks seed file existence under --dry-run
-    for non-optional, non-generated secrets with a concrete source path.
-    Generated-policy secrets are skipped by the loop when DRY_RUN=1.
-    Optional secrets are never validated (skipped by policy check).
+    Required nats-seed files are the contract under test.  Optional and generated
+    paths are stubbed too so dry-run never fails on manifest/policy drift between
+    the Python test helpers and install.sh's bash parser (CI runners are strict).
     """
     sources = parse_manifest_sources()
     policies = parse_manifest_policy()
@@ -54,16 +48,29 @@ def _create_stub_seeds(home_tmp: Path) -> None:
     for name, rel in sources.items():
         if rel == "n/a":
             continue
-        policy = policies.get(name, "")
-        if policy in ("optional", "generated"):
-            continue  # optional: never validated; generated: skipped under --dry-run
         dest = factory_data / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(f"stub-seed-for-{name}\n")
 
-    # Ensure the nkeys dir exists (required by the NKEYS_DIR guard).
-    nkeys = factory_data / "nkeys"
-    nkeys.mkdir(parents=True, exist_ok=True)
+    # install.sh wires generated tokens into SEEDS before validation (blobstore.tok,
+    # otel.tok) even when DRY_RUN=1 — pre-create so the loop never sees MISSING.
+    for name, policy in policies.items():
+        if policy != "generated":
+            continue
+        rel = sources.get(name, "n/a")
+        if rel != "n/a":
+            path = factory_data / rel
+        elif name == "factory_blobstore_token":
+            path = factory_data / "blobstore.tok"
+        elif name == "factory_otel_token":
+            path = factory_data / "otel.tok"
+        else:
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"stub-generated-for-{name}\n")
+
+    # Required by the NKEYS_DIR guard in install.sh.
+    (factory_data / "nkeys").mkdir(parents=True, exist_ok=True)
 
 
 def _run_install_dry_run(

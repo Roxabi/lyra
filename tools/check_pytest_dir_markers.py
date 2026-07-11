@@ -34,6 +34,7 @@ def _load_partitions():
 
 _partitions = _load_partitions()
 MARKER_DIR_ALLOWLIST = _partitions.MARKER_DIR_ALLOWLIST
+MARKER_DIR_DENYLIST = getattr(_partitions, "MARKER_DIR_DENYLIST", {})
 DIR_MARKER_COLLECT_PATHS = _partitions.DIR_MARKER_COLLECT_PATHS
 
 
@@ -96,9 +97,15 @@ def _check_allowlist(
     marker: str,
     paths: list[str],
     prefixes: tuple[str, ...],
+    denied: tuple[str, ...] = (),
 ) -> list[str]:
     errors: list[str] = []
     for path in paths:
+        if any(path.startswith(d) for d in denied):
+            errors.append(
+                f"{marker}: {path} under denied prefixes {list(denied)}"
+            )
+            continue
         if not any(path.startswith(p) for p in prefixes):
             errors.append(
                 f"{marker}: {path} not under allowed prefixes {list(prefixes)}"
@@ -117,8 +124,9 @@ def main() -> int:
     counts: list[str] = []
     for marker, prefixes in MARKER_DIR_ALLOWLIST.items():
         paths = by_marker.get(marker, [])
+        denied = MARKER_DIR_DENYLIST.get(marker, ())
         counts.append(f"{marker}={len(paths)}")
-        errors.extend(_check_allowlist(marker, paths, prefixes))
+        errors.extend(_check_allowlist(marker, paths, prefixes, denied))
 
     print("check_pytest_dir_markers:", ", ".join(counts))
     if errors:

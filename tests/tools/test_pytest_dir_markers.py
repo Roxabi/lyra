@@ -15,7 +15,7 @@ def test_allowlist_covers_expected_markers() -> None:
 def test_check_allowlist_ok() -> None:
     errs = _check_allowlist(
         "nats_integration",
-        ["tests/integration/test_voice_routing.py"],
+        ["tests/nats/integration/test_voice_routing.py"],
         MARKER_DIR_ALLOWLIST["nats_integration"],
     )
     assert errs == []
@@ -29,3 +29,14 @@ def test_check_allowlist_rejects_wrong_tree() -> None:
     )
     assert len(errs) == 1
     assert "tests/nats/test_nats_bus.py" in errs[0]
+
+
+def test_check_allowlist_denies_integration_under_subprocess() -> None:
+    errs = _check_allowlist(
+        "subprocess_nats",
+        ["tests/nats/integration/test_voice_routing.py"],
+        MARKER_DIR_ALLOWLIST["subprocess_nats"],
+        denied=("tests/nats/integration/",),
+    )
+    assert len(errs) == 1
+    assert "denied" in errs[0]

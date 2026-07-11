@@ -45,8 +45,8 @@ def _register_stub_fixture() -> None:
 
 _register_stub_fixture()
 
-# Live-server modules only — mock-only suites (e.g. test_driver_base) stay in
-# package-coverage. xdist_group applied in modifyitems for subprocess modules.
+# Live-server modules only — mock-only suites (e.g. test_driver_base) run in the
+# same job but outside this marker. xdist_group applied in modifyitems below.
 _SUBPROCESS_NAT_MODULES = frozenset({
     "test_readiness.py",
     "test_image_testing_doubles.py",

@@ -210,8 +210,8 @@ jobs:
           retention-days: 5
           if-no-files-found: ignore
 
-  # Live subprocess-nats suites for roxabi-nats run in `infra`; this job keeps
-  # in-process package coverage only. No nats-server/nk/bun.
+  # In-process workspace packages only. roxabi-nats coverage runs in `infra`
+  # (full suite needs nats-server for readiness/testing modules). No nats-server/nk/bun.
   package-coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -223,11 +223,6 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --frozen --group dev
-
-      - name: Coverage — roxabi_nats
-        run: >-
-          uv run pytest packages/roxabi-nats/tests -m "not subprocess_nats"
-          --cov=roxabi_nats --cov-branch --cov-report=term-missing --cov-fail-under=70
 
       - name: Coverage — roxabi_contracts
         run: uv run pytest packages/roxabi-contracts/tests --cov=roxabi_contracts --cov-branch --cov-report=term-missing --cov-fail-under=80
@@ -271,9 +266,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
+      # Full roxabi-nats suite (in-process + subprocess_nats). Coverage floor
+      # applies here — splitting subprocess tests to this job dropped in-process-only
+      # coverage below 70% (readiness + testing/* need a live nats-server).
+      - name: Coverage — roxabi_nats
+        run: >-
+          uv run pytest packages/roxabi-nats/tests -n 1
+          --cov=roxabi_nats --cov-branch --cov-report=term-missing --cov-fail-under=70
+
       - name: Infra pytest (live NATS + deploy + nk)
         run: >-
-          uv run pytest tests/ packages/roxabi-nats/tests
+          uv run pytest tests/
           --ignore=tests/integration --ignore=tests/e2e
           -m "live_acl or subprocess_nats or deploy_contract or nk_tooling"
           -v --junitxml=reports/pytest-infra.xml

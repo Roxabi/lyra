@@ -39,3 +39,6 @@ packages = ["src/roxabi_nats"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "subprocess_nats: tests spawning a local nats-server subprocess (no auth.conf)",
+]

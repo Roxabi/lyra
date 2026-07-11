@@ -277,6 +277,13 @@ quality_gates:
     files: ^(tests/|packages/roxabi-nats/tests/|pyproject\.toml$|\.github/workflows/ci\.yml$|scripts/ci-pytest\.sh$|tools/(check_pytest_partition|pytest_partitions)\.py$)
     description: CI pytest job partitions are disjoint and cover each pool (collect-only; SSoT tools/pytest_partitions.py)
 
+  pytest_dir_markers:
+    enabled: true
+    script: PYTHONPATH=src uv run python tools/check_pytest_dir_markers.py
+    stages: [ci]
+    files: ^(tests/|packages/roxabi-nats/tests/|tools/(check_pytest_dir_markers|pytest_partitions)\.py$)
+    description: Infra/integration markers only under allowed directory prefixes (SSoT MARKER_DIR_ALLOWLIST)
+
   secrets_drift:
     enabled: true
     script: tools/check_secrets_drift.sh
@@ -405,6 +412,7 @@ qg:
       - qg_conf_drift
       - duplicate_test_basenames
       - pytest_partition
+      - pytest_dir_markers
       - folder_size
       - no_runtime_toml_bots
       - doc_drift_bundle

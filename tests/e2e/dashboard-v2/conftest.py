@@ -29,7 +29,7 @@ def dashboard_v2_url() -> Iterator[str]:
     dist = Path(__file__).resolve().parents[3] / "apps" / "dashboard-v2" / "dist"
     if not (dist / "index.html").is_file():
         pytest.skip(
-            "apps/dashboard-v2/dist/index.html missing — run bun run build:dashboard-v2"
+            "apps/dashboard-v2/dist/index.html missing — run bun run build:dashboard"
         )
 
     port = _free_port()

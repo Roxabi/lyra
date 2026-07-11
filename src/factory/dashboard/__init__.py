@@ -1,6 +1,6 @@
 """Control-plane BFF — obs/jobs panels (ADR-094 axis 2).
 
-Serves built SPA from ``apps/dashboard/dist/`` in production.
+Serves built SPA from ``apps/dashboard-v2/dist/`` in production.
 Chat transport stays in ``factory.adapters.web``. See ``AGENTS.md``.
 """
 

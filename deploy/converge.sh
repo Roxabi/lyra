@@ -52,7 +52,7 @@ _do_converge() {
         # pulled. Kills the first of the "2 full-fleet restarts per code merge".
         if _code_change_is_image_carried "${_last}" "${_current}"; then
             op_log converge_skip drift=code-only reason=image_carried_paths
-            echo "Only image-carried code changed (src/, packages/, apps/dashboard/, brand/) — deferring to the post-autoupdate digest converge; recording stamp, no pre-image restart."
+            echo "Only image-carried code changed (src/, packages/, apps/dashboard-v2/, brand/) — deferring to the post-autoupdate digest converge; recording stamp, no pre-image restart."
             write_convergence_state "${_current}"
             exit 0
         fi

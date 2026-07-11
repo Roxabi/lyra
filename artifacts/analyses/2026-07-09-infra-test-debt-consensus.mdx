@@ -1,0 +1,179 @@
+---
+title: "Infra test debt — Expert Consensus"
+issue: null
+status: consensus-reached
+date: 2026-07-09
+panel: architect, devops, axial-drift
+confidence: high
+branch: feat/infra-test-debt-s0-consensus
+trigger: PR #2275 CI failures (install_dry_run + parity_e2e hub-voice-stt)
+---
+
+## Problem
+
+The main CI `tests` job runs ~5500 pytest cases with `pytest-xdist` (`-n auto --dist=loadgroup`) and **no `--reruns`**. It bundles:
+
+- Pure in-process unit tests
+- Live `nats-server` subprocess suites (`tests/nats/`, `packages/roxabi-nats/tests/`)
+- ACL parity with rendered `auth.conf` (`tests/scripts/test_parity_e2e.py`, ~70 parametrized nodes)
+- Deploy shell contracts (`tests/deploy/test_install_dry_run.py` after Slice 4)
+
+Failures on PR #2275 were initially labeled "flakes" but root causes differ:
+
+| Failure | Class | Verdict |
+|---------|-------|---------|
+| `test_install_dry_run` — Missing seed files | **Test drift / dual policy source** | Deterministic when stubs missing; not timing |
+| `test_flow_round_trip_positive[hub-voice-stt]` — `NoRespondersError` | **True timing flake** | Subscribe/request race under worker load |
+
+Calling everything a "flake" masks structural debt: **axis inversion** (transport/deploy tests filed as unit), **fixture triplication**, and **CI tier collapse**.
+
+## Panel
+
+| Expert | Focus |
+|--------|-------|
+| **architect** | Test pyramid, fixture SSOT, timeout policy, phased migration |
+| **devops** | CI job boundaries, rerun policy, observability, runner contention |
+| **axial-drift** | Stage-aligned test topology, directory drift, conftest god modules |
+
+## Consensus ρ
+
+**Split the test pyramid into explicit CI tiers; never add reruns to the bulk unit job.**
+
+### Target tiers
+
+| Tier | NATS shape | Parallelism | Reruns | CI home |
+|------|------------|-------------|--------|---------|
+| **Unit** | None | `xdist` full fan-out | Never | `tests` job (bulk) |
+| **Contract** | Parse JSON/`auth.conf` only | Full fan-out | Never | `tests` + `gates` |
+| **Subprocess-NATS** | Ephemeral `nats-server`, no auth | `xdist_group("nats_server")` | Never | **`infra`** job (Slice 3) |
+| **Live-ACL** | Subprocess + rendered `auth.conf` | `xdist_group("nats_server")`, serial | Never | **`infra`** job (Slice 3) |
+| **Integration** | Docker Compose NATS | Serial per stack | 1 retry OK | `integration` (existing) |
+| **Deploy-smoke** | Bash stubs, isolated `$HOME` | Low | Never | **`infra`** job or `gates` |
+| **E2E** | Playwright | Low | 1 retry OK | `tests` e2e step (existing) |
+
+### Fixture SSOT
+
+One module owns subprocess NATS lifecycle:
+
+```
+tests/factories/nats_server.py  (canonical)
+├── nats_plain_url()       # session, TCP+NATS probe
+├── nats_jetstream_url()   # session, isolated -sd
+└── nats_acl_server()      # module, rendered auth.conf
+```
+
+Thin re-exports in `tests/nats/conftest.py` and `packages/roxabi-nats/tests/conftest.py` — **no third copy** in `test_parity_e2e.py`.
+
+### Marker taxonomy (register + enforce in CI)
+
+```python
+subprocess_nats   # nats-server binary, no auth.conf
+live_acl          # nats-server + nk + rendered auth
+deploy_contract   # install.sh / converge / quadlet bash
+nk_tooling        # tests shelling out to the nk binary on PATH
+nats_integration  # docker compose (existing, underused)
+smoke             # pre-push budget (<30s)
+```
+
+> **Slice 3 as-built:** architect panel originally proposed separate `infra-subprocess` /
+> `infra-acl` jobs; implementation collapses both into a single **`infra`** job with one
+> `xdist_group("nats_server")` — acceptable per devops dissent (wall-clock vs clarity).
+
+### Rerun policy (unchanged philosophy, clarified scope)
+
+- **5500-test job: zero reruns** — keep; masks real bugs if relaxed.
+- **integration + playwright: reruns=1** — acceptable in isolated jobs only.
+- **Never reruns on live-ACL or subprocess-NATS** — fix timing structurally.
+
+### Rationale
+
+All three experts converge:
+
+1. **Not a "flake epidemic"** — two distinct failure classes; install_dry_run is drift.
+2. **CI mislabels "unit"** — ~373 live-nats tests share one `xdist_group("nats_server")` worker on 2-vCPU GHA while three other workers idle.
+3. **Axial inversion** — `tests/nats/` hosts bootstrap, core, and cli tests; deploy contracts split across `tests/deploy/` and `tests/tools/`.
+4. **Prior art exists** — `ci-cd-optimization-2026-07` fixed `test_integration_nats.py` (5→30s); same subscribe-readiness gap remains in `test_flow_round_trip_positive`.
+
+### Trade-offs
+
+1. **Wall-clock vs clarity** — splitting infra into dedicated jobs adds ~1–2 min wall time but isolates failures and frees the unit pool.
+2. **Live broker fidelity vs determinism** — keep live-ACL (caught real gaps #2247); cost is nats-server semantics coupling (empty `allow: []` = unrestricted on 2.10.x — **product bug**, not flake).
+3. **Package boundary vs DRY** — centralizing fixtures in `tests/factories/` blurs package boundary slightly; acceptable while roxabi-nats tests only run in monorepo CI.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| `--reruns 1` on Coverage—factory | (temptation) | Explicitly forbidden in ci.yml; masks WAL/product bugs |
+| Mock NATS for ACL parity | — | Proves client, not broker enforcement |
+| Fold integration into ci job | — | Doubles runtime; wrong NATS shape for auth.conf tests |
+| Delete live-ACL, static only | — | Static cannot catch renderer↔server semantics |
+| Global session nats-server | — | Plain / JetStream / auth.conf configs incompatible |
+
+## Dissent
+
+**Minor — job count vs marker-only phase:**
+
+- **devops** prefers scoped `--reruns 1` on a `live_nats` marker as interim quick win before branch-protection job split.
+- **architect** rejects reruns on live-ACL entirely; prefers fixture SSOT + error_cb synchronization first.
+- **Resolution:** Slice 1–2 ship without reruns; if `hub-voice-stt` still flakes after readiness fix, devops may propose scoped rerun **only in a dedicated infra job**, never in bulk coverage.
+
+## Implementation Notes
+
+### Slice 1 — Taxonomy (1 PR, no behavior change)
+
+- Register markers: `subprocess_nats`, `live_acl`, `deploy_contract`.
+- Apply to `test_parity_e2e.py`, `tests/nats/`, `test_install_dry_run.py`, roxabi-nats live tests.
+- `pytest --collect-only -q -m live_acl` in CI plan artifact.
+
+### Slice 2 — Fixture SSOT + timing fixes (1–2 PRs)
+
+**Quick wins (ship first):**
+
+1. `test_flow_round_trip_positive`: subscribe-readiness poll after `flush` (mirror `test_integration_nats.py` pattern); bump `request` timeout 2→5s on GHA.
+2. `FACTORY_NATS_SEEDS_EXPECTED`: align to 11 manifest entries (not stale "7"); derive policy from `secrets-manifest.sh` only, not `secrets-policy.toml`.
+3. Gate: `SECRET_POLICY` manifest block ↔ `secrets-policy.toml` parity.
+
+**Structural:**
+
+4. Extend `tests/factories/nats_server.py`; thin conftest re-exports.
+5. Refactor `_probe` error_cb to `asyncio.Event`; remove `_settle_deny` poll workaround.
+6. `xdist_group` on roxabi-nats live tests; `package-coverage` roxabi-nats step `-n 1`.
+
+### Slice 3 — CI boundary split (1 PR + branch protection)
+
+- `tests` job: `-m "not live_acl and not subprocess_nats and not deploy_contract and not nk_tooling and not nats_integration"`.
+- New **`infra`** job: `nats-server` + `nk`; `-m "live_acl or subprocess_nats or deploy_contract or nk_tooling"`; **no reruns**.
+- Promote `infra` to required after 2 weeks green.
+
+### Slice 4 — Axial cleanup (follow-on)
+
+- Move misplaced tests: `test_hub_standalone` → `tests/bootstrap/`, install dry-run → `tests/deploy/`.
+- Delete redundant per-identity ACL tests in `test_parity_e2e.py` once matrix stable.
+- Fix empty-allow-list renderer semantics (product).
+- Narrow `integration` job to `-m nats_integration` only.
+
+### Observability
+
+| Metric | Source |
+|--------|--------|
+| Per-test flake rate | JUnit `tests-failure-artifacts-${{ github.run_attempt }}` |
+| Exception class histogram | `NoRespondersError` vs `Missing seed files` vs `TimeoutError` |
+| `live_acl` worker wall time | pytest junit + `PYTEST_XDIST_WORKER` |
+| Policy desync | New gate manifest ↔ TOML |
+
+## Axial alignment checklist
+
+- [ ] `tests/nats/` contains only `factory.nats` concerns
+- [ ] Deploy contracts live under `tests/deploy/` (canonical)
+- [ ] ACL static + live colocated under `tests/contract/nats_acl/`
+- [ ] No third NATS `Popen` implementation
+- [ ] Root `tests/conftest.py` autouse patches scoped to bootstrap slice
+
+## References
+
+- `artifacts/analyses/ci-cd-optimization-2026-07.claude.md`
+- `tests/scripts/test_parity_e2e.py` (xdist_group L245–249, flow round-trip L801–848)
+- `tests/deploy/test_install_dry_run.py` (manifest-derived nats-seed expectations)
+- `.github/workflows/ci.yml` (`tests` / `infra` jobs, aggregate `ci` gate, no reruns on bulk)
+- `pyproject.toml` (`addopts -n auto --dist=loadgroup`, marker registry)

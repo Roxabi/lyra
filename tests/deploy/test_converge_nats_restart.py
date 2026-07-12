@@ -34,12 +34,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent.parent
 CONVERGE_SH = REPO_ROOT / "deploy" / "converge.sh"
 
-# All 7 factory clients restarted on structural drift (per converge.sh lines 86-89)
+# Enabled factory clients restarted on structural drift (quadlet_containers minus
+# factory-nats). factory-dashboard is disabled=true (ADR-103 hub sole IdP) until
+# thin-BFF Slice 4 — converge must NOT restart it.
 STRUCTURAL_CLIENTS = [
     "factory-hub",
     "factory-telegram",
     "factory-discord",
-    "factory-dashboard",
     "factory-clipool",
     "factory-turn-writer",
     "factory-gh-helper",

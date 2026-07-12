@@ -8,12 +8,17 @@ from fastapi import FastAPI
 
 if TYPE_CHECKING:
     from factory.adapters.web.web_adapter import WebAdapter
+    from factory.core.stores.control_plane_protocol import ControlPlaneDirectory
 
 
-def create_app(adapter: "WebAdapter") -> FastAPI:
+def create_app(
+    adapter: "WebAdapter",
+    *,
+    control_plane: "ControlPlaneDirectory | None" = None,
+) -> FastAPI:
     from factory.dashboard.app import create_dashboard_app
 
-    return create_dashboard_app(adapter)
+    return create_dashboard_app(adapter, control_plane=control_plane)
 
 
 async def run_uvicorn(

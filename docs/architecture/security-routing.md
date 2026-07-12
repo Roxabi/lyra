@@ -1,7 +1,8 @@
 # factory — — Security, Routing & Memory Isolation
 
 > Reference document. Last updated: 2026-07-01.
-> **Status**: #auth (#151 ✅), #routing (#152 ✅), #commands ✅ (CommandParser shipped), #memory-isolation — partially implemented (user_id partition active in prefs_store; full MemoryEntry metadata schema not yet applied).
+> **Status**: #auth chat (#151 ✅ ADR-090), #routing (#152 ✅), #commands ✅, #memory-isolation — partial.
+> **Control-plane auth**: **target** in [ADR-103](adr/103-dashboard-auth-user-org-platform-link.mdx) (Proposed) — see § control-plane below. Live code still Tailnet + optional fail-open bearer until goal ships.
 
 ---
 
@@ -78,13 +79,83 @@ Bot transport config lives in `BotStore` (no auth fields). Pairing `/join` write
 - [x] Integrated in TelegramAdapter + DiscordAdapter (forward `PUBLIC`, hub authoritative)
 - [x] CLIAdapter (trust = OWNER by default)
 
-> The dashboard HTTP BFF (`/api/bff/*`) is a separate control plane (`src/factory/dashboard/auth.py`) — not governed by the NATS inbound pipeline stages above.
+> The dashboard HTTP BFF (`/api/bff/*`) is a **separate control plane** from the NATS inbound
+> chat pipeline above. **Live (until ADR-103 ships):** optional shared bearer fail-open +
+> Tailnet bind — see `src/factory/dashboard/auth.py`. **Target:** § control-plane below.
 
-### Admin access
+### Admin access (chat plane — live)
 
 `[admin].user_ids` sets the global operator set at startup. These users get `is_admin=True` on every resolved identity and bypass `AuthorizeAgentMiddleware` until explicitly narrowed in a follow-up ADR.
 
 Admin resolution lives in `Authenticator.resolve()` (`src/factory/core/auth/authenticator.py`) using `[admin].user_ids` from config. Plugins gate privileged commands via `msg.is_admin` on the inbound message (set by `ResolveIdentityMiddleware`).
+
+---
+
+## #control-plane — dashboard auth, users, orgs, platform link (target — ADR-103)
+
+> **Status:** Proposed design ([ADR-103](adr/103-dashboard-auth-user-org-platform-link.mdx)).
+> Execution: [`artifacts/goal/dashboard-auth-identity-org-goal.md`](../../artifacts/goal/dashboard-auth-identity-org-goal.md).
+> This section is **target truth**; do not assume shipped until the goal blocks land.
+
+### Problem
+
+Control-plane BFF and `factory.dashboard.*` hub RPC must not rely on network perimeter
+(Tailnet) or an anonymous process identity (`web-adapter` NKey alone). Multi-user product
+needs invite-only accounts, organizations, API keys, and TG/DC only after dual platform link.
+
+### Solution — Python authn in dashboard process + hub authz
+
+| Layer | Responsibility |
+|-------|----------------|
+| **BFF (authn)** | Session cookie + API keys → `Principal(user, roles, orgs)`; invite accept; link pairing |
+| **Hub `_wrap` (gate)** | Reject missing principal; `authorize(action, resource)`; handlers business-only |
+| **Workers** | No user/org checks (actuators) |
+| **TG/DC adapters** | Thin: resolve platform id → `platform_links`; unlinked → refuse chat turn |
+
+**Rejected for V1:** Better Auth TS sidecar; Tailnet-as-auth; “ops” as identity kind;
+default organization; open signup.
+
+### Visibility
+
+| Principal | Control-plane resources |
+|-----------|-------------------------|
+| Global `admin` | All |
+| Member | `owner_user_id = me` ∪ `org_id ∈ memberships` |
+| Unauthenticated | None (except health + login/invite public routes) |
+
+Org-tagged resources are visible to **all members** of that org. **No default org** at invite.
+
+### Chat readiness
+
+```text
+chat_ready ⇔ user active ∧ linked(telegram) ∧ linked(discord)
+```
+
+Console session works **without** link. **Admin included:** must link to use TG/DC bots.
+Inbound unlinked platform ids never reach agent authorize (onboarding refusal).
+
+### Principal on the bus
+
+- Dashboard RPC: BFF stamps principal server-side (security-bearing dashboard contracts —
+  not global `ContractEnvelope`).
+- Hub fails closed without principal.
+- NKey = process ACL only.
+
+### Relation to #auth (ADR-090)
+
+Chat `agent_grants` USE matrix stays the SSoT for **agent access**. Platform link maps
+`tg:user:` / `dc:user:` → dashboard user for product identity; it does **not** replace
+the grant matrix. Planes stay separate (ADR-103).
+
+### Implementation checklist (goal blocks — not live yet)
+
+- [ ] User / invite / session / API key / org / platform_link stores + ports
+- [ ] `require_principal` fail-closed on BFF
+- [ ] Hub `_wrap` principal + resource authorize
+- [ ] Jobs `launched_by` + optional `org_id`
+- [ ] Dual platform link + inbound refuse if unlinked
+- [ ] SPA login / invite / org / link UX
+- [ ] Secrets-policy session key; HealthCmd still public
 
 ---
 

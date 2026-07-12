@@ -27,6 +27,7 @@ from factory.dashboard.pipeline_stream import (
     PIPELINE_STREAM_ID,
     pipeline_sse_events,
 )
+from factory.dashboard.routes.auth_routes import register_auth_routes
 from factory.dashboard.routes.bff_admin import register_admin_routes
 from factory.dashboard.routes.bff_agents import register_agent_routes
 from factory.dashboard.routes.bff_common import map_hub_errors
@@ -247,4 +248,5 @@ def build_bff_router(  # noqa: C901, PLR0915
                 raise mapped from exc
             raise
 
+    register_auth_routes(router)
     return router

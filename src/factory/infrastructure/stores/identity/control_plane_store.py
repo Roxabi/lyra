@@ -1,0 +1,75 @@
+"""SQLite control-plane identity store composition root (ADR-103)."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+from factory.infrastructure.stores.base.sqlite_base import SqliteStore
+from factory.infrastructure.stores.identity.control_plane_ddl import (
+    API_KEY_PREFIX,
+    DDL_CONTROL_PLANE,
+    SESSION_COOKIE_NAME,
+)
+from factory.infrastructure.stores.identity.control_plane_invites import (
+    ControlPlaneInviteOps,
+)
+from factory.infrastructure.stores.identity.control_plane_sessions import (
+    ControlPlaneSessionOps,
+)
+from factory.infrastructure.stores.identity.control_plane_users import (
+    ControlPlaneUserOps,
+)
+from factory.infrastructure.stores.identity.user_store import _CREATE_USERS_EMAIL_INDEX
+
+log = logging.getLogger(__name__)
+
+__all__ = [
+    "API_KEY_PREFIX",
+    "ControlPlaneStore",
+    "DDL_CONTROL_PLANE",
+    "SESSION_COOKIE_NAME",
+]
+
+
+class ControlPlaneStore(
+    ControlPlaneUserOps,
+    ControlPlaneInviteOps,
+    ControlPlaneSessionOps,
+    SqliteStore,
+):
+    """Dashboard users, invites, sessions, API keys on auth.db (or dedicated path)."""
+
+    def __init__(self, db_path: str | Path) -> None:
+        super().__init__(db_path)
+
+    async def connect(self) -> None:
+        await self._open_db(ddl=list(DDL_CONTROL_PLANE))
+        await self._migrate_user_auth_columns()
+        db = self._require_db()
+        await db.execute(_CREATE_USERS_EMAIL_INDEX)
+        await db.commit()
+        log.info("ControlPlaneStore connected (db=%s)", self._db_path)
+
+    async def _migrate_user_auth_columns(self) -> None:
+        db = self._require_db()
+        async with db.execute("PRAGMA table_info(users)") as cur:
+            cols = {row[1] async for row in cur}
+        alters: list[str] = []
+        if "password_hash" not in cols:
+            alters.append("ALTER TABLE users ADD COLUMN password_hash TEXT")
+        if "global_role" not in cols:
+            alters.append(
+                "ALTER TABLE users ADD COLUMN global_role "
+                "TEXT NOT NULL DEFAULT 'member'"
+            )
+        if "status" not in cols:
+            alters.append(
+                "ALTER TABLE users ADD COLUMN status "
+                "TEXT NOT NULL DEFAULT 'active'"
+            )
+        for stmt in alters:
+            await db.execute(stmt)
+        if alters:
+            await db.commit()
+            log.info("ControlPlaneStore migrated users columns: %s", alters)

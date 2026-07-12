@@ -1,0 +1,352 @@
+---
+title: "ADR-103: Dashboard auth (Python BFF) — User, Org, invite-only, platform link"
+description: "Full-auth control plane: Python session/API-key auth in factory-dashboard process; invite-only users; organizations without default; TG/DC chat only after dual platform link; hub-authoritative principal on dashboard RPC"
+status: proposed
+date: 2026-07-11
+deciders: [Mickael]
+related: [049, 059, 073, 090, 094, 1992, 2262]
+---
+
+> **Current truth (until Accepted + shipped)** → this ADR (Proposed) + goal
+> [`artifacts/goal/dashboard-auth-identity-org-goal.md`](../../../artifacts/goal/dashboard-auth-identity-org-goal.md).
+> Living domain page: [`security-routing.md`](../security-routing.md) § control-plane (target).
+
+## Status
+
+**Proposed** — 2026-07-11. Phase 0 design for goal *dashboard-auth-identity-org*.
+**No production code** until this ADR is Accepted.
+
+## Context
+
+### Problem
+
+1. Dashboard BFF trust is **Tailnet membership** plus an optional shared
+   `FACTORY_DASHBOARD_OPERATOR_TOKEN` that **fails open** when unset
+   (`src/factory/dashboard/auth.py`). Only connectors use `Depends(require_operator)`.
+2. Hub handlers for `factory.dashboard.*` accept any payload from NATS identity
+   `web-adapter` with **no human principal** — the process seed is effectively
+   super-admin on the control plane.
+3. Product needs **multi-user** console: invite-only signup, **organizations**
+   (no default org), **API keys**, and **Telegram/Discord** only after the user
+   is invited **and** has linked both platform accounts.
+4. Better Auth (TypeScript) is attractive for orgs/API keys but the control-plane
+   BFF is **Python FastAPI** in the same process as the web adapter (**ADR-094**).
+   A TS auth sidecar is an extra runtime without a shared contracts package for HTTP.
+
+### Constraints inherited
+
+| Source | Constraint |
+|--------|------------|
+| ADR-094 | One HTTP process: chat axis + BFF axis; not a second NATS platform adapter |
+| ADR-090 / C3 | Adapters untrusted normalizers; hub authoritative for chat authz (`agent_grants`) |
+| ADR-059 | Ports in `core`, stores in `infrastructure`, CR in bootstrap |
+| ADR-073 | Authz once per plane (stage composition); no per-worker / per-adapter policy copies |
+| ADR-049 | Security-bearing wire fields are major; not additive on global `ContractEnvelope` |
+| importlinter | `factory.dashboard` ↛ `factory.infrastructure.stores` |
+
+### Product decisions (session 2026-07-11)
+
+| Decision | Choice |
+|----------|--------|
+| Network as auth | **Rejected** — full auth regardless of origin |
+| Auth stack | **Python minimal “BetterAuth-like”** in dashboard process |
+| Signup | **Invite-only** |
+| Default org | **None** |
+| Org visibility | Resource with `org_id` → **all org members** (+ global admin) |
+| Private visibility | Resource without org → **owner + admin** |
+| Ops identity | **Dropped** — roles/permissions on **User** |
+| TG/DC availability | Invite **and** link **both** TG and DC |
+| Console without link | **Allowed** (session only) |
+| Admin + chat | Admin **must link** to use TG/DC |
+| Workers | No user/org re-auth |
+
+## Options considered
+
+### Option A — Tailnet + optional shared bearer (status quo)
+
+- **Pros:** Simple; already partial.
+- **Cons:** Not multi-user; fail-open; hub RPC anonymous; rejected by product.
+
+### Option B — Better Auth (TypeScript) sidecar
+
+- **Pros:** Orgs, invites, API keys mature; good SPA DX.
+- **Cons:** Second runtime in deploy path; session bridge to Python BFF; no shared TS↔Python wire package; dual source of user truth unless carefully synced.
+
+### Option C — Python auth module in dashboard process (chosen)
+
+- **Pros:** One process (ADR-094); principal stamp natural on NATS client; aligns with hub Python stores/ports; axis-clear (BFF authn, hub authz).
+- **Cons:** Build invite/session/org/API-key/link ourselves (V1 subset only); no Better Auth UI widgets.
+
+### Option D — Full IdP (Keycloak / OIDC SaaS)
+
+- **Pros:** Enterprise SSO.
+- **Cons:** Overkill for single-factory self-host V1; ops weight.
+
+## Decision
+
+### 1. Auth runtime = Python in `factory-dashboard` process
+
+Implement a **minimal** control-plane auth subsystem (session cookie, API keys,
+invites, users, orgs, platform links) as:
+
+- **Edge (authn):** `factory.dashboard` routes + dependencies (`require_principal`).
+- **Ports (pure):** `factory.core.auth` (or dedicated subpackage) — `Principal`,
+  resource authorize helpers; **do not** overload `agent_grants` / `Capability` for ops.
+- **Stores:** `factory.infrastructure.stores.identity` (extend auth.db or sibling DB).
+- **Control-plane gate (authz + principal bind):** hub `dashboard_rpc._wrap` —
+  **single** fan-in; handlers stay business-only.
+- **SPA:** login / accept-invite / link accounts / org UI in `apps/dashboard-v2`.
+
+**Reject** Better Auth sidecar for V1. Revisit only if multi-product Roxabi SSO is required.
+
+### 2. Principal model
+
+```text
+Principal:
+  user_id: str          # dash:user:<uuid> or sys:hub | sys:scheduler
+  roles: frozenset      # global: admin | member | …
+  org_ids: frozenset    # memberships
+  active_org_id: str | None
+  via: session | api_key | platform_link | sys
+```
+
+- **Global `admin`:** sees and mutates **all** control-plane resources (subject to
+  audit). Does **not** skip TG/DC link requirement for **chat**.
+- **Member:** sees `owner_user_id == me` ∪ `org_id ∈ my_orgs`.
+- **Ops is not an identity kind** — only roles/permissions on User.
+
+### 3. Organizations
+
+- No org created at invite/bootstrap by default.
+- User may create orgs; members added explicitly.
+- Actions may set `org_id` when initiator is a member; resource then **org-visible**.
+- Migrate connectors’ `factory_tenant` toward `org_id` (compat window documented in impl).
+
+### 4. Invite-only lifecycle
+
+```text
+pending → accepted → (optional) revoked
+```
+
+- Only `admin` (or future `users.invite` cap) creates invites.
+- Accept creates/activates User; no open registration endpoint.
+
+### 5. Bootstrap admin
+
+- First install / setup creates **one** admin user (seed credentials rotated in prod).
+- Optional: seed from config once; never fail-open anonymous console.
+
+### 6. Platform link (Telegram + Discord)
+
+```text
+chat_ready ⇔ invite accepted ∧ linked(telegram) ∧ linked(discord)
+```
+
+| Surface | Without dual link | With dual link |
+|---------|-------------------|----------------|
+| Dashboard console | Allowed (session) | Allowed |
+| TG/DC agent turns | **Refuse** (pull onboarding) | Allowed if `agent_grants` USE |
+
+**Link mechanism (V1 recommendation):** bot-mediated **pairing code** (user starts
+`/link` or dashboard shows code; bot confirms) — avoids OAuth app review for V1.
+OAuth can replace later without changing the data model.
+
+### 7. Chat principal SSoT after link (alias table)
+
+**Chosen:** keep inbound wire `user_id` as **platform-prefixed** ids
+(`tg:user:…`, `dc:user:…`) for adapter simplicity; maintain
+`platform_links(platform, platform_user_id) → dash_user_id`.
+
+- Hub resolve: platform id → dash user (if linked) for grants/audit display.
+- `agent_grants` subjects remain platform principals **or** are issued for all
+  linked platform ids of a dash user when granting “this human” (impl detail in
+  Block 10 of the goal — must be one consistent write path).
+- **Unlinked** platform id → no agent pipeline (drop/refuse before authorize).
+
+### 8. Control-plane wire (dashboard RPC)
+
+- Dashboard request contracts carry **security-bearing** principal fields
+  (dashboard mixin / base request type) — **not** `ContractEnvelope` global.
+- BFF stamps principal from **server-side** session/API key (never trust client
+  body for identity).
+- Hub `_wrap` **rejects** missing/invalid principal (fail-closed in prod).
+- NKey `web-adapter` remains transport ACL only.
+
+### 9. Jobs
+
+- Launch records `launched_by` (+ optional `org_id`).
+- List/steer/cancel use same visibility rules (own ∪ org ∪ admin).
+- Workers remain actuators (no org checks).
+
+### 10. Public vs protected HTTP
+
+| Public | Protected |
+|--------|-----------|
+| Health / liveness (HealthCmd) | All `/api/bff/*` except explicit public |
+| Login, accept-invite | Sessions, jobs, agents, admin, connectors, … |
+| Static assets needed for login shell | |
+
+E2E: **explicit** bypass flag — never “unset secret = open”.
+
+### 11. Secrets (design)
+
+| Secret | Purpose |
+|--------|---------|
+| Session signing / cookie key | HMAC or encrypted session blob |
+| Password hashing | argon2/bcrypt at rest |
+| API keys | Store **hash only**; show secret once at create |
+| Bootstrap admin password | One-time / force rotate |
+
+Prefer Podman secret for session key (align secrets-policy) over wipeable `web.env`.
+
+## Data model (logical schema)
+
+```text
+users
+  id              TEXT PK     -- dash:user:<uuid>
+  email           TEXT UNIQUE NULL
+  password_hash   TEXT NULL   -- null if magic-link only later
+  global_role     TEXT        -- admin | member
+  status          TEXT        -- active | disabled
+  created_at      TEXT
+
+invites
+  id              TEXT PK
+  email           TEXT
+  token_hash      TEXT
+  invited_by      TEXT FK users
+  status          TEXT        -- pending | accepted | revoked | expired
+  expires_at      TEXT
+  created_at      TEXT
+
+sessions
+  id              TEXT PK
+  user_id         TEXT FK
+  token_hash      TEXT
+  expires_at      TEXT
+  created_at      TEXT
+
+api_keys
+  id              TEXT PK
+  user_id         TEXT FK
+  name            TEXT
+  key_hash        TEXT
+  prefix          TEXT        -- display hint
+  scopes          TEXT NULL   -- optional subset JSON
+  created_at      TEXT
+  revoked_at      TEXT NULL
+
+organizations
+  id              TEXT PK     -- org:<uuid>
+  name            TEXT
+  created_by      TEXT FK
+  created_at      TEXT
+
+org_members
+  org_id          TEXT FK
+  user_id         TEXT FK
+  org_role        TEXT        -- owner | member | …
+  PRIMARY KEY (org_id, user_id)
+
+platform_links
+  user_id         TEXT FK
+  platform        TEXT        -- telegram | discord
+  platform_user_id TEXT       -- tg:user:… / dc:user:…
+  linked_at       TEXT
+  UNIQUE (platform, platform_user_id)
+  UNIQUE (user_id, platform)  -- one link per platform per user V1
+
+-- resource tagging (examples; actual tables may add columns)
+-- jobs catalog / active jobs: launched_by, org_id NULL
+-- connectors: org_id replaces/aliases factory_tenant
+```
+
+**Chat-ready predicate (app layer):**
+
+```text
+chat_ready(user) =
+  user.status == active
+  ∧ ∃ link telegram
+  ∧ ∃ link discord
+```
+
+## Architecture diagrams
+
+### Authn / authz split
+
+```text
+SPA / API client
+    │  cookie session | Bearer API key
+    ▼
+┌─────────────────────────────────────┐
+│ factory-dashboard (Python)          │
+│  require_principal → Principal      │
+│  hub_client stamps RPC (server)     │
+└──────────────┬──────────────────────┘
+               │ NATS (NKey web-adapter)
+               ▼
+┌─────────────────────────────────────┐
+│ hub dashboard_rpc._wrap             │
+│  1) reject if no principal          │
+│  2) authorize(action, resource)     │
+│  3) handler                         │
+└─────────────────────────────────────┘
+```
+
+### TG/DC path
+
+```text
+Platform message
+    → adapter normalize (platform user_id)
+    → link lookup
+         ├─ missing → refuse / onboarding (no agent)
+         └─ linked  → inbound pipeline
+                        → ResolveIdentity / AuthorizeAgent (ADR-090)
+```
+
+## Consequences
+
+### Positive
+
+- Real multi-user console with clear ownership and org share.
+- Hub no longer treats web-adapter seed as anonymous superuser for business actions.
+- Aligns authn placement with ADR-094 single process.
+- Chat and control-plane planes stay separated; link unifies humans without collapsing grant matrices.
+
+### Negative
+
+- Implementation cost of invite/session/org/API-key/link (no Better Auth free lunch).
+- Dual-link requirement adds onboarding friction (accepted).
+- Migration from open Tailnet console is breaking for current operators (runbook required).
+
+### Neutral
+
+- `factory_tenant` → `org_id` compat period.
+- `[admin].user_ids` chat bypass may later bind to linked dash admin (follow-up).
+- NATS TLS (#2264) remains orthogonal.
+
+## Acceptance criteria (product)
+
+1. Unauthenticated clients cannot use sensitive BFF or dashboard RPC (any network).
+2. Invite-only; no open signup.
+3. Admin sees all; member sees own + org-shared only.
+4. No default org at invite.
+5. Org-tagged resources visible to all members of that org.
+6. API keys act as that user (or scoped subset).
+7. Unlinked TG/DC cannot complete agent turns.
+8. Linked + USE grant → chat works.
+9. Admin console works without link; admin chat requires link.
+10. Health endpoint remains unauthenticated for Quadlet.
+11. Workers have no user/org authz logic.
+
+## Implementation plan pointer
+
+Ordered blocks, PR slices, and gates:
+[`artifacts/goal/dashboard-auth-identity-org-goal.md`](../../../artifacts/goal/dashboard-auth-identity-org-goal.md).
+
+## References
+
+- Goal SSoT (execution)
+- Audit L2: `artifacts/analyses/2026-07-11-deep-audit-L2.md`
+- Issues: #2262, #1992
+- ADR-090, ADR-094, ADR-049, ADR-073, ADR-059

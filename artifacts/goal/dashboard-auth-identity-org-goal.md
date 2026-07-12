@@ -1,9 +1,15 @@
 # /goal — Dashboard auth + identité unifiée + orgs + link TG/DC
 
+> **2026-07-12 supersession (store ownership):** Blocks 0–14 dual-open path = **shipped debt**.
+> Execution SSoT for **hub sole IdP + thin BFF** =
+> [`dashboard-auth-hub-idp-migration.md`](dashboard-auth-hub-idp-migration.md).
+> [ADR-103](../../docs/architecture/adr/103-dashboard-auth-user-org-platform-link.mdx) = **Accepted** (amended).
+> This file = historical product ACs + journal; **do not** re-open dual-open as target.
+>
 > **Issue (à ouvrir / lier) :** epic control-plane auth — suite #2262 · #1992
-> **ADR cibles :** [ADR-103](../../docs/architecture/adr/103-dashboard-auth-user-org-platform-link.mdx) (Proposed) · living [security-routing.md](../../docs/architecture/security-routing.md) § control-plane · companion [phase0 schema/threat](../specs/dashboard-auth-phase0-schema-threat.md)
-> **Références panel :** audit L2 `artifacts/analyses/2026-07-11-deep-audit-L2.md` · décisions session 2026-07-11 (full auth, Python-in-BFF, invite-only, no default org, link requis TG+DC)
-> **Statut global :** `phase_5_done` — Blocks 0–14 on `feat/dashboard-auth-identity-org` ; ready for PR → staging
+> **ADR cibles :** ADR-103 (Accepted) · living [security-routing.md](../../docs/architecture/security-routing.md) § control-plane · companion [phase0 schema/threat](../specs/dashboard-auth-phase0-schema-threat.md)
+> **Références panel :** audit L2 · décisions 2026-07-11 (product) + 2026-07-12 (hub IdP)
+> **Statut global :** product Blocks 0–14 merged; store placement **amended** → hub-idp migration
 
 ---
 

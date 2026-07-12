@@ -1,8 +1,10 @@
 # factory — — Security, Routing & Memory Isolation
 
-> Reference document. Last updated: 2026-07-01.
+> Reference document. Last updated: 2026-07-12.
 > **Status**: #auth chat (#151 ✅ ADR-090), #routing (#152 ✅), #commands ✅, #memory-isolation — partial.
-> **Control-plane auth**: **target** in [ADR-103](adr/103-dashboard-auth-user-org-platform-link.mdx) (Proposed) — see § control-plane below. Live code still Tailnet + optional fail-open bearer until goal ships.
+> **Control-plane auth:** [ADR-103](adr/103-dashboard-auth-user-org-platform-link.mdx) **Accepted** (hub sole IdP target).
+> Live staging code may still dual-open `ControlPlaneStore` (**debt**). Prod dashboard **disabled** until
+> migration Slice 4 — see § control-plane + [`dashboard-auth-hub-idp-migration.md`](../../artifacts/goal/dashboard-auth-hub-idp-migration.md).
 
 ---
 
@@ -80,8 +82,8 @@ Bot transport config lives in `BotStore` (no auth fields). Pairing `/join` write
 - [x] CLIAdapter (trust = OWNER by default)
 
 > The dashboard HTTP BFF (`/api/bff/*`) is a **separate control plane** from the NATS inbound
-> chat pipeline above. **Live (until ADR-103 ships):** optional shared bearer fail-open +
-> Tailnet bind — see `src/factory/dashboard/auth.py`. **Target:** § control-plane below.
+> chat pipeline above. **Live (debt, pre–thin-BFF):** dual-open ControlPlaneStore and/or prior
+> bearer path where still present — **not** target. **Target:** § control-plane below (hub IdP).
 
 ### Admin access (chat plane — live)
 
@@ -93,27 +95,32 @@ Admin resolution lives in `Authenticator.resolve()` (`src/factory/core/auth/auth
 
 ## #control-plane — dashboard auth, users, orgs, platform link (target — ADR-103)
 
-> **Status:** Proposed design ([ADR-103](adr/103-dashboard-auth-user-org-platform-link.mdx)).
-> Execution: [`artifacts/goal/dashboard-auth-identity-org-goal.md`](../../artifacts/goal/dashboard-auth-identity-org-goal.md).
-> This section is **target truth**; do not assume shipped until the goal blocks land.
+> **Status:** [ADR-103](adr/103-dashboard-auth-user-org-platform-link.mdx) **Accepted** (amended 2026-07-12).
+> **Target:** hub sole IdP store; thin BFF at Tailnet edge.
+> **Migration:** [`artifacts/goal/dashboard-auth-hub-idp-migration.md`](../../artifacts/goal/dashboard-auth-hub-idp-migration.md).
+> **Interim:** `factory-dashboard` disabled on M₁ until migration Slice 4 (no shared-volume bandage).
+> Staging may still contain pre-amend dual-open code — treat as debt, not target truth.
 
 ### Problem
 
 Control-plane BFF and `factory.dashboard.*` hub RPC must not rely on network perimeter
 (Tailnet) or an anonymous process identity (`web-adapter` NKey alone). Multi-user product
 needs invite-only accounts, organizations, API keys, and TG/DC only after dual platform link.
+Dual open of `auth.db` (hub + dashboard) is rejected as durable design.
 
-### Solution — Python authn in dashboard process + hub authz
+### Solution — Hub sole IdP + thin BFF edge + hub authz
 
 | Layer | Responsibility |
 |-------|----------------|
-| **BFF (authn)** | Session cookie + API keys → `Principal(user, roles, orgs)`; invite accept; link pairing |
-| **Hub `_wrap` (gate)** | Reject missing principal; `authorize(action, resource)`; handlers business-only |
+| **Hub (IdP store)** | Sole `ControlPlaneStore` / `auth.db` writer; login/session/invite/org/link RPCs |
+| **BFF edge (authn presentation)** | Cookie/Bearer; resolve via hub RPC; stamp `user_id` + proof (**not** trusted roles) |
+| **Hub `_wrap` (gate)** | Rehydrate principal from store; `authorize`; handlers business-only |
 | **Workers** | No user/org checks (actuators) |
-| **TG/DC adapters** | Thin: resolve platform id → `platform_links`; unlinked → refuse chat turn |
+| **TG/DC adapters** | Thin: platform id → links; unlinked → refuse chat turn |
 
 **Rejected for V1:** Better Auth TS sidecar; Tailnet-as-auth; “ops” as identity kind;
-default organization; open signup.
+default organization; open signup; **shared `factory-data` on dashboard**; SPA-in-hub.
+
 
 ### Visibility
 
@@ -136,9 +143,9 @@ Inbound unlinked platform ids never reach agent authorize (onboarding refusal).
 
 ### Principal on the bus
 
-- Dashboard RPC: BFF stamps principal server-side (security-bearing dashboard contracts —
-  not global `ContractEnvelope`).
-- Hub fails closed without principal.
+- Dashboard RPC: BFF stamps **user_id + proof** server-side (dashboard contracts —
+  not global `ContractEnvelope`). Roles on the wire are **not** authoritative.
+- Hub fails closed without principal; **rehydrates** roles/orgs from store.
 - NKey = process ACL only.
 
 ### Relation to #auth (ADR-090)
@@ -147,15 +154,15 @@ Chat `agent_grants` USE matrix stays the SSoT for **agent access**. Platform lin
 `tg:user:` / `dc:user:` → dashboard user for product identity; it does **not** replace
 the grant matrix. Planes stay separate (ADR-103).
 
-### Implementation checklist (goal blocks — not live yet)
+### Implementation checklist (hub IdP migration)
 
-- [ ] User / invite / session / API key / org / platform_link stores + ports
-- [ ] `require_principal` fail-closed on BFF
-- [ ] Hub `_wrap` principal + resource authorize
-- [ ] Jobs `launched_by` + optional `org_id`
-- [ ] Dual platform link + inbound refuse if unlinked
-- [ ] SPA login / invite / org / link UX
-- [ ] Secrets-policy session key; HealthCmd still public
+- [x] Dual-open prototype on staging (debt) — superseded by target B
+- [x] ADR-103 amended; dashboard disabled interim
+- [ ] Slice 1: hub identity RPCs (`factory.dashboard.auth.*`) + rehydrate **design**
+- [ ] Slice 2: thin BFF — no `open_control_plane_store` on web
+- [ ] Slice 3: `_wrap` rehydrate **enforcement** + public HealthCmd/healthz
+- [ ] Slice 4: re-enable dashboard on M₁ (unmask if needed)
+- [ ] Jobs / dual-link / SPA parity under thin BFF
 
 ---
 

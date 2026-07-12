@@ -23,7 +23,7 @@ EXPECTED_CONTAINERS = [
     "factory-hub",
     "factory-telegram",
     "factory-discord",
-    "factory-dashboard",
+    # factory-dashboard — disabled (ADR-103 hub sole IdP) until thin-BFF.
     "factory-clipool",
     "factory-gh-helper",
     "factory-turn-writer",

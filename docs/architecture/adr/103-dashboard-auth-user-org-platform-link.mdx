@@ -1,352 +1,242 @@
 ---
-title: "ADR-103: Dashboard auth (Python BFF) — User, Org, invite-only, platform link"
-description: "Full-auth control plane: Python session/API-key auth in factory-dashboard process; invite-only users; organizations without default; TG/DC chat only after dual platform link; hub-authoritative principal on dashboard RPC"
-status: proposed
+title: "ADR-103: Dashboard auth — hub IdP + thin BFF edge"
+description: "Unique control-plane IdP on hub (sole ControlPlaneStore/auth.db); invite-only users/orgs; dual TG/DC link; thin HTTP BFF at Tailnet edge stamps principal; hub rehydrates + authz; SPA stays on dashboard process (not hub)"
+status: accepted
 date: 2026-07-11
+accepted: 2026-07-12
 deciders: [Mickael]
-related: [049, 059, 073, 090, 094, 1992, 2262]
+related: [049, 059, 068, 073, 090, 094, 1992, 2262]
 ---
 
-> **Current truth (until Accepted + shipped)** → this ADR (Proposed) + goal
-> [`artifacts/goal/dashboard-auth-identity-org-goal.md`](../../../artifacts/goal/dashboard-auth-identity-org-goal.md).
-> Living domain page: [`security-routing.md`](../security-routing.md) § control-plane (target).
+> **Living domain page:** [`security-routing.md`](../security-routing.md) § control-plane.
+> **Migration slices:** [`artifacts/goal/dashboard-auth-hub-idp-migration.md`](../../../artifacts/goal/dashboard-auth-hub-idp-migration.md).
+> **Ops (interim):** `factory-dashboard` **disabled** on M₁ until migration B lands (no shared-volume bandage).
 
 ## Status
 
-**Proposed** — 2026-07-11. Phase 0 design for goal *dashboard-auth-identity-org*.
-**No production code** until this ADR is Accepted.
+**Accepted** — 2026-07-12 (amended).
+
+| Phase | Truth |
+|-------|--------|
+| Product (invite-only, orgs, dual link, hub authz) | Unchanged |
+| **Store ownership** | **Amended:** sole IdP writer = **hub** (not dashboard process) |
+| Code on `staging` (pre-amend implementation) | Dual open `ControlPlaneStore` (hub + web adapter) — **debt**, must migrate to B |
+| Production dashboard | **Stopped** until thin-BFF / hub IdP path is shippable |
+
+Phase 0–14 code that opens `auth.db` in the dashboard process is **not** the durable design. Do **not** “fix” it by mounting `factory-data` on `factory-dashboard` (violates hub-only volume policy #1721 / ADR-068 spirit).
 
 ## Context
 
 ### Problem
 
-1. Dashboard BFF trust is **Tailnet membership** plus an optional shared
-   `FACTORY_DASHBOARD_OPERATOR_TOKEN` that **fails open** when unset
-   (`src/factory/dashboard/auth.py`). Only connectors use `Depends(require_operator)`.
-2. Hub handlers for `factory.dashboard.*` accept any payload from NATS identity
-   `web-adapter` with **no human principal** — the process seed is effectively
-   super-admin on the control plane.
-3. Product needs **multi-user** console: invite-only signup, **organizations**
-   (no default org), **API keys**, and **Telegram/Discord** only after the user
-   is invited **and** has linked both platform accounts.
-4. Better Auth (TypeScript) is attractive for orgs/API keys but the control-plane
-   BFF is **Python FastAPI** in the same process as the web adapter (**ADR-094**).
-   A TS auth sidecar is an extra runtime without a shared contracts package for HTTP.
+1. Network / optional operator token is not multi-user control-plane auth.
+2. Hub `factory.dashboard.*` must not treat NKey `web-adapter` as human super-admin.
+3. Product: invite-only, orgs (no default), API keys, TG/DC only after dual platform link.
+4. **2026-07-12 post-merge learnings:**
+   - Dual open of `ControlPlaneStore` (hub + dashboard) on `auth.db` is a **composition / SSoT** smell (dual writer, rewarm hacks, deploy RO crash).
+   - `factory-data.volume` is **hub-only** by design; dashboard is `ReadOnly` without that mount → crash-loop when web opens the store.
+   - Panel review (architect / devops / axial / adversarial): **not** axial N×M drift; **is** dual-process identity ownership debt. Target = **hub sole IdP store**, thin HTTP edge.
 
 ### Constraints inherited
 
 | Source | Constraint |
 |--------|------------|
-| ADR-094 | One HTTP process: chat axis + BFF axis; not a second NATS platform adapter |
-| ADR-090 / C3 | Adapters untrusted normalizers; hub authoritative for chat authz (`agent_grants`) |
-| ADR-059 | Ports in `core`, stores in `infrastructure`, CR in bootstrap |
-| ADR-073 | Authz once per plane (stage composition); no per-worker / per-adapter policy copies |
-| ADR-049 | Security-bearing wire fields are major; not additive on global `ContractEnvelope` |
+| ADR-094 | One **Tailnet human HTTP surface** process may host SPA + chat axis + **thin** BFF; not a second NATS platform adapter. Identity **DB** need not live in that process. |
+| ADR-090 / C3 | Adapters untrusted; hub authoritative for chat authz |
+| ADR-059 | Ports in core; stores in infrastructure; CR in bootstrap |
+| ADR-073 | Authz once per plane (stage); no per-adapter policy copies |
+| ADR-068 / #1721 | Shared durable state not dual-mounted across adapters; hub owns `factory-data` |
+| ADR-049 | Security-bearing wire fields on dashboard contracts, not global envelope |
 | importlinter | `factory.dashboard` ↛ `factory.infrastructure.stores` |
 
-### Product decisions (session 2026-07-11)
+### Product decisions (session 2026-07-11) — unchanged
 
 | Decision | Choice |
 |----------|--------|
-| Network as auth | **Rejected** — full auth regardless of origin |
-| Auth stack | **Python minimal “BetterAuth-like”** in dashboard process |
+| Network as auth | **Rejected** |
 | Signup | **Invite-only** |
 | Default org | **None** |
-| Org visibility | Resource with `org_id` → **all org members** (+ global admin) |
-| Private visibility | Resource without org → **owner + admin** |
-| Ops identity | **Dropped** — roles/permissions on **User** |
-| TG/DC availability | Invite **and** link **both** TG and DC |
-| Console without link | **Allowed** (session only) |
-| Admin + chat | Admin **must link** to use TG/DC |
+| Org visibility | own ∪ org members ∪ admin |
+| Ops identity | Dropped — roles on User |
+| TG/DC | Invite **and** dual link |
+| Console without link | Allowed |
+| Admin chat | Must link |
 | Workers | No user/org re-auth |
+
+### Topology decisions (session 2026-07-12) — amended
+
+| Decision | Choice |
+|----------|--------|
+| Unique IdP | **Hub** sole writer of durable control-plane identity (`auth.db` / ControlPlaneStore) |
+| Authn HTTP presentation | **Thin BFF** at Tailnet edge (dashboard process) — credentials → hub RPC; cookie set at edge |
+| Authz | **Hub** only (rehydrate principal from store; never trust wire `roles`) |
+| Shared `auth.db` volume on dashboard | **Rejected** as durable design |
+| SPA in hub container | **Rejected** |
+| BFF process = hub (all HTTP on hub) | **Not required**; optional later “C-lite” behind reverse-proxy only if measured need |
+| Frontend | Remains with dashboard process (SPA + chat SSE); **not** hub |
 
 ## Options considered
 
-### Option A — Tailnet + optional shared bearer (status quo)
+### Option A — Dual open (BFF + hub both open ControlPlaneStore)
 
-- **Pros:** Simple; already partial.
-- **Cons:** Not multi-user; fail-open; hub RPC anonymous; rejected by product.
+- **Pros:** Fast V1; local session verify.
+- **Cons:** Dual writer SQLite; volume policy break if mounted; RO crash without mount; rewarm debt; rejected as **end state**.
 
-### Option B — Better Auth (TypeScript) sidecar
+### Option B — Hub-centric IdP + thin BFF (chosen)
 
-- **Pros:** Orgs, invites, API keys mature; good SPA DX.
-- **Cons:** Second runtime in deploy path; session bridge to Python BFF; no shared TS↔Python wire package; dual source of user truth unless carefully synced.
+- **Pros:** Unique IdP process; hub-only `factory-data`; dashboard stays data-free RO; aligns chat + control identity ownership on hub; importlinter stays clean.
+- **Cons:** NATS RTT for login/resolve (mitigate with short TTL edge cache of session→user_id only).
 
-### Option C — Python auth module in dashboard process (chosen)
+### Option C — BFF HTTP implementation inside hub process
 
-- **Pros:** One process (ADR-094); principal stamp natural on NATS client; aligns with hub Python stores/ports; axis-clear (BFF authn, hub authz).
-- **Cons:** Build invite/session/org/API-key/link ourselves (V1 subset only); no Better Auth UI widgets.
+- **Pros:** One Python process for identity + RPC.
+- **Cons:** Expands hub HTTP/Tailnet surface or requires reverse-proxy; larger blast radius; optional later (C-lite), not V1 requirement.
 
-### Option D — Full IdP (Keycloak / OIDC SaaS)
+### Option D — SPA + BFF + hub one container
 
-- **Pros:** Enterprise SSO.
-- **Cons:** Overkill for single-factory self-host V1; ops weight.
+- **Pros:** Unit count.
+- **Cons:** God hub; UI restart kills bots — **rejected**.
+
+### Option E — External OIDC IdP
+
+- **Pros:** Multi-product SSO.
+- **Cons:** Overkill V1; still need local grants/links.
 
 ## Decision
 
-### 1. Auth runtime = Python in `factory-dashboard` process
+### 1. IdP ownership = hub (sole ControlPlaneStore)
 
-Implement a **minimal** control-plane auth subsystem (session cookie, API keys,
-invites, users, orgs, platform links) as:
+- **Only the hub process** opens and mutates durable control-plane identity:
+  users, password hashes, invites, sessions (or session jti denylist), API key hashes,
+  orgs/memberships, platform link rows used as SSoT for chat_ready.
+- Bootstrap admin env is **hub-scoped** (not dashboard-only).
+- Dashboard / web adapter **must not** call `open_control_plane_store()`.
 
-- **Edge (authn):** `factory.dashboard` routes + dependencies (`require_principal`).
-- **Ports (pure):** `factory.core.auth` (or dedicated subpackage) — `Principal`,
-  resource authorize helpers; **do not** overload `agent_grants` / `Capability` for ops.
-- **Stores:** `factory.infrastructure.stores.identity` (extend auth.db or sibling DB).
-- **Control-plane gate (authz + principal bind):** hub `dashboard_rpc._wrap` —
-  **single** fan-in; handlers stay business-only.
-- **SPA:** login / accept-invite / link accounts / org UI in `apps/dashboard-v2`.
+### 2. Thin BFF at Tailnet edge (dashboard process)
 
-**Reject** Better Auth sidecar for V1. Revisit only if multi-product Roxabi SSO is required.
+Implement HTTP presentation of the IdP as:
 
-### 2. Principal model
+| Layer | Responsibility |
+|-------|----------------|
+| **Edge BFF** | Public login / accept-invite; set/clear HttpOnly cookie; `require_principal` = resolve session/API key **via hub RPC** (or verify hub-minted signed token); stamp dashboard RPC with `principal_user_id` + **proof** (session id / jti / HMAC — **not** trusted roles from body) |
+| **Hub IdP RPC** | login, logout, session resolve/create/revoke, invite CRUD, API keys, org/membership, link code mint (consume may stay chat `/link` on hub) |
+| **Hub `_wrap`** | Fail-closed without proof; **rehydrate** roles/orgs from store; `authorize(action, resource)`; handlers business-only |
+| **SPA** | login / invite / org / link UX in `apps/dashboard-v2` |
+| **Chat axis** | Unchanged process placement (ADR-094); auth when required uses same edge principal path |
+
+**Reject** Better Auth sidecar for V1.
+**Reject** mounting `factory-data` on `factory-dashboard` as permanent fix.
+
+### 3. Principal model
 
 ```text
 Principal:
-  user_id: str          # dash:user:<uuid> or sys:hub | sys:scheduler
-  roles: frozenset      # global: admin | member | …
-  org_ids: frozenset    # memberships
+  user_id: str
+  roles: frozenset      # authoritative only after hub rehydrate
+  org_ids: frozenset
   active_org_id: str | None
   via: session | api_key | platform_link | sys
 ```
 
-- **Global `admin`:** sees and mutates **all** control-plane resources (subject to
-  audit). Does **not** skip TG/DC link requirement for **chat**.
-- **Member:** sees `owner_user_id == me` ∪ `org_id ∈ my_orgs`.
-- **Ops is not an identity kind** — only roles/permissions on User.
+Wire from BFF → hub: prefer **`user_id` + session/api_key proof**.
+Hub **must not** treat client/BFF-supplied `roles` as authoritative.
 
-### 3. Organizations
+### 4–11. Unchanged product rules
 
-- No org created at invite/bootstrap by default.
-- User may create orgs; members added explicitly.
-- Actions may set `org_id` when initiator is a member; resource then **org-visible**.
-- Migrate connectors’ `factory_tenant` toward `org_id` (compat window documented in impl).
+Organizations, invite-only, bootstrap admin (on **hub**), dual platform link,
+chat_ready, jobs visibility, public vs protected HTTP (health unauthenticated),
+secrets (session/HMAC keys as Podman secrets on hub + edge as needed) — as in prior
+ADR body; see data model below.
 
-### 4. Invite-only lifecycle
+### 12. Deploy interim
 
-```text
-pending → accepted → (optional) revoked
-```
+Until migration B is shippable:
 
-- Only `admin` (or future `users.invite` cap) creates invites.
-- Accept creates/activates User; no open registration endpoint.
-
-### 5. Bootstrap admin
-
-- First install / setup creates **one** admin user (seed credentials rotated in prod).
-- Optional: seed from config once; never fail-open anonymous console.
-
-### 6. Platform link (Telegram + Discord)
-
-```text
-chat_ready ⇔ invite accepted ∧ linked(telegram) ∧ linked(discord)
-```
-
-| Surface | Without dual link | With dual link |
-|---------|-------------------|----------------|
-| Dashboard console | Allowed (session) | Allowed |
-| TG/DC agent turns | **Refuse** (pull onboarding) | Allowed if `agent_grants` USE |
-
-**Link mechanism (V1 recommendation):** bot-mediated **pairing code** (user starts
-`/link` or dashboard shows code; bot confirms) — avoids OAuth app review for V1.
-OAuth can replace later without changing the data model.
-
-### 7. Chat principal SSoT after link (alias table)
-
-**Chosen:** keep inbound wire `user_id` as **platform-prefixed** ids
-(`tg:user:…`, `dc:user:…`) for adapter simplicity; maintain
-`platform_links(platform, platform_user_id) → dash_user_id`.
-
-- Hub resolve: platform id → dash user (if linked) for grants/audit display.
-- `agent_grants` subjects remain platform principals **or** are issued for all
-  linked platform ids of a dash user when granting “this human” (impl detail in
-  Block 10 of the goal — must be one consistent write path).
-- **Unlinked** platform id → no agent pipeline (drop/refuse before authorize).
-
-### 8. Control-plane wire (dashboard RPC)
-
-- Dashboard request contracts carry **security-bearing** principal fields
-  (dashboard mixin / base request type) — **not** `ContractEnvelope` global.
-- BFF stamps principal from **server-side** session/API key (never trust client
-  body for identity).
-- Hub `_wrap` **rejects** missing/invalid principal (fail-closed in prod).
-- NKey `web-adapter` remains transport ACL only.
-
-### 9. Jobs
-
-- Launch records `launched_by` (+ optional `org_id`).
-- List/steer/cancel use same visibility rules (own ∪ org ∪ admin).
-- Workers remain actuators (no org checks).
-
-### 10. Public vs protected HTTP
-
-| Public | Protected |
-|--------|-----------|
-| Health / liveness (HealthCmd) | All `/api/bff/*` except explicit public |
-| Login, accept-invite | Sessions, jobs, agents, admin, connectors, … |
-| Static assets needed for login shell | |
-
-E2E: **explicit** bypass flag — never “unset secret = open”.
-
-### 11. Secrets (design)
-
-| Secret | Purpose |
-|--------|---------|
-| Session signing / cookie key | HMAC or encrypted session blob |
-| Password hashing | argon2/bcrypt at rest |
-| API keys | Store **hash only**; show secret once at create |
-| Bootstrap admin password | One-time / force rotate |
-
-Prefer Podman secret for session key (align secrets-policy) over wipeable `web.env`.
+- **`[component.dashboard] disabled = true`** on M₁ / factory-hub role.
+- No production reliance on dual-open dashboard image.
+- Hub and messaging stack remain up.
 
 ## Data model (logical schema)
 
-```text
-users
-  id              TEXT PK     -- dash:user:<uuid>
-  email           TEXT UNIQUE NULL
-  password_hash   TEXT NULL   -- null if magic-link only later
-  global_role     TEXT        -- admin | member
-  status          TEXT        -- active | disabled
-  created_at      TEXT
-
-invites
-  id              TEXT PK
-  email           TEXT
-  token_hash      TEXT
-  invited_by      TEXT FK users
-  status          TEXT        -- pending | accepted | revoked | expired
-  expires_at      TEXT
-  created_at      TEXT
-
-sessions
-  id              TEXT PK
-  user_id         TEXT FK
-  token_hash      TEXT
-  expires_at      TEXT
-  created_at      TEXT
-
-api_keys
-  id              TEXT PK
-  user_id         TEXT FK
-  name            TEXT
-  key_hash        TEXT
-  prefix          TEXT        -- display hint
-  scopes          TEXT NULL   -- optional subset JSON
-  created_at      TEXT
-  revoked_at      TEXT NULL
-
-organizations
-  id              TEXT PK     -- org:<uuid>
-  name            TEXT
-  created_by      TEXT FK
-  created_at      TEXT
-
-org_members
-  org_id          TEXT FK
-  user_id         TEXT FK
-  org_role        TEXT        -- owner | member | …
-  PRIMARY KEY (org_id, user_id)
-
-platform_links
-  user_id         TEXT FK
-  platform        TEXT        -- telegram | discord
-  platform_user_id TEXT       -- tg:user:… / dc:user:…
-  linked_at       TEXT
-  UNIQUE (platform, platform_user_id)
-  UNIQUE (user_id, platform)  -- one link per platform per user V1
-
--- resource tagging (examples; actual tables may add columns)
--- jobs catalog / active jobs: launched_by, org_id NULL
--- connectors: org_id replaces/aliases factory_tenant
-```
-
-**Chat-ready predicate (app layer):**
-
-```text
-chat_ready(user) =
-  user.status == active
-  ∧ ∃ link telegram
-  ∧ ∃ link discord
-```
+Unchanged tables (`users`, `invites`, `sessions`, `api_keys`, `organizations`,
+`org_members`, `platform_links` / `platform_identities`). Physical open = **hub only**.
 
 ## Architecture diagrams
 
-### Authn / authz split
+### Target (hub IdP + thin edge)
 
 ```text
-SPA / API client
-    │  cookie session | Bearer API key
+SPA / browser  (Tailnet :8765)
+    │  cookie | Bearer
     ▼
-┌─────────────────────────────────────┐
-│ factory-dashboard (Python)          │
-│  require_principal → Principal      │
-│  hub_client stamps RPC (server)     │
-└──────────────┬──────────────────────┘
-               │ NATS (NKey web-adapter)
+┌──────────────────────────────────────┐
+│ factory-dashboard (edge)             │
+│  thin BFF → hub identity RPC         │
+│  SPA + chat axis                     │
+│  NO auth.db / NO factory-data mount  │
+└──────────────┬───────────────────────┘
+               │ NATS  user_id + proof
                ▼
-┌─────────────────────────────────────┐
-│ hub dashboard_rpc._wrap             │
-│  1) reject if no principal          │
-│  2) authorize(action, resource)     │
-│  3) handler                         │
-└─────────────────────────────────────┘
+┌──────────────────────────────────────┐
+│ factory-hub = sole IdP               │
+│  ControlPlaneStore (auth.db)         │
+│  rehydrate Principal → authorize     │
+│  dashboard business handlers         │
+│  PlatformLink + UserStore + grants   │
+└──────────────────────────────────────┘
 ```
 
-### TG/DC path
+### TG/DC path (unchanged intent)
 
 ```text
-Platform message
-    → adapter normalize (platform user_id)
-    → link lookup
-         ├─ missing → refuse / onboarding (no agent)
-         └─ linked  → inbound pipeline
-                        → ResolveIdentity / AuthorizeAgent (ADR-090)
+Platform message → adapter normalize → hub link / chat_ready
+  → refuse if unlinked → else ADR-090 authorize
 ```
 
 ## Consequences
 
 ### Positive
 
-- Real multi-user console with clear ownership and org share.
-- Hub no longer treats web-adapter seed as anonymous superuser for business actions.
-- Aligns authn placement with ADR-094 single process.
-- Chat and control-plane planes stay separated; link unifies humans without collapsing grant matrices.
+- Unique IdP process; hub-only data volume invariant preserved.
+- Hub no longer trusts anonymous web seed for business actions; roles rehydrated.
+- Axial stage composition preserved (not per-platform auth).
+- Dashboard RO rootfs remains valid without identity volume.
 
 ### Negative
 
-- Implementation cost of invite/session/org/API-key/link (no Better Auth free lunch).
-- Dual-link requirement adds onboarding friction (accepted).
-- Migration from open Tailnet console is breaking for current operators (runbook required).
+- Migration cost: move session/invite/login I/O from BFF local store to hub RPC.
+- Identity path depends on hub + NATS (acceptable: console already depends on hub RPC).
+- Interim: no operator SPA on M₁ until B lands.
 
 ### Neutral
 
-- `factory_tenant` → `org_id` compat period.
-- `[admin].user_ids` chat bypass may later bind to linked dash admin (follow-up).
-- NATS TLS (#2264) remains orthogonal.
+- Optional C-lite later (BFF routes in hub process, reverse-proxy from dashboard).
+- External OIDC (E) only for multi-product SSO.
 
-## Acceptance criteria (product)
+## Acceptance criteria (product) — unchanged intent
 
-1. Unauthenticated clients cannot use sensitive BFF or dashboard RPC (any network).
+1. Unauthenticated clients cannot use sensitive BFF or dashboard RPC.
 2. Invite-only; no open signup.
-3. Admin sees all; member sees own + org-shared only.
+3. Admin sees all; member own + org.
 4. No default org at invite.
-5. Org-tagged resources visible to all members of that org.
-6. API keys act as that user (or scoped subset).
-7. Unlinked TG/DC cannot complete agent turns.
-8. Linked + USE grant → chat works.
-9. Admin console works without link; admin chat requires link.
-10. Health endpoint remains unauthenticated for Quadlet.
-11. Workers have no user/org authz logic.
+5. Org-tagged resources visible to org members.
+6. API keys as that user (or scoped).
+7. Unlinked TG/DC no agent turns.
+8. Dual link + USE → chat.
+9. Admin console without link; admin chat needs link.
+10. Health unauthenticated for Quadlet.
+11. Workers no user/org authz.
+12. **NEW:** Only hub opens durable control-plane identity store; dashboard has zero `auth.db` open.
+13. **NEW:** Hub rehydrates principal; wire roles not authoritative.
 
-## Implementation plan pointer
+## Implementation plan
 
-Ordered blocks, PR slices, and gates:
-[`artifacts/goal/dashboard-auth-identity-org-goal.md`](../../../artifacts/goal/dashboard-auth-identity-org-goal.md).
+Ordered PR slices:
+[`artifacts/goal/dashboard-auth-hub-idp-migration.md`](../../../artifacts/goal/dashboard-auth-hub-idp-migration.md).
 
 ## References
 
-- Goal SSoT (execution)
-- Audit L2: `artifacts/analyses/2026-07-11-deep-audit-L2.md`
-- Issues: #2262, #1992
-- ADR-090, ADR-094, ADR-049, ADR-073, ADR-059
+- Goal / migration SSoT (execution)
+- Panel 2026-07-12: architect + devops + axial + adversarial (PR #2293 follow-up)
+- Issues: #2262, #1992, #1721
+- ADR-090, ADR-094, ADR-068, ADR-073, ADR-059, ADR-049

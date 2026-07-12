@@ -2,8 +2,20 @@
 
 **Status:** planned
 **Target:** ADR-103 Accepted 2026-07-12 (store owner = hub)
-**Interim ops:** `[component.dashboard] disabled = true` on factory-hub until Slice 3+ green
+**Interim ops:** prod stays `disabled = true` until **Slice 4 exit** (Slice 3 green is necessary but not sufficient)
 **Forbidden bandage:** do **not** mount `factory-data` RW on `factory-dashboard`
+**Predecessor:** [`dashboard-auth-identity-org-goal.md`](dashboard-auth-identity-org-goal.md) (Blocks 0–14 dual-open debt)
+
+### V1 identity RPC defaults (lock for Slice 1)
+
+| Choice | V1 default |
+|--------|------------|
+| Session durability | Opaque server session rows in hub `sessions` table |
+| Edge cookie | Session id / opaque token only (**no roles**) |
+| RPC stamp | `user_id` + `session_id` (or api_key id); hub validates + **rehydrates** roles/orgs |
+| Subject namespace | `factory.dashboard.auth.*` (reuse `factory.dashboard.>` ACL) |
+| Edge cache | Optional TTL `session→user_id` only |
+| Signed JWT/HMAC | Deferred (not parallel V1) |
 
 ---
 
@@ -27,15 +39,20 @@ Browser → dashboard (thin BFF + SPA + chat) → NATS → hub sole ControlPlane
 
 ### Slice 0 — Ops quarantine (this change set)
 
-| Item | Done when |
-|------|-----------|
-| ADR-103 amended (hub store owner) | ✓ |
-| This migration doc | ✓ |
-| `security-routing.md` target updated | ✓ |
-| `quadlet.toml` `component.dashboard` **disabled** | ✓ |
-| M₁: stop + disable unit; confirm hub/NATS green | ✓ |
+| Item | Scope | Done when |
+|------|--------|-----------|
+| ADR-103 amended (hub store owner) | git | ✓ |
+| This migration doc | git | ✓ |
+| `security-routing.md` target updated | git | ✓ |
+| `quadlet.toml` `component.dashboard` **disabled** | git SSoT | ✓ this PR |
+| M₁ host: stop/mask unit; hub/NATS green | **ops host** (not git) | ✓ one-time ops |
+| Post-merge: converge does not re-enable dashboard | gate | after merge |
+
+**Slice 0 CI exit:** docs + `disabled` flag only — no identity RPC expected green.
 
 **Out of scope:** volume mount, partial dual-open “fix”.
+
+**Gate (until Slice 4):** no new dual-open surface; existing dual-open code = known debt until Slice 2.
 
 ---
 
@@ -45,13 +62,14 @@ Browser → dashboard (thin BFF + SPA + chat) → NATS → hub sole ControlPlane
 
 | Work | Notes |
 |------|--------|
-| Contracts | `factory.dashboard.auth.*` (or `identity.*`) subjects: login, logout, session.resolve, session.revoke, invite.create/list/revoke/accept, apikey.*, org.* as needed for parity |
+| Contracts | Subjects under **`factory.dashboard.auth.*`** (+ request/response types in roxabi-contracts) |
 | Hub handlers | Use **existing** hub `_control_plane` only; fail-closed; audit events |
-| Bootstrap admin | Env on **hub** process (`hub.env` / bootstrap_stores path) — document |
-| Principal wire | Spec: BFF will send `user_id` + proof; hub rehydrates roles/orgs (**implement rehydrate in `_wrap` or resolve handler**) |
+| Bootstrap admin | Env on **hub** process; document rename plan (`FACTORY_CP_BOOTSTRAP_*` alias later) |
+| Principal wire (design) | `user_id` + `session_id`/api_key id; **rehydrate design** documented (implement fail-closed on all business RPCs in Slice 3) |
+| Data | Same `auth.db` path hub already uses — no bulk data migration if path identical |
 | Tests | Unit hub RPC: login happy/deny, resolve session, member cannot invite |
 
-**Exit:** hub RPC green in CI; dual-open still present but unused by new path.
+**Exit:** hub identity RPC green in CI; dual-open code may still exist but new path does not depend on dashboard store open.
 
 **Depends:** Slice 0.
 
@@ -93,14 +111,15 @@ Browser → dashboard (thin BFF + SPA + chat) → NATS → hub sole ControlPlane
 
 | Work | Notes |
 |------|--------|
-| `disabled = false` on `component.dashboard` | After Slice 2–3 on staging image |
-| Converge M₁ | Observe post-autoupdate; **no** factory-data on dashboard unit |
-| Smoke | `auth/me` → 401 unauth; login → 200; hub still sole `auth.db` open |
+| `disabled = false` on `component.dashboard` | After Slice 2–3 on `staging-svc` image |
+| If host was masked | `systemctl --user unmask factory-dashboard.service` **before** converge |
+| Converge M₁ | `make converge`; confirm unit file reinstalled; **no** factory-data on dashboard unit |
+| Smoke | unauth `auth/me` → 401; login → 200; hub sole `auth.db` open; HealthCmd public |
 | SPA | Full login / invite / link against thin BFF |
 
 **Exit:** operator console live; crash-loop gone without volume bandage.
 
-**Depends:** Slice 2 + 3 shipped in `staging-svc`.
+**Depends:** Slice 2 + 3 shipped in `staging-svc` (Slice 3 green necessary, not sufficient alone).
 
 ---
 

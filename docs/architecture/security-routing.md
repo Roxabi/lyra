@@ -1,8 +1,10 @@
 # factory — — Security, Routing & Memory Isolation
 
-> Reference document. Last updated: 2026-07-01.
+> Reference document. Last updated: 2026-07-12.
 > **Status**: #auth chat (#151 ✅ ADR-090), #routing (#152 ✅), #commands ✅, #memory-isolation — partial.
-> **Control-plane auth**: **target** in [ADR-103](adr/103-dashboard-auth-user-org-platform-link.mdx) (Proposed) — see § control-plane below. Live code still Tailnet + optional fail-open bearer until goal ships.
+> **Control-plane auth:** [ADR-103](adr/103-dashboard-auth-user-org-platform-link.mdx) **Accepted** (hub sole IdP target).
+> Live staging code may still dual-open `ControlPlaneStore` (**debt**). Prod dashboard **disabled** until
+> migration Slice 4 — see § control-plane + [`dashboard-auth-hub-idp-migration.md`](../../artifacts/goal/dashboard-auth-hub-idp-migration.md).
 
 ---
 
@@ -80,8 +82,8 @@ Bot transport config lives in `BotStore` (no auth fields). Pairing `/join` write
 - [x] CLIAdapter (trust = OWNER by default)
 
 > The dashboard HTTP BFF (`/api/bff/*`) is a **separate control plane** from the NATS inbound
-> chat pipeline above. **Live (until ADR-103 ships):** optional shared bearer fail-open +
-> Tailnet bind — see `src/factory/dashboard/auth.py`. **Target:** § control-plane below.
+> chat pipeline above. **Live (debt, pre–thin-BFF):** dual-open ControlPlaneStore and/or prior
+> bearer path where still present — **not** target. **Target:** § control-plane below (hub IdP).
 
 ### Admin access (chat plane — live)
 
@@ -156,10 +158,10 @@ the grant matrix. Planes stay separate (ADR-103).
 
 - [x] Dual-open prototype on staging (debt) — superseded by target B
 - [x] ADR-103 amended; dashboard disabled interim
-- [ ] Slice 1: hub identity RPCs + rehydrate design
+- [ ] Slice 1: hub identity RPCs (`factory.dashboard.auth.*`) + rehydrate **design**
 - [ ] Slice 2: thin BFF — no `open_control_plane_store` on web
-- [ ] Slice 3: wire proof + public HealthCmd/healthz
-- [ ] Slice 4: re-enable dashboard on M₁
+- [ ] Slice 3: `_wrap` rehydrate **enforcement** + public HealthCmd/healthz
+- [ ] Slice 4: re-enable dashboard on M₁ (unmask if needed)
 - [ ] Jobs / dual-link / SPA parity under thin BFF
 
 ---

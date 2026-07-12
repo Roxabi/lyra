@@ -3,7 +3,7 @@
 > **Issue (à ouvrir / lier) :** epic control-plane auth — suite #2262 · #1992
 > **ADR cibles :** [ADR-103](../../docs/architecture/adr/103-dashboard-auth-user-org-platform-link.mdx) (Proposed) · living [security-routing.md](../../docs/architecture/security-routing.md) § control-plane · companion [phase0 schema/threat](../specs/dashboard-auth-phase0-schema-threat.md)
 > **Références panel :** audit L2 `artifacts/analyses/2026-07-11-deep-audit-L2.md` · décisions session 2026-07-11 (full auth, Python-in-BFF, invite-only, no default org, link requis TG+DC)
-> **Statut global :** `phase_0_go` — GO 2026-07-12 (defaults § open items) ; Phase 1 Blocks 1–3 en cours sur `feat/dashboard-auth-identity-org`
+> **Statut global :** `phase_5_done` — Blocks 0–14 on `feat/dashboard-auth-identity-org` ; ready for PR → staging
 
 ---
 
@@ -447,6 +447,7 @@ Prefer **stacked PRs** rather than one mega-PR.
 | 2026-07-12 | 4–7 | Orgs + org routes ; principal stamp hub `_wrap` fail-closed ; authorize + agents admin-only ; jobs meta launched_by/org_id |
 | 2026-07-12 | 8–10 | dash_link_codes + BFF links ; PlatformLinkMiddleware TG/DC ; grant_human multi-platform keys |
 | 2026-07-12 | 11–12 | SPA auth pages + org/link UX ; bffFetch credentials ; web.env + bootstrap runbook |
+| 2026-07-12 | 13–14 | security audit log + rate limit login/invite ; fail-closed operator token ; drop AUTH_REQUIRED |
 
 ---
 
@@ -469,8 +470,8 @@ Prefer **stacked PRs** rather than one mega-PR.
 | 10 grants align | **done** (grant_human + admin_rpc platform keys) |
 | 11 SPA | **done** (login/invite/links/org switcher + gate) |
 | 12 deploy/docs | **done** (web.env.example + runbook bootstrap) |
-| 13 audit | pending |
-| 14 cleanup | pending |
+| 13 audit | **done** (`factory.audit.security.*` + rate limit) |
+| 14 cleanup | **done** (fail-closed token; AUTH_REQUIRED removed) |
 
 ---
 

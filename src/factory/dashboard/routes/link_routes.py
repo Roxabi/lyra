@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from factory.core.auth.control_plane import ControlPlanePrincipal
 from factory.dashboard.auth import control_plane_from_app, require_principal
+from factory.dashboard.security import audit_security
 
 __all__ = ["register_link_routes"]
 
@@ -55,6 +56,12 @@ async def _create_code(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    audit_security(
+        "link_code_mint",
+        user_id=principal.user_id,
+        platform=body.platform or "any",
+        code_id=code_id,
+    )
     return {
         "code_id": code_id,
         "token": token,
@@ -78,6 +85,11 @@ async def _unlink(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not ok:
         raise HTTPException(status_code=404, detail="no link for platform")
+    audit_security(
+        "platform_unlink",
+        user_id=principal.user_id,
+        platform=platform,
+    )
     return {"status": "unlinked", "platform": platform}
 
 

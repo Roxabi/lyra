@@ -15,6 +15,7 @@ from factory.dashboard.auth import (
     control_plane_from_app,
     require_principal,
 )
+from factory.dashboard.security import audit_security, check_rate_limit, client_key
 
 __all__ = ["register_auth_routes"]
 
@@ -89,16 +90,35 @@ def _set_session_cookie(response: Response, token: str, *, max_age: int) -> None
     )
 
 
+def _rate_limit_or_429(request: Request, *, action: str) -> None:
+    key = client_key(request, suffix=action)
+    if not check_rate_limit(key, limit=20, window_s=60):
+        audit_security("rate_limited", action=action, client=key)
+        raise HTTPException(status_code=429, detail="too many attempts; try later")
+
+
 async def _login_handler(
     body: LoginBody, request: Request, response: Response
 ) -> dict[str, Any]:
+    _rate_limit_or_429(request, action="login")
     cp = _cp_or_503(request)
     user = await cp.verify_password(body.email, body.password)
     if user is None:
+        audit_security(
+            "login_fail",
+            email=body.email.strip().lower(),
+            client=client_key(request),
+        )
         raise HTTPException(status_code=401, detail="invalid email or password")
     _session, token = await cp.create_session(user.id)
     _set_session_cookie(response, token, max_age=60 * 60 * 24 * 14)
     principal = await cp.principal_for_user(user, via="session")
+    audit_security(
+        "login_ok",
+        user_id=user.id,
+        email=user.email,
+        client=client_key(request),
+    )
     return {
         "user": _user_public(user),
         "principal": _principal_public(principal),
@@ -108,6 +128,7 @@ async def _login_handler(
 async def _accept_invite_handler(
     body: AcceptInviteBody, request: Request, response: Response
 ) -> dict[str, Any]:
+    _rate_limit_or_429(request, action="accept_invite")
     cp = _cp_or_503(request)
     try:
         user = await cp.accept_invite(
@@ -116,10 +137,21 @@ async def _accept_invite_handler(
             display_name=body.display_name,
         )
     except ValueError as exc:
+        audit_security(
+            "invite_accept_fail",
+            client=client_key(request),
+            reason=str(exc)[:80],
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _session, token = await cp.create_session(user.id)
     _set_session_cookie(response, token, max_age=60 * 60 * 24 * 14)
     principal = await cp.principal_for_user(user, via="session")
+    audit_security(
+        "invite_accept_ok",
+        user_id=user.id,
+        email=user.email,
+        client=client_key(request),
+    )
     return {
         "user": _user_public(user),
         "principal": _principal_public(principal),
@@ -158,7 +190,13 @@ async def _create_invite_handler(
     principal: ControlPlanePrincipal = Depends(require_principal),
 ) -> dict[str, Any]:
     if not principal.is_admin:
+        audit_security(
+            "invite_create_denied",
+            user_id=principal.user_id,
+            reason="not_admin",
+        )
         raise HTTPException(status_code=403, detail="admin only")
+    _rate_limit_or_429(request, action="invite_create")
     cp = _cp_or_503(request)
     expires = datetime.now(timezone.utc) + timedelta(hours=body.ttl_hours)
     try:
@@ -169,6 +207,12 @@ async def _create_invite_handler(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    audit_security(
+        "invite_create_ok",
+        invite_id=rec.id,
+        email=rec.email,
+        by=principal.user_id,
+    )
     return {
         "invite": {
             "id": rec.id,

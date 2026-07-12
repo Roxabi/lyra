@@ -32,6 +32,13 @@ def wrap_dashboard_handler(hub: "Hub", nc: "NATS", handler: Any):
             payload = json.loads(msg.data.decode()) if msg.data else {}
             principal = parse_principal_from_payload(payload)
             if principal is None:
+                from factory.dashboard.security import audit_security
+
+                audit_security(
+                    "rpc_deny",
+                    subject=msg.subject,
+                    reason="principal_required",
+                )
                 err = {
                     "error": "unauthorized",
                     "message": "principal required",

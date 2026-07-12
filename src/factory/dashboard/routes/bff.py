@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import TYPE_CHECKING
 
 import httpx
@@ -50,14 +49,6 @@ if TYPE_CHECKING:
     from factory.dashboard.hub_client import DashboardHubClient
 
 
-def _sessions_auth_required() -> bool:
-    return os.environ.get("FACTORY_DASHBOARD_AUTH_REQUIRED", "").strip() in {
-        "1",
-        "true",
-        "yes",
-    }
-
-
 def build_bff_router(  # noqa: C901, PLR0915
     adapter: WebAdapter,
     hub: DashboardHubClient,
@@ -91,11 +82,7 @@ def build_bff_router(  # noqa: C901, PLR0915
         agent: str = Query(...),
         limit: int = Query(default=20, ge=1, le=50),
     ) -> DashboardSessionsListResponse:
-        if _sessions_auth_required():
-            raise HTTPException(
-                status_code=403,
-                detail="session list requires operator auth (#1992)",
-            )
+        # Auth is control-plane session/API-key (ADR-103); not AUTH_REQUIRED stub.
         if e2e_enabled():
             return stub_sessions_list(agent)
         try:
@@ -113,11 +100,6 @@ def build_bff_router(  # noqa: C901, PLR0915
         session_id: str = Query(...),
         limit: int = Query(default=200, ge=1, le=500),
     ) -> DashboardSessionsTurnsResponse:
-        if _sessions_auth_required():
-            raise HTTPException(
-                status_code=403,
-                detail="session turns requires operator auth (#1992)",
-            )
         if e2e_enabled():
             return stub_sessions_turns(session_id)
         try:
@@ -231,11 +213,6 @@ def build_bff_router(  # noqa: C901, PLR0915
     async def resume_session(
         body: DashboardSessionsResumeRequest,
     ) -> DashboardSessionsResumeResponse:
-        if _sessions_auth_required():
-            raise HTTPException(
-                status_code=403,
-                detail="session resume requires operator auth (#1992)",
-            )
         if body.agent not in adapter.agent_names:
             raise HTTPException(
                 status_code=400, detail=f"unknown agent: {body.agent!r}"

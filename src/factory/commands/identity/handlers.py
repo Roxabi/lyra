@@ -70,6 +70,17 @@ async def _try_dashboard_link(
     log.info(
         "dashboard platform link completed user=%s via %s", user_id, msg.user_id
     )
+    try:
+        from factory.dashboard.security import audit_security
+
+        audit_security(
+            "platform_link_ok",
+            user_id=user_id,
+            platform_key=msg.user_id,
+            chat_ready=ready,
+        )
+    except Exception:  # noqa: BLE001 — audit must not break chat path
+        log.debug("audit_security failed", exc_info=True)
     return Response(
         content=f"Dashboard account linked (`{msg.user_id}`).\n{status}"
     )

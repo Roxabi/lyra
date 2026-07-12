@@ -107,9 +107,13 @@ async def _resolve_with_control_plane(
 
 
 def _resolve_legacy_operator(authorization: str | None) -> ControlPlanePrincipal:
+    """Shared operator token only — **fail-closed** when unset (Block 14)."""
     token = _configured_operator_token()
     if token is None:
-        return _admin_principal(user_id=default_operator_user_id(), via="sys")
+        raise HTTPException(
+            status_code=401,
+            detail="authentication required (control-plane or operator token)",
+        )
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="operator auth required")
     presented = authorization.removeprefix("Bearer ").strip()
@@ -131,14 +135,12 @@ async def require_principal(
     authorization: str | None = Header(default=None),
     factory_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ) -> ControlPlanePrincipal:
-    """Resolve session cookie or Bearer API key → principal (fail-closed when CP wired).
+    """Resolve session cookie or Bearer API key → principal (fail-closed).
 
-    Rules (ADR-103):
+    Rules (ADR-103 / Block 14):
     * ``FACTORY_DASHBOARD_E2E`` → synthetic admin principal.
     * Control-plane directory on ``app.state`` → require valid session or API key.
-    * Directory not wired → fall back to legacy operator token behaviour
-      (fail-open when token unset) so existing tests keep working until
-      production always injects the directory.
+    * Directory not wired → shared operator token **required** (no Tailnet open).
     * Optional ``X-Factory-Org-Id`` must be a membership (else ignored).
     """
     if e2e_enabled():
@@ -171,16 +173,23 @@ async def require_principal(
 def require_operator(
     authorization: str | None = Header(default=None),
 ) -> OperatorContext:
-    """Legacy: validate bearer token when configured; else allow Tailnet-only.
+    """Bearer operator token for connectors — fail-closed when unset (Block 14).
 
-    Prefer :func:`require_principal` for new routes. Kept for connectors until
-    they migrate fully to ControlPlanePrincipal.
+    Prefer :func:`require_principal` when control-plane is wired. E2E bypass only.
     """
-    token = _configured_operator_token()
+    from factory.dashboard.e2e import e2e_enabled as _e2e
+
     tenant = default_factory_tenant()
     user_id = default_operator_user_id()
-    if token is None:
+    if _e2e():
         return OperatorContext(user_id=user_id, factory_tenant=tenant)
+    token = _configured_operator_token()
+    if token is None:
+        raise HTTPException(
+            status_code=401,
+            detail="operator auth required (set FACTORY_DASHBOARD_OPERATOR_TOKEN "
+            "or use session/API-key principal)",
+        )
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="operator auth required")
     presented = authorization.removeprefix("Bearer ").strip()

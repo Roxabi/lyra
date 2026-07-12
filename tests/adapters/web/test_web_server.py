@@ -109,15 +109,17 @@ class TestWebServer:
         platforms = {s["platform"] for s in sessions}
         assert "web" in platforms
 
-    def test_bff_sessions_auth_gate(
+    def test_bff_connectors_fail_closed_without_token(
         self,
         client: tuple[TestClient, MagicMock, WebAdapter],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("FACTORY_DASHBOARD_AUTH_REQUIRED", "1")
+        """Block 14: no Tailnet open path when operator token unset."""
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        monkeypatch.delenv("FACTORY_DASHBOARD_OPERATOR_TOKEN", raising=False)
         tc, _, _ = client
-        res = tc.get("/api/bff/sessions", params={"agent": "alpha"})
-        assert res.status_code == 403
+        res = tc.get("/api/bff/connectors")
+        assert res.status_code == 401
 
     def test_bff_connectors_e2e_stub(
         self,
@@ -159,6 +161,7 @@ class TestWebServer:
         client: tuple[TestClient, MagicMock, WebAdapter],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
         monkeypatch.setenv("FACTORY_DASHBOARD_OPERATOR_TOKEN", "secret-token")
         tc, _, _ = client
         res = tc.get("/api/bff/connectors")

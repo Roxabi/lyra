@@ -88,7 +88,7 @@ class TestFilterJobs:
             {"job_id": "j3"},
             {"job_id": "j4"},
         ]
-        meta = {
+        meta: dict[str, tuple[str | None, str | None]] = {
             "j1": ("rx:user:a", None),
             "j2": ("rx:user:b", "org:1"),
             "j3": ("rx:user:c", None),

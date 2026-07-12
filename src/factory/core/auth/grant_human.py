@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from factory.core.auth.agent_grants import Capability, Principal, PrincipalKind
 
@@ -22,7 +22,8 @@ class GrantWriter(Protocol):
         capability: Capability = Capability.USE,
         granted_by: str,
         source: str,
-    ) -> None: ...
+    ) -> Any:  # AgentGrant | None — store returns grant row
+        ...
 
 
 async def grant_human_platforms(  # noqa: PLR0913 — grant matrix args are all required

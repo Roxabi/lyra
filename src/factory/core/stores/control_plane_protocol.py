@@ -16,6 +16,7 @@ from factory.core.auth.control_plane import (
     InviteRecord,
     SessionRecord,
 )
+from factory.core.auth.control_plane_org import OrgMember, OrgRecord, OrgRole
 
 __all__ = ["ControlPlaneDirectory"]
 
@@ -134,3 +135,60 @@ class ControlPlaneDirectory(Protocol):
         via: str,
         active_org_id: str | None = None,
     ) -> ControlPlanePrincipal: ...
+
+    # --- organizations ---
+
+    async def create_org(self, *, name: str, created_by: str) -> OrgRecord: ...
+
+    async def get_org(self, org_id: str) -> OrgRecord | None: ...
+
+    async def list_orgs_for_user(self, user_id: str) -> list[OrgRecord]: ...
+
+    async def org_ids_for_user(self, user_id: str) -> frozenset[str]: ...
+
+    async def is_org_member(self, org_id: str, user_id: str) -> bool: ...
+
+    async def add_org_member(
+        self,
+        org_id: str,
+        user_id: str,
+        *,
+        org_role: OrgRole = OrgRole.MEMBER,
+        actor_user_id: str,
+        actor_is_admin: bool = False,
+    ) -> OrgMember: ...
+
+    async def remove_org_member(
+        self,
+        org_id: str,
+        user_id: str,
+        *,
+        actor_user_id: str,
+        actor_is_admin: bool = False,
+    ) -> bool: ...
+
+    async def list_org_members(self, org_id: str) -> list[OrgMember]: ...
+
+    # --- platform links ---
+
+    async def create_link_code(
+        self,
+        user_id: str,
+        *,
+        platform: str | None = None,
+        ttl_seconds: int = 600,  # const-ok: 10m link TTL
+    ) -> tuple[str, str]: ...
+
+    async def consume_link_code(
+        self, raw_token: str, *, platform_key: str
+    ) -> str: ...
+
+    async def list_platform_links(self, user_id: str) -> list[dict[str, str]]: ...
+
+    async def chat_ready(self, user_id: str) -> bool: ...
+
+    async def unlink_platform(self, user_id: str, platform: str) -> bool: ...
+
+    async def is_platform_chat_ready(self, platform_key: str) -> bool: ...
+
+    async def dash_user_for_platform(self, platform_key: str) -> str | None: ...

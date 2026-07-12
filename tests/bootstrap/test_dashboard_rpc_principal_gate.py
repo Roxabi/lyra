@@ -49,7 +49,9 @@ async def test_wrap_allows_with_principal() -> None:
     await cb(msg)
     handler.assert_awaited_once()
     # business payload must not carry principal_* keys
+    assert handler.await_args is not None
     call_payload = handler.await_args.args[2]
     assert "principal_user_id" not in call_payload
+    assert msg.respond.await_args is not None
     raw = json.loads(msg.respond.await_args.args[0].decode())
     assert raw["ok"] is True

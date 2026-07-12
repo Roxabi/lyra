@@ -1,4 +1,4 @@
-"""PlatformLinkMiddleware — dual-link chat gate (ADR-103 Block 9)."""
+"""PlatformLinkMiddleware — dual-link chat gate."""
 
 from __future__ import annotations
 
@@ -12,21 +12,25 @@ from factory.core.hub.pipeline.pipeline_types import Action
 from factory.core.messaging.message import InboundMessage, Platform
 
 
-def _msg(**kwargs) -> InboundMessage:
-    base = dict(
+def _msg(
+    *,
+    text: str = "hello",
+    platform: str | None = None,
+    user_id: str = "tg:user:1",
+) -> InboundMessage:
+    plat = platform if platform is not None else Platform.TELEGRAM.value
+    return InboundMessage(
         id="m1",
-        platform=Platform.TELEGRAM.value,
+        platform=plat,
         bot_id="b1",
         scope_id="s1",
-        user_id="tg:user:1",
+        user_id=user_id,
         user_name="tester",
         is_mention=False,
-        text="hello",
-        text_raw="hello",
+        text=text,
+        text_raw=text,
         trust_level=TrustLevel.PUBLIC,
     )
-    base.update(kwargs)
-    return InboundMessage(**base)
 
 
 @pytest.mark.asyncio
@@ -52,7 +56,7 @@ async def test_allows_link_command_when_unlinked() -> None:
     ctx = MagicMock()
     ctx.hub = hub
     nxt = AsyncMock(return_value="ok")
-    out = await mw(_msg(text="/link abc", text_raw="/link abc"), ctx, nxt)
+    out = await mw(_msg(text="/link abc"), ctx, nxt)
     assert out == "ok"
     checker.is_platform_chat_ready.assert_not_awaited()
 
@@ -68,7 +72,7 @@ async def test_refuses_unlinked_chat() -> None:
     ctx.hub = hub
     ctx.emit = MagicMock()
     nxt = AsyncMock()
-    result = await mw(_msg(text="hi there", text_raw="hi there"), ctx, nxt)
+    result = await mw(_msg(text="hi there"), ctx, nxt)
     nxt.assert_not_awaited()
     assert result.action is Action.COMMAND_HANDLED
     assert result.response is not None
@@ -85,7 +89,7 @@ async def test_allows_chat_ready() -> None:
     ctx = MagicMock()
     ctx.hub = hub
     nxt = AsyncMock(return_value="ok")
-    out = await mw(_msg(text="hello", text_raw="hello"), ctx, nxt)
+    out = await mw(_msg(text="hello"), ctx, nxt)
     assert out == "ok"
 
 
@@ -99,12 +103,7 @@ async def test_web_platform_exempt() -> None:
     ctx.hub = hub
     nxt = AsyncMock(return_value="ok")
     out = await mw(
-        _msg(
-            platform=Platform.WEB.value,
-            user_id="web:user:1",
-            text="hi",
-            text_raw="hi",
-        ),
+        _msg(platform=Platform.WEB.value, user_id="web:user:1", text="hi"),
         ctx,
         nxt,
     )

@@ -147,6 +147,8 @@ class Hub(
         # Dashboard agent/soul RPC (#1760).
         self._agent_store: object | None = None
         self._user_store: object | None = None
+        self._control_plane: object | None = None
+        self._platform_link_checker: object | None = None
         self._blob_store: BlobStorePort | None = None
         # Wired by fleet_ingest for /fleet dashboard RPC.
         self._fleet_store: object | None = None

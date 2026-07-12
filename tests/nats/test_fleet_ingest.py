@@ -11,6 +11,8 @@ from nats.aio.client import Client as NATS
 
 from factory.bootstrap.factory.dashboard_rpc import start_dashboard_rpc
 from factory.bootstrap.fleet_ingest import start_fleet_ingest
+from factory.core.auth.control_plane import ControlPlanePrincipal, GlobalRole
+from factory.core.auth.control_plane_wire import stamp_principal_payload
 from factory.core.hub.hub import Hub
 from factory.nats.fleet_catalog import FleetCatalogEntry
 from factory.nats.fleet_store import FleetStore
@@ -19,6 +21,18 @@ from roxabi_contracts.fleet import CONTAINER_REPORT
 from roxabi_contracts.fleet.models import new_container_report
 from roxabi_nats._serialize import serialize
 from tests.nats.conftest import requires_nats_server
+
+
+def _fleet_rpc_payload() -> bytes:
+    """Dashboard fleet RPC requires a stamped principal (ADR-103)."""
+    principal = ControlPlanePrincipal(
+        user_id="rx:test-admin",
+        roles=frozenset({GlobalRole.ADMIN.value}),
+        org_ids=frozenset(),
+        active_org_id=None,
+        via="session",
+    )
+    return json.dumps(stamp_principal_payload({}, principal)).encode()
 
 
 @pytest.fixture
@@ -95,7 +109,7 @@ async def test_fleet_list_rpc_request_reply(
 
     subs = await start_dashboard_rpc(hub, nc)
     try:
-        msg = await nc.request(SUBJECTS.fleet_list, b"{}", timeout=2)
+        msg = await nc.request(SUBJECTS.fleet_list, _fleet_rpc_payload(), timeout=2)
         data = json.loads(msg.data.decode())
         assert "rows" in data
         hub_row = next(
@@ -132,7 +146,7 @@ async def test_fleet_ingest_then_rpc_list(
     hub_row = None
     for _ in range(20):
         await asyncio.sleep(0.05)  # NATS delivery window
-        msg = await nc.request(SUBJECTS.fleet_list, b"{}", timeout=2)
+        msg = await nc.request(SUBJECTS.fleet_list, _fleet_rpc_payload(), timeout=2)
         data = json.loads(msg.data.decode())
         hub_row = next(
             (r for r in data["rows"] if r["container_name"] == "factory-hub"),

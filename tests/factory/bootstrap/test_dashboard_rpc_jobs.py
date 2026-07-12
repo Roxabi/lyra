@@ -13,6 +13,11 @@ from factory.bootstrap.factory.dashboard_jobs_rpc import (
     handle_jobs_launch,
     handle_jobs_steer,
 )
+from factory.core.auth.control_plane import ControlPlanePrincipal, GlobalRole
+from factory.core.auth.control_plane_wire import (
+    clear_request_principal,
+    set_request_principal,
+)
 from roxabi_contracts.jobs.subjects import (
     JOB_CANCEL_STEER_TOKEN,
     jobs_steer,
@@ -30,6 +35,7 @@ def hub() -> MagicMock:
     store = MagicMock()
     store.get.return_value = row
     h._agent_store = store
+    h._control_plane = None
     return h
 
 
@@ -38,6 +44,20 @@ def nc() -> AsyncMock:
     client = AsyncMock()
     client.publish = AsyncMock()
     return client
+
+
+@pytest.fixture(autouse=True)
+def admin_principal():
+    p = ControlPlanePrincipal(
+        user_id="rx:user:admin",
+        roles=frozenset({GlobalRole.ADMIN.value}),
+        org_ids=frozenset(),
+        active_org_id=None,
+        via="session",
+    )
+    set_request_principal(p)
+    yield p
+    clear_request_principal()
 
 
 class TestJobsLaunch:

@@ -563,7 +563,7 @@ Runs `podman quadlet --dryrun` (parse errors) and a comment-guard that rejects i
 | `FACTORY_WEB_HOST` | `0.0.0.0` | Dashboard HTTP bind host (phase 1 name) |
 | `FACTORY_WEB_PORT` | `8765` | Dashboard HTTP port |
 | `FACTORY_DASHBOARD_E2E` | — | When `1`, dashboard BFF uses stub agents/sessions (Playwright/CI) |
-| `FACTORY_DASHBOARD_AUTH_REQUIRED` | — | When `1`, `/api/bff/sessions*` returns 403 until #1992 auth |
+| `FACTORY_DASHBOARD_AUTH_REQUIRED` | — | **Removed (ADR-103 Block 14)** — control-plane session/API-key is the auth path |
 | `FACTORY_SMOKE_MODE` | — | ADR-094 phase 3: smoke platform identity in CI (not prod Quadlet) |
 
 Phase 2 aliases (documented, not required yet): `FACTORY_DASHBOARD_HOST` / `FACTORY_DASHBOARD_PORT`

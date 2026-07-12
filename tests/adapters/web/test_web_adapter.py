@@ -202,18 +202,22 @@ class TestWebOutboundAgui:
 
 class TestChatStreamFormat:
     @pytest.fixture
-    def chat_client(self) -> tuple:
+    def chat_client(self, monkeypatch: pytest.MonkeyPatch) -> tuple:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
         from factory.adapters.web.chat_routes import build_chat_router
         from factory.dashboard.stream_tokens import StreamTokenRegistry
 
+        monkeypatch.setenv("FACTORY_DASHBOARD_OPERATOR_TOKEN", "test-op-token")
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
         adapter = _make_adapter()
         tokens = StreamTokenRegistry()
         app = FastAPI()
         app.include_router(build_chat_router(adapter, tokens))
-        return TestClient(app), adapter, tokens
+        client = TestClient(app)
+        client.headers.update({"Authorization": "Bearer test-op-token"})
+        return client, adapter, tokens
 
     def test_stream_format_mismatch_returns_403(self, chat_client: tuple) -> None:
         client, adapter, tokens = chat_client

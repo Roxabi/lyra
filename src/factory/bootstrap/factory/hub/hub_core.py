@@ -84,5 +84,9 @@ def _build_hub(deps: BuildHubDeps) -> Hub:
     hub._agent_store = deps.stores.agent
     hub._user_store = deps.stores.user
     hub._blob_store = deps.blob_store
+    cp = getattr(deps.stores, "control_plane", None)
+    hub._control_plane = cp
+    # ADR-103: dual platform-link gate for TG/DC chat
+    hub._platform_link_checker = cp
 
     return hub

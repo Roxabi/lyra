@@ -125,6 +125,19 @@ def _meta_envelope(row: AgentRow) -> SoulMetaEnvelope | None:
         return None
 
 
+def _admin_mutate_gate() -> dict | None:
+    """V1: agents/soul writes require admin principal (fail-closed)."""
+    from factory.core.auth.control_plane_authz import can_mutate_agents
+    from factory.core.auth.control_plane_wire import get_request_principal
+
+    principal = get_request_principal()
+    if principal is None:
+        return {"error": "unauthorized", "message": "principal required"}
+    if can_mutate_agents(principal):
+        return None
+    return {"error": "forbidden", "message": "admin only for agent mutations"}
+
+
 async def handle_agents_list(hub: Hub, _nc: NATS, _payload: dict[str, Any]) -> dict:
     store = _agent_store(hub)
     if store is None:
@@ -149,6 +162,9 @@ async def handle_agents_list(hub: Hub, _nc: NATS, _payload: dict[str, Any]) -> d
 
 
 async def handle_agents_create(hub: Hub, _nc: NATS, payload: dict[str, Any]) -> dict:
+    denied = _admin_mutate_gate()
+    if denied is not None:
+        return denied
     req = DashboardAgentCreateRequest.model_validate(payload.get("body") or payload)
     store = _agent_store(hub)
     if store is None:
@@ -193,6 +209,9 @@ async def handle_agents_get(hub: Hub, _nc: NATS, payload: dict[str, Any]) -> dic
 
 
 async def handle_agents_patch(hub: Hub, _nc: NATS, payload: dict[str, Any]) -> dict:
+    denied = _admin_mutate_gate()
+    if denied is not None:
+        return denied
     name = str(payload.get("name") or "")
     req = DashboardAgentPatchRequest.model_validate(payload.get("patch") or payload)
     store = _agent_store(hub)
@@ -246,6 +265,9 @@ async def handle_agents_patch(hub: Hub, _nc: NATS, payload: dict[str, Any]) -> d
 
 
 async def handle_agents_soul_put(hub: Hub, _nc: NATS, payload: dict[str, Any]) -> dict:
+    denied = _admin_mutate_gate()
+    if denied is not None:
+        return denied
     name = str(payload.get("name") or "")
     req = DashboardAgentSoulPutRequest.model_validate(payload.get("body") or payload)
     store = _agent_store(hub)

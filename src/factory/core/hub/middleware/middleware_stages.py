@@ -11,6 +11,7 @@ This module re-exports from split files for backward compatibility:
 
 from .middleware_authz import AuthorizeAgentMiddleware
 from .middleware_guards import (
+    PlatformLinkMiddleware,
     RateLimitMiddleware,
     ResolveIdentityMiddleware,
     TraceMiddleware,
@@ -26,6 +27,7 @@ __all__ = [
     "AuthorizeAgentMiddleware",
     "CommandMiddleware",
     "MessagePrepMiddleware",
+    "PlatformLinkMiddleware",
     "RateLimitMiddleware",
     "ResolveBindingMiddleware",
     "ResolveIdentityMiddleware",

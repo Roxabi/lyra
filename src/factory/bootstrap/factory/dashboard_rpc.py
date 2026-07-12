@@ -7,15 +7,23 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from nats.aio.msg import Msg
-from pydantic import ValidationError
 
 from factory.bootstrap.factory.dashboard.admin_rpc import (
     handle_admin_access,
     handle_admin_user_create,
     handle_admin_user_patch,
 )
+from factory.bootstrap.factory.dashboard.connectors_rpc import (
+    handle_connectors_delete,
+    handle_connectors_list,
+    handle_connectors_upsert,
+)
 from factory.bootstrap.factory.dashboard.fleet_rpc import handle_fleet_list
+from factory.bootstrap.factory.dashboard.identity_rpc import (
+    handle_identity_cache_rewarm,
+)
 from factory.bootstrap.factory.dashboard.pipeline_rpc import handle_pipeline_list
+from factory.bootstrap.factory.dashboard.rpc_wrap import wrap_dashboard_handler
 from factory.bootstrap.factory.dashboard.voice_rpc import handle_voice_capabilities
 from factory.bootstrap.factory.dashboard_agents_rpc import (
     handle_agents_create,
@@ -32,7 +40,6 @@ from factory.bootstrap.factory.dashboard_jobs_rpc import (
     handle_jobs_list,
     handle_jobs_steer,
 )
-from factory.bootstrap.factory.ingress_registry_service import get_installation_store
 from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.session_catalog import list_sessions_for_agent
 from factory.core.messaging.message import Platform
@@ -41,13 +48,6 @@ from roxabi_contracts.dashboard import (
     SUBJECTS,
     AgentHealth,
     AgentHealthResponse,
-    ConnectorInstallationRow,
-    DashboardConnectorInstallationDeleteRequest,
-    DashboardConnectorInstallationDeleteResponse,
-    DashboardConnectorInstallationsListRequest,
-    DashboardConnectorInstallationsListResponse,
-    DashboardConnectorInstallationUpsertRequest,
-    DashboardConnectorInstallationUpsertResponse,
     DashboardSession,
     DashboardSessionsListRequest,
     DashboardSessionsListResponse,
@@ -110,11 +110,12 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.voice_capabilities, handle_voice_capabilities),
         (SUBJECTS.fleet_list, handle_fleet_list),
         (SUBJECTS.pipeline_list, handle_pipeline_list),
-        (SUBJECTS.connectors_installations_list, _handle_connectors_list),
-        (SUBJECTS.connectors_installations_upsert, _handle_connectors_upsert),
-        (SUBJECTS.connectors_installations_delete, _handle_connectors_delete),
+        (SUBJECTS.connectors_installations_list, handle_connectors_list),
+        (SUBJECTS.connectors_installations_upsert, handle_connectors_upsert),
+        (SUBJECTS.connectors_installations_delete, handle_connectors_delete),
+        (SUBJECTS.identity_cache_rewarm, handle_identity_cache_rewarm),
     ):
-        sub = await nc.subscribe(subject, cb=_wrap(hub, nc, handler))
+        sub = await nc.subscribe(subject, cb=wrap_dashboard_handler(hub, nc, handler))
         subs.append(sub)
         log.info("dashboard_rpc: subscribed %s", subject)
     return subs
@@ -127,22 +128,8 @@ def _wrap_agents(handler: Any):
     return _inner
 
 
-def _wrap(hub: Hub, nc: NATS, handler: Any):
-    async def _cb(msg: Msg) -> None:
-        try:
-            payload = json.loads(msg.data.decode()) if msg.data else {}
-            result = await handler(hub, nc, payload)
-            await msg.respond(json.dumps(result).encode())
-        except (ValidationError, json.JSONDecodeError, UnicodeDecodeError, KeyError):
-            log.exception("dashboard_rpc handler failed subject=%s", msg.subject)
-            err = {"error": "bad_request"}
-            await msg.respond(json.dumps(err).encode())
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# hub RPC must always respond
-            log.exception("dashboard_rpc handler failed subject=%s", msg.subject)
-            err = {"error": "internal_error"}
-            await msg.respond(json.dumps(err).encode())
-
-    return _cb
+# Re-export for tests / legacy imports
+_wrap = wrap_dashboard_handler
 
 
 async def _handle_sessions_list(
@@ -242,87 +229,3 @@ async def _handle_agents_status(
             )
         )
     return AgentHealthResponse(agents=result).model_dump()
-
-
-_SUPPORTED_CONNECTORS = frozenset({"github", "cloudflare"})
-
-
-def _tenant_mismatch_response() -> dict[str, Any]:
-    return {"error": "tenant_forbidden"}
-
-
-async def _handle_connectors_list(
-    hub: Hub, nc: NATS, payload: dict[str, Any]
-) -> dict[str, Any]:
-    _ = hub, nc
-    req = DashboardConnectorInstallationsListRequest.model_validate(payload)
-    if req.connector not in _SUPPORTED_CONNECTORS:
-        return DashboardConnectorInstallationsListResponse(
-            installations=[]
-        ).model_dump()
-    store = await get_installation_store()
-    rows = await store.list_rows()
-    installations = [
-        ConnectorInstallationRow(
-            connector=str(row["connector"]),
-            external_id=str(row["external_id"]),
-            factory_tenant=str(row["factory_tenant"]),
-            enabled=bool(row["enabled"]),
-        )
-        for row in rows
-        if row["connector"] == req.connector
-        and row["factory_tenant"] == req.factory_tenant
-    ]
-    return DashboardConnectorInstallationsListResponse(
-        installations=installations
-    ).model_dump()
-
-
-async def _handle_connectors_upsert(
-    hub: Hub, nc: NATS, payload: dict[str, Any]
-) -> dict[str, Any]:
-    _ = hub, nc
-    req = DashboardConnectorInstallationUpsertRequest.model_validate(payload)
-    if req.connector not in _SUPPORTED_CONNECTORS:
-        return {"error": "unknown_connector"}
-    if req.factory_tenant != req.operator_tenant:
-        return _tenant_mismatch_response()
-    store = await get_installation_store()
-    await store.upsert_lifecycle(
-        req.connector,
-        req.external_id,
-        req.factory_tenant,
-        enabled=True,
-    )
-    return DashboardConnectorInstallationUpsertResponse().model_dump()
-
-
-async def _handle_connectors_delete(
-    hub: Hub, nc: NATS, payload: dict[str, Any]
-) -> dict[str, Any]:
-    _ = hub, nc
-    req = DashboardConnectorInstallationDeleteRequest.model_validate(payload)
-    if req.connector not in _SUPPORTED_CONNECTORS:
-        return {"error": "unknown_connector"}
-    store = await get_installation_store()
-    rows = await store.list_rows()
-    match = next(
-        (
-            row
-            for row in rows
-            if row["connector"] == req.connector
-            and row["external_id"] == req.external_id
-        ),
-        None,
-    )
-    if match is None:
-        return DashboardConnectorInstallationDeleteResponse().model_dump()
-    if str(match["factory_tenant"]) != req.operator_tenant:
-        return _tenant_mismatch_response()
-    await store.upsert_lifecycle(
-        req.connector,
-        req.external_id,
-        str(match["factory_tenant"]),
-        enabled=False,
-    )
-    return DashboardConnectorInstallationDeleteResponse().model_dump()

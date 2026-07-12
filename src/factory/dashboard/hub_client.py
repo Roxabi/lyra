@@ -71,7 +71,24 @@ class HubStoreUnavailableError(RuntimeError):
     """Hub RPC returned ``{"error": "store_unavailable"}``."""
 
 
+class HubUnauthorizedError(PermissionError):
+    """Hub RPC returned ``{"error": "unauthorized"}`` (missing principal)."""
+
+
+class HubForbiddenError(PermissionError):
+    """Hub RPC returned ``{"error": "forbidden"}`` (authz denied)."""
+
+
+def _raise_authz_rpc_error(raw: dict[str, Any]) -> None:
+    err = raw.get("error")
+    if err == "unauthorized":
+        raise HubUnauthorizedError(str(raw.get("message") or "unauthorized"))
+    if err == "forbidden":
+        raise HubForbiddenError(str(raw.get("message") or "forbidden"))
+
+
 def _raise_admin_user_rpc_error(raw: dict[str, Any]) -> None:
+    _raise_authz_rpc_error(raw)
     err = raw.get("error")
     if err == "not_found":
         raise HubUserNotFoundError(str(raw.get("message") or "not_found"))
@@ -82,6 +99,7 @@ def _raise_admin_user_rpc_error(raw: dict[str, Any]) -> None:
 
 
 def _raise_agent_rpc_error(raw: dict[str, Any]) -> None:
+    _raise_authz_rpc_error(raw)
     err = raw.get("error")
     if err == "not_found":
         raise HubAgentNotFoundError(str(raw.get("message") or "not_found"))
@@ -99,15 +117,29 @@ class DashboardHubClient:
         return getattr(self._adapter, "_nats_client", None)
 
     async def _request(self, subject: str, payload: dict[str, Any]) -> dict[str, Any]:
+        from factory.core.auth.control_plane_wire import (
+            get_request_principal,
+            stamp_principal_payload,
+        )
+
         nc = self._nc()
         if nc is None:
             raise RuntimeError("NATS client not wired")
+        principal = get_request_principal()
+        wire = (
+            stamp_principal_payload(payload, principal)
+            if principal is not None
+            else payload
+        )
         msg = await nc.request(
             subject,
-            json.dumps(payload).encode(),
+            json.dumps(wire).encode(),
             timeout=_RPC_TIMEOUT,
         )
-        return json.loads(msg.data.decode())
+        raw = json.loads(msg.data.decode())
+        if isinstance(raw, dict):
+            _raise_authz_rpc_error(raw)
+        return raw
 
     async def list_sessions(
         self, agent: str, *, limit: int = 20
@@ -280,3 +312,7 @@ class DashboardHubClient:
         return await self._request(
             SUBJECTS.connectors_installations_delete, req.model_dump()
         )
+
+    async def rewarm_identity_cache(self) -> dict[str, Any]:
+        """Ask hub to reload UserStore platform_identities after BFF link/unlink."""
+        return await self._request(SUBJECTS.identity_cache_rewarm, {})

@@ -3,11 +3,17 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  Outlet,
   redirect,
+  useRouterState,
 } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { AgentDetailPage } from "@/features/agents/agent-detail-page";
 import { AgentsListPage } from "@/features/agents/agents-list-page";
+import { AcceptInvitePage } from "@/features/auth/accept-invite-page";
+import { AccountLinksPage } from "@/features/auth/account-links-page";
+import { fetchMe } from "@/features/auth/api";
+import { LoginPage } from "@/features/auth/login-page";
 import { ChatPage } from "@/features/chat/chat-page";
 import { FleetPage } from "@/features/fleet/fleet-page";
 import { IntegrationsPage } from "@/features/integrations/integrations-page";
@@ -23,14 +29,65 @@ interface RouterContext {
   queryClient: QueryClient;
 }
 
+const PUBLIC_PATHS = new Set(["/login", "/accept-invite"]);
+
+function RootLayout() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  if (PUBLIC_PATHS.has(pathname)) {
+    return <Outlet />;
+  }
+  return <AppShell />;
+}
+
 const rootRoute = createRootRouteWithContext<RouterContext>()({
-  component: AppShell,
+  component: RootLayout,
+  beforeLoad: async ({ location }) => {
+    if (PUBLIC_PATHS.has(location.pathname)) return;
+    const safeRedirect =
+      location.pathname.startsWith("/") && !location.pathname.startsWith("//")
+        ? `${location.pathname}${location.searchStr ?? ""}`
+        : "/";
+    try {
+      const me = await fetchMe();
+      if (me === null) {
+        throw redirect({
+          to: "/login",
+          search: { redirect: safeRedirect },
+        });
+      }
+    } catch (e) {
+      if (e && typeof e === "object" && "to" in e) throw e;
+      // Fail closed on network/5xx — do not mount protected shell.
+      throw redirect({
+        to: "/login",
+        search: { redirect: safeRedirect },
+      });
+    }
+  },
 });
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   component: OverviewPage,
+});
+
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login",
+  component: LoginPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+  }),
+});
+
+const acceptInviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/accept-invite",
+  component: AcceptInvitePage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    token: typeof search.token === "string" ? search.token : undefined,
+  }),
 });
 
 const chatRoute = createRoute({
@@ -105,6 +162,12 @@ const usersRoute = createRoute({
   component: UsersPage,
 });
 
+const accountLinksRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/account/links",
+  component: AccountLinksPage,
+});
+
 const adminRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
@@ -115,6 +178,8 @@ const adminRedirectRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  loginRoute,
+  acceptInviteRoute,
   chatRoute,
   jobsRoute,
   integrationsRoute,
@@ -125,6 +190,7 @@ const routeTree = rootRoute.addChildren([
   opsRoute,
   spansRoute,
   usersRoute,
+  accountLinksRoute,
   adminRedirectRoute,
   designSystemRoute,
 ]);

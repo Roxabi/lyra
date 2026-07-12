@@ -7,14 +7,22 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from factory.bootstrap.factory import dashboard_rpc
+from factory.bootstrap.factory.dashboard import (
+    connectors_rpc as dashboard_connectors_rpc,
+)
+from factory.bootstrap.factory.dashboard.connectors_rpc import (
+    handle_connectors_delete as _handle_connectors_delete,
+)
+from factory.bootstrap.factory.dashboard.connectors_rpc import (
+    handle_connectors_list as _handle_connectors_list,
+)
+from factory.bootstrap.factory.dashboard.connectors_rpc import (
+    handle_connectors_upsert as _handle_connectors_upsert,
+)
 from factory.bootstrap.factory.dashboard_agents_rpc import handle_agents_list
 from factory.bootstrap.factory.dashboard_jobs_rpc import handle_jobs_list
 from factory.bootstrap.factory.dashboard_rpc import (
     _handle_agents_status,
-    _handle_connectors_delete,
-    _handle_connectors_list,
-    _handle_connectors_upsert,
     _handle_sessions_list,
     _handle_sessions_resume,
     _handle_sessions_turns,
@@ -141,12 +149,31 @@ async def test_agents_list_rpc_handler_returns_summaries() -> None:
 
 @pytest.mark.asyncio
 async def test_jobs_list_empty_without_registry() -> None:
+    from factory.core.auth.control_plane import ControlPlanePrincipal, GlobalRole
+    from factory.core.auth.control_plane_wire import (
+        clear_request_principal,
+        set_request_principal,
+    )
+
     hub = MagicMock()
     hub.bindings = {}
     hub._active_jobs_coord = None
     hub._active_jobs_store = None
-    out = await handle_jobs_list(hub, _NC, {})
-    assert out["jobs"] == []
+    hub._control_plane = None
+    set_request_principal(
+        ControlPlanePrincipal(
+            user_id="rx:user:admin",
+            roles=frozenset({GlobalRole.ADMIN.value}),
+            org_ids=frozenset(),
+            active_org_id=None,
+            via="session",
+        )
+    )
+    try:
+        out = await handle_jobs_list(hub, _NC, {})
+        assert out["jobs"] == []
+    finally:
+        clear_request_principal()
 
 
 @pytest.mark.asyncio
@@ -210,7 +237,9 @@ def patch_installation_store(installation_store, monkeypatch: pytest.MonkeyPatch
     async def _get_store():
         return installation_store
 
-    monkeypatch.setattr(dashboard_rpc, "get_installation_store", _get_store)
+    monkeypatch.setattr(
+        dashboard_connectors_rpc, "get_installation_store", _get_store
+    )
 
 
 @pytest.mark.asyncio

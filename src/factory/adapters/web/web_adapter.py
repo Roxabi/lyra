@@ -96,13 +96,16 @@ class WebAdapter(OutboundAdapterBase):
         if agent not in self._agent_names:
             raise ValueError(f"unknown agent: {agent!r}")
         scope_id = f"{WEB_SCOPE_PREFIX}{agent}"
+        # Prefer control-plane principal when chat route stamps user_id/name.
+        user_id = str(raw.get("user_id") or "smoke").strip() or "smoke"
+        user_name = str(raw.get("user_name") or "Smoke").strip() or "Smoke"
         return InboundMessage(
             id=uuid4().hex,
             platform="web",
             bot_id=self._bot_id,
             scope_id=scope_id,
-            user_id="smoke",
-            user_name="Smoke",
+            user_id=user_id,
+            user_name=user_name,
             is_mention=True,
             text=text,
             text_raw=text,
@@ -166,8 +169,12 @@ class WebAdapter(OutboundAdapterBase):
         if self._outbound_listener is not None:
             await self._outbound_listener.start()
         from factory.adapters.web.web_server import create_app, run_uvicorn
+        from factory.infrastructure.stores.identity.control_plane_store import (
+            open_control_plane_store,
+        )
 
-        app = create_app(self)
+        self._control_plane = await open_control_plane_store()
+        app = create_app(self, control_plane=self._control_plane)
         self._server_task = asyncio.create_task(
             run_uvicorn(app, host=self._host, port=self._port, server_holder=self),
             name=f"web:{self._bot_id}",
@@ -186,5 +193,10 @@ class WebAdapter(OutboundAdapterBase):
             with contextlib.suppress(asyncio.CancelledError):
                 await self._server_task
             self._server_task = None
+        cp = getattr(self, "_control_plane", None)
+        if cp is not None:
+            with contextlib.suppress(Exception):
+                await cp.close()
+            self._control_plane = None
         if self._outbound_listener is not None:
             await self._outbound_listener.stop()

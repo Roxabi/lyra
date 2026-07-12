@@ -72,6 +72,9 @@ class DashboardSubjects(BaseModel):
     pipeline_list: Literal["factory.dashboard.pipeline.list"] = (
         "factory.dashboard.pipeline.list"
     )
+    identity_cache_rewarm: Literal["factory.dashboard.identity.cache_rewarm"] = (
+        "factory.dashboard.identity.cache_rewarm"
+    )
 
 
 SUBJECTS = DashboardSubjects()

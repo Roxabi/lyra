@@ -134,6 +134,10 @@ class UserStore(UserStoreProfileOps, SqliteStore):
                 self._key_to_user[platform_key] = user_id
                 self._user_to_keys.setdefault(user_id, set()).add(platform_key)
 
+    async def rewarm_identity_cache(self) -> None:
+        """Reload platform_identities cache (e.g. after ControlPlane link)."""
+        await self._warm_cache()
+
     async def _migrate_legacy_aliases(self) -> None:
         """One-shot import from ``identity_aliases`` (#472 → UserStore)."""
         db = self._require_db()

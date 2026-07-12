@@ -303,7 +303,9 @@ in #1992 before any wider exposure.
 
 **Session list API (`/api/bff/sessions*`)** — same Tailnet boundary applies: cross-platform
 `cli_session_id` resume/list is hub-backed (no `turns.db` mount on the dashboard container).
-Set `FACTORY_DASHBOARD_AUTH_REQUIRED=1` to return 403 on list/resume until #1992 operator auth
+Dashboard auth is control-plane session/API-key.
+→ `docs/runbooks/dashboard-auth-bootstrap.md` · `docs/architecture/security-routing.md`
+Legacy `FACTORY_DASHBOARD_AUTH_REQUIRED` stub was removed.
 lands; `stream_token` on SSE is separate (#1992 phase 1).
 
 ### Known residual risk — clipool `core.hooksPath` override (tracked #1245)

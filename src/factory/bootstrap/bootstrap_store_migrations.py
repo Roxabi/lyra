@@ -20,6 +20,14 @@ from factory.infrastructure.stores.identity.agent_grant_store import (
 from factory.infrastructure.stores.identity.auth_store import (
     _CREATE_GRANTS as _CREATE_AUTH_GRANTS,
 )
+from factory.infrastructure.stores.identity.control_plane_ddl import (
+    _CREATE_API_KEYS,
+    _CREATE_INVITES,
+    _CREATE_SESSIONS,
+    JOB_META_DDL,
+    LINK_DDL,
+    ORG_DDL,
+)
 from factory.infrastructure.stores.identity.identity_alias_store import (
     _CREATE_ALIASES,
     _CREATE_CHALLENGES,
@@ -52,6 +60,13 @@ _AUTH_DB_DDL: tuple[str, ...] = (
     _CREATE_USERS,
     _CREATE_PLATFORM_IDENTITIES,
     _CREATE_USER_MIGRATION,
+    # ADR-103 control-plane (users columns migrated at store connect)
+    _CREATE_INVITES,
+    _CREATE_SESSIONS,
+    _CREATE_API_KEYS,
+    *ORG_DDL,
+    *JOB_META_DDL,
+    *LINK_DDL,
 )
 
 _SENTINEL_DDL = (

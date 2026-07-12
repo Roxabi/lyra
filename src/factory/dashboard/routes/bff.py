@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import TYPE_CHECKING
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
+from factory.dashboard.auth import require_principal
 from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
@@ -27,10 +27,13 @@ from factory.dashboard.pipeline_stream import (
     PIPELINE_STREAM_ID,
     pipeline_sse_events,
 )
+from factory.dashboard.routes.auth_routes import register_auth_routes
 from factory.dashboard.routes.bff_admin import register_admin_routes
 from factory.dashboard.routes.bff_agents import register_agent_routes
 from factory.dashboard.routes.bff_common import map_hub_errors
 from factory.dashboard.routes.bff_jobs import register_jobs_routes
+from factory.dashboard.routes.link_routes import register_link_routes
+from factory.dashboard.routes.org_routes import register_org_routes
 from factory.dashboard.stream_tokens import StreamTokenRegistry
 from roxabi_contracts.dashboard import (
     DashboardOpsHealthResponse,
@@ -47,22 +50,21 @@ if TYPE_CHECKING:
     from factory.dashboard.hub_client import DashboardHubClient
 
 
-def _sessions_auth_required() -> bool:
-    return os.environ.get("FACTORY_DASHBOARD_AUTH_REQUIRED", "").strip() in {
-        "1",
-        "true",
-        "yes",
-    }
-
-
 def build_bff_router(  # noqa: C901, PLR0915
     adapter: WebAdapter,
     hub: DashboardHubClient,
     tokens: StreamTokenRegistry,
 ) -> APIRouter:
-    router = APIRouter(prefix="/api/bff")
+    """Build BFF router.
 
-    @router.get("/agents/status")
+    Public: auth login/accept-invite (registered without principal deps).
+    Protected: everything else — router-level ``require_principal`` so hub
+    RPC is always stamped and local proxies are not anonymous.
+    """
+    router = APIRouter(prefix="/api/bff")
+    protected = APIRouter(dependencies=[Depends(require_principal)])
+
+    @protected.get("/agents/status")
     async def agents_status(
         harness: str | None = Query(default=None),
         agent: str | None = Query(default=None),
@@ -83,16 +85,11 @@ def build_bff_router(  # noqa: C901, PLR0915
                 raise mapped from exc
             raise
 
-    @router.get("/sessions")
+    @protected.get("/sessions")
     async def list_sessions(
         agent: str = Query(...),
         limit: int = Query(default=20, ge=1, le=50),
     ) -> DashboardSessionsListResponse:
-        if _sessions_auth_required():
-            raise HTTPException(
-                status_code=403,
-                detail="session list requires operator auth (#1992)",
-            )
         if e2e_enabled():
             return stub_sessions_list(agent)
         try:
@@ -103,18 +100,13 @@ def build_bff_router(  # noqa: C901, PLR0915
                 raise mapped from exc
             raise
 
-    register_jobs_routes(router, adapter, hub, tokens)
+    register_jobs_routes(protected, adapter, hub, tokens)
 
-    @router.get("/sessions/turns")
+    @protected.get("/sessions/turns")
     async def list_session_turns(
         session_id: str = Query(...),
         limit: int = Query(default=200, ge=1, le=500),
     ) -> DashboardSessionsTurnsResponse:
-        if _sessions_auth_required():
-            raise HTTPException(
-                status_code=403,
-                detail="session turns requires operator auth (#1992)",
-            )
         if e2e_enabled():
             return stub_sessions_turns(session_id)
         try:
@@ -125,7 +117,7 @@ def build_bff_router(  # noqa: C901, PLR0915
                 raise mapped from exc
             raise
 
-    @router.get("/spans")
+    @protected.get("/spans")
     async def list_spans(
         pool_id: str | None = Query(default=None),
         job_id: str | None = Query(default=None),
@@ -144,13 +136,13 @@ def build_bff_router(  # noqa: C901, PLR0915
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    @router.get("/ops/health")
+    @protected.get("/ops/health")
     async def ops_health() -> DashboardOpsHealthResponse:
         if e2e_enabled():
             return stub_ops_health()
         return await fetch_ops_health()
 
-    @router.get("/ops/logs")
+    @protected.get("/ops/logs")
     async def ops_logs(
         preset: OpsLogPreset = Query(default="hub-errors"),
         container: str | None = Query(default=None),
@@ -167,10 +159,10 @@ def build_bff_router(  # noqa: C901, PLR0915
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    register_agent_routes(router, hub)
-    register_admin_routes(router, hub)
+    register_agent_routes(protected, hub)
+    register_admin_routes(protected, hub)
 
-    @router.get("/fleet")
+    @protected.get("/fleet")
     async def fleet_list() -> dict:
         if e2e_enabled():
             return stub_fleet().model_dump()
@@ -182,7 +174,7 @@ def build_bff_router(  # noqa: C901, PLR0915
                 raise mapped from exc
             raise
 
-    @router.get("/pipeline")
+    @protected.get("/pipeline")
     async def pipeline_list() -> dict:
         if e2e_enabled():
             return stub_pipeline().model_dump()
@@ -194,12 +186,12 @@ def build_bff_router(  # noqa: C901, PLR0915
                 raise mapped from exc
             raise
 
-    @router.post("/pipeline/stream-token")
+    @protected.post("/pipeline/stream-token")
     async def pipeline_stream_token() -> dict[str, str]:
         stream_token = tokens.mint(PIPELINE_STREAM_ID)
         return {"stream_token": stream_token}
 
-    @router.get("/pipeline/stream")
+    @protected.get("/pipeline/stream")
     async def pipeline_stream(
         request: Request,
         token: str | None = Query(default=None),
@@ -224,15 +216,10 @@ def build_bff_router(  # noqa: C901, PLR0915
 
         return StreamingResponse(event_gen(), media_type="text/event-stream")
 
-    @router.post("/sessions/resume")
+    @protected.post("/sessions/resume")
     async def resume_session(
         body: DashboardSessionsResumeRequest,
     ) -> DashboardSessionsResumeResponse:
-        if _sessions_auth_required():
-            raise HTTPException(
-                status_code=403,
-                detail="session resume requires operator auth (#1992)",
-            )
         if body.agent not in adapter.agent_names:
             raise HTTPException(
                 status_code=400, detail=f"unknown agent: {body.agent!r}"
@@ -247,4 +234,9 @@ def build_bff_router(  # noqa: C901, PLR0915
                 raise mapped from exc
             raise
 
+    # Auth public endpoints (login/accept-invite) + protected me/invite/keys.
+    register_auth_routes(router)
+    register_org_routes(router)
+    register_link_routes(router)
+    router.include_router(protected)
     return router

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, cast
 
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, Response
@@ -47,18 +48,76 @@ def _get_alias_store(pool: Pool) -> IdentityAliasStoreProtocol | None:
     return getattr(hub, "_alias_store", None)
 
 
+async def _try_dashboard_link(
+    msg: InboundMessage, pool: Pool, code: str
+) -> Response | None:
+    """Complete dashboard link code. Returns None if not a dash code."""
+    hub = getattr(pool, "_ctx", None)
+    cp = getattr(hub, "_control_plane", None) if hub is not None else None
+    if cp is None or not hasattr(cp, "consume_link_code"):
+        return None
+    try:
+        user_id = await cp.consume_link_code(code, platform_key=msg.user_id)
+    except ValueError:
+        return None
+    except TypeError:
+        # Not a real async control-plane store (e.g. unit-test MagicMock).
+        return None
+    # Keep UserStore write-through cache coherent with control-plane SQL writes.
+    user_store = getattr(hub, "_user_store", None)
+    rewarm = getattr(user_store, "rewarm_identity_cache", None)
+    if callable(rewarm):
+        try:
+            await cast(Callable[[], Awaitable[None]], rewarm)()
+        except Exception:  # noqa: BLE001 — cache refresh must not break link UX
+            log.debug("UserStore rewarm after dashboard link failed", exc_info=True)
+    ready = await cp.chat_ready(user_id) if hasattr(cp, "chat_ready") else False
+    if ready:
+        status = "chat-ready (Telegram + Discord linked)."
+    else:
+        status = (
+            "partial — link the other platform "
+            "(Telegram and Discord both required)."
+        )
+    log.info(
+        "dashboard platform link completed user=%s via %s", user_id, msg.user_id
+    )
+    try:
+        from factory.dashboard.security import audit_security
+
+        audit_security(
+            "platform_link_ok",
+            user_id=user_id,
+            platform_key=msg.user_id,
+            chat_ready=ready,
+        )
+    except Exception:  # noqa: BLE001 — audit must not break chat path
+        log.debug("audit_security failed", exc_info=True)
+    return Response(
+        content=f"Dashboard account linked (`{msg.user_id}`).\n{status}"
+    )
+
+
 async def cmd_link(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     """Link identities across platforms.
 
-    No args: initiate challenge (generate code).
-    With args: complete challenge (validate code from another platform).
+    With args: dashboard link code first, else admin cross-platform challenge.
+    No args: admin-only challenge initiate.
     """
+    if args:
+        dash = await _try_dashboard_link(msg, pool, args[0])
+        if dash is not None:
+            return dash
+
     alias_store = _get_alias_store(pool)
     if alias_store is None:
         return Response(content="Identity linking is not available.")
 
     if not msg.is_admin:
-        return Response(content=_ADMIN_ONLY)
+        return Response(
+            content="Invalid or expired link code. "
+            "Open the Dashboard → Link accounts to get a fresh code."
+        )
 
     if not args:
         # Initiate: generate challenge code

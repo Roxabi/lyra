@@ -15,7 +15,12 @@ from roxabi_contracts.dashboard import SUBJECTS
 
 
 @pytest.fixture
-def wired_client() -> tuple[TestClient, WebAdapter, AsyncMock]:
+def wired_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[TestClient, WebAdapter, AsyncMock]:
+    # Protected BFF routes require principal; operator token stamps admin principal.
+    monkeypatch.setenv("FACTORY_DASHBOARD_OPERATOR_TOKEN", "test-op-token")
+    monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
     bus = MagicMock()
     bus.put = AsyncMock()
     adapter = WebAdapter(
@@ -29,7 +34,9 @@ def wired_client() -> tuple[TestClient, WebAdapter, AsyncMock]:
     nc = AsyncMock()
     adapter.set_nats_client(nc)
     app = create_app(adapter)
-    return TestClient(app), adapter, nc
+    client = TestClient(app)
+    client.headers.update({"Authorization": "Bearer test-op-token"})
+    return client, adapter, nc
 
 
 def _rpc_response(payload: dict) -> MagicMock:

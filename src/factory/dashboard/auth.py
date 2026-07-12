@@ -155,7 +155,12 @@ async def require_principal(
             cp, authorization=authorization, cookie_token=cookie_token
         )
         active = _active_org_header(request)
-        if active and active in principal.org_ids:
+        if active is not None:
+            if active not in principal.org_ids:
+                raise HTTPException(
+                    status_code=403,
+                    detail="X-Factory-Org-Id is not a membership of this principal",
+                )
             principal = ControlPlanePrincipal(
                 user_id=principal.user_id,
                 roles=principal.roles,
@@ -175,13 +180,17 @@ def require_operator(
 ) -> OperatorContext:
     """Bearer operator token for connectors — fail-closed when unset (Block 14).
 
-    Prefer :func:`require_principal` when control-plane is wired. E2E bypass only.
+    Also stamps a control-plane admin principal so hub RPC wrap accepts the
+    request (connectors were unstamped after ADR-103 principal gate).
+    Prefer :func:`require_principal` when control-plane session/API-key is used.
     """
     from factory.dashboard.e2e import e2e_enabled as _e2e
 
     tenant = default_factory_tenant()
     user_id = default_operator_user_id()
     if _e2e():
+        principal = _admin_principal(user_id=user_id, via="e2e")
+        set_request_principal(principal)
         return OperatorContext(user_id=user_id, factory_tenant=tenant)
     token = _configured_operator_token()
     if token is None:
@@ -195,4 +204,6 @@ def require_operator(
     presented = authorization.removeprefix("Bearer ").strip()
     if not hmac.compare_digest(presented, token):
         raise HTTPException(status_code=401, detail="invalid operator token")
+    principal = _admin_principal(user_id=user_id, via="api_key")
+    set_request_principal(principal)
     return OperatorContext(user_id=user_id, factory_tenant=tenant)

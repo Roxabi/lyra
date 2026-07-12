@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import secrets
 from pathlib import Path
 
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
@@ -110,12 +109,11 @@ async def open_control_plane_store(
     password = os.environ.get("FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_PASSWORD", "").strip()
     if email:
         if not password:
-            password = secrets.token_urlsafe(18)
-            log.warning(
-                "Bootstrap admin password generated for %s (set "
-                "FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_PASSWORD to pin it): %s",
-                email,
-                password,
+            # Never auto-generate + log credentials (secret-leak review blocker).
+            raise RuntimeError(
+                "FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_EMAIL is set but "
+                "FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_PASSWORD is empty — "
+                "set an explicit password (never logged)"
             )
         created = await store.bootstrap_admin_if_empty(
             email=email,
@@ -123,6 +121,8 @@ async def open_control_plane_store(
         )
         if created is None:
             log.info("Control-plane admin already present — bootstrap skipped")
+        else:
+            log.info("Control-plane bootstrap admin created for %s", email)
     else:
         log.info(
             "No FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_EMAIL — "

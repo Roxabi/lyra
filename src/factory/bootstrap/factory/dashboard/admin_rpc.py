@@ -35,6 +35,23 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def _require_admin_principal() -> dict[str, str] | None:
+    """Return error dict when principal missing or not admin; else None."""
+    from factory.core.auth.control_plane_wire import get_request_principal
+
+    principal = get_request_principal()
+    if principal is None:
+        log.warning("admin_rpc_denied reason=principal_required")
+        return {"error": "unauthorized", "message": "principal required"}
+    if not principal.is_admin:
+        log.warning(
+            "admin_rpc_denied user_id=%s reason=not_admin",
+            principal.user_id,
+        )
+        return {"error": "forbidden", "message": "admin only"}
+    return None
+
+
 def _user_store(hub: Hub) -> UserStore | None:
     return getattr(hub, "_user_store", None)
 
@@ -143,6 +160,9 @@ async def _user_response_row(
 
 
 async def handle_admin_access(hub: Hub, _nc: NATS, _payload: dict[str, Any]) -> dict:
+    denied = _require_admin_principal()
+    if denied is not None:
+        return denied
     user_store = _user_store(hub)
     grant_store = _grant_store(hub)
     agent_store = _agent_store(hub)
@@ -166,6 +186,9 @@ async def handle_admin_access(hub: Hub, _nc: NATS, _payload: dict[str, Any]) -> 
 async def handle_admin_user_create(
     hub: Hub, _nc: NATS, payload: dict[str, Any]
 ) -> dict:
+    denied = _require_admin_principal()
+    if denied is not None:
+        return denied
     req = DashboardAdminUserCreateRequest.model_validate(payload.get("body") or payload)
     user_store = _user_store(hub)
     grant_store = _grant_store(hub)
@@ -232,6 +255,9 @@ async def handle_admin_user_create(
 
 
 async def handle_admin_user_patch(hub: Hub, _nc: NATS, payload: dict[str, Any]) -> dict:
+    denied = _require_admin_principal()
+    if denied is not None:
+        return denied
     user_id = str(payload.get("user_id") or "")
     req = DashboardAdminUserPatchRequest.model_validate(payload.get("patch") or payload)
     user_store = _user_store(hub)

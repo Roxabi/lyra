@@ -1,14 +1,8 @@
+import { bffFetch } from "@/shared/api/bff-fetch";
 import type { ConnectorDescriptor, ConnectorInstallation } from "@/shared/api/bff-types";
-import { operatorAuthHeaders } from "@/shared/api/operator-auth";
 
 async function connectorFetch(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(path, {
-    ...init,
-    headers: {
-      ...operatorAuthHeaders(),
-      ...(init?.headers ?? {}),
-    },
-  });
+  const res = await bffFetch(path, init);
   if (res.status === 401) throw new Error("auth");
   return res;
 }

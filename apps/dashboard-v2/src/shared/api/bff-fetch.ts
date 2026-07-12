@@ -1,6 +1,6 @@
-import { getActiveOrgId } from "@/features/auth/api";
 import { parseBffResponse } from "@/shared/api/client";
 import { operatorAuthHeaders } from "@/shared/api/operator-auth";
+import { getActiveOrgId } from "@/shared/api/org-context";
 
 /** Unified BFF fetch: session cookie + optional API key + active org header. */
 export async function bffFetch(path: string, init?: RequestInit): Promise<Response> {

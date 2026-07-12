@@ -1,4 +1,5 @@
 import { ChatApiError } from "@/features/chat/chat-errors";
+import { bffFetch } from "@/shared/api/bff-fetch";
 import type { AgentHealth, DashboardSession, DashboardTurn } from "@/shared/api/bff-types";
 import type { HarnessKind } from "@/shared/lib/chats-storage";
 
@@ -19,7 +20,7 @@ export async function fetchAgentStatus(
     params.set("harness", harness);
   }
   const qs = params.toString();
-  const res = await fetch(`/api/bff/agents/status${qs ? `?${qs}` : ""}`);
+  const res = await bffFetch(`/api/bff/agents/status${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new ChatApiError("status_fetch_failed");
   const data = (await res.json()) as { agents: AgentHealth[] };
   return data.agents;
@@ -44,14 +45,14 @@ export async function postChat(body: {
 }
 
 export async function fetchSessions(agent: string): Promise<DashboardSession[]> {
-  const res = await fetch(`/api/bff/sessions?agent=${encodeURIComponent(agent)}`);
+  const res = await bffFetch(`/api/bff/sessions?agent=${encodeURIComponent(agent)}`);
   if (!res.ok) throw new ChatApiError("sessions_fetch_failed");
   const data = (await res.json()) as { sessions: DashboardSession[] };
   return data.sessions;
 }
 
 export async function fetchSessionTurns(sessionId: string): Promise<DashboardTurn[]> {
-  const res = await fetch(`/api/bff/sessions/turns?session_id=${encodeURIComponent(sessionId)}`);
+  const res = await bffFetch(`/api/bff/sessions/turns?session_id=${encodeURIComponent(sessionId)}`);
   if (!res.ok) throw new ChatApiError("turns_fetch_failed");
   const data = (await res.json()) as { turns: DashboardTurn[] };
   return data.turns;
@@ -61,7 +62,7 @@ export async function resumeSession(
   agent: string,
   cliSessionId: string,
 ): Promise<{ accepted: boolean; message: string }> {
-  const res = await fetch("/api/bff/sessions/resume", {
+  const res = await bffFetch("/api/bff/sessions/resume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ agent, cli_session_id: cliSessionId }),

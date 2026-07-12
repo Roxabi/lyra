@@ -43,16 +43,25 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
   beforeLoad: async ({ location }) => {
     if (PUBLIC_PATHS.has(location.pathname)) return;
+    const safeRedirect =
+      location.pathname.startsWith("/") && !location.pathname.startsWith("//")
+        ? `${location.pathname}${location.searchStr ?? ""}`
+        : "/";
     try {
       const me = await fetchMe();
       if (me === null) {
         throw redirect({
           to: "/login",
-          search: { redirect: location.href },
+          search: { redirect: safeRedirect },
         });
       }
     } catch (e) {
       if (e && typeof e === "object" && "to" in e) throw e;
+      // Fail closed on network/5xx — do not mount protected shell.
+      throw redirect({
+        to: "/login",
+        search: { redirect: safeRedirect },
+      });
     }
   },
 });

@@ -1,5 +1,5 @@
+import { bffFetch } from "@/shared/api/bff-fetch";
 import { parseBffResponse } from "@/shared/api/client";
-import { operatorAuthHeaders } from "@/shared/api/operator-auth";
 
 export interface AdminPlatformIdentity {
   platform: string;
@@ -25,12 +25,7 @@ export interface AdminUserWriteBody {
 }
 
 async function adminFetch(input: string, init?: RequestInit): Promise<Response> {
-  const headers = new Headers(init?.headers);
-  const auth = operatorAuthHeaders();
-  for (const [key, value] of Object.entries(auth)) {
-    headers.set(key, value as string);
-  }
-  return fetch(input, { ...init, headers });
+  return bffFetch(input, init);
 }
 
 export async function fetchAdminAccess(): Promise<{ users: AdminUserAccess[] }> {

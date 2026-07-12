@@ -13,9 +13,30 @@ from factory.bootstrap.factory.dashboard.admin_rpc import (
 )
 from factory.core.agent.agent_models import AgentRow
 from factory.core.auth.agent_grants import AuthDecision
+from factory.core.auth.control_plane import ControlPlanePrincipal, GlobalRole
+from factory.core.auth.control_plane_wire import (
+    clear_request_principal,
+    set_request_principal,
+)
 from factory.infrastructure.stores.identity.user_store import UserStore
 
 _NC = MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def _admin_principal():
+    """Happy-path admin handlers require an admin principal (review fix)."""
+    set_request_principal(
+        ControlPlanePrincipal(
+            user_id="rx:admin",
+            roles=frozenset({GlobalRole.ADMIN.value}),
+            org_ids=frozenset(),
+            active_org_id=None,
+            via="session",
+        )
+    )
+    yield
+    clear_request_principal()
 
 
 def _hub_with_stores(

@@ -3,7 +3,8 @@
 ## First install
 
 1. Ensure `auth.db` path is writable (`~/.roxabi/factory/auth.db` or `FACTORY_AUTH_DB`).
-2. Set env on the web/dashboard process:
+2. Set env on the web/dashboard process (password **required** when email is
+   set — never auto-generated, never written to logs):
 
    ```bash
    FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_EMAIL=you@example.com
@@ -11,7 +12,8 @@
    ```
 
 3. Start `factory adapter web` (or unified `factory start`). On first connect,
-   ControlPlaneStore creates the admin if none exists.
+   ControlPlaneStore creates the admin if none exists. Missing password with
+   email set fails startup with a clear error.
 4. Open the SPA → **Sign in** with that email/password.
 5. **Invite** users: `POST /api/bff/auth/invites` (admin session) or future UI.
 6. Each user: **Link accounts** → `/link <code>` on Telegram **and** Discord.

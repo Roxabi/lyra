@@ -61,24 +61,16 @@ class ControlPlaneLinkOps:
         await db.commit()
         return code_id, token
 
-    async def consume_link_code(
-        self,
-        raw_token: str,
-        *,
-        platform_key: str,
-    ) -> str:
-        """Validate code and attach *platform_key* → dash user. Returns user_id."""
-        parsed = parse_platform_key(platform_key)
-        if parsed is None:
-            raise ValueError(f"invalid platform key: {platform_key!r}")
-        platform, platform_uid, canonical = parsed
-
+    async def _load_valid_link_code(
+        self, token_hash: str, *, platform: str
+    ) -> tuple[str, str]:
+        """Return (code_id, user_id) or raise ValueError."""
         db = self._require_db()
-        th = hash_token(raw_token)
+        now = _utc_now()
         async with db.execute(
             "SELECT id, user_id, platform, expires_at, consumed_at "
             "FROM dash_link_codes WHERE token_hash = ?",
-            (th,),
+            (token_hash,),
         ) as cur:
             row = await cur.fetchone()
         if row is None:
@@ -86,11 +78,31 @@ class ControlPlaneLinkOps:
         code_id, user_id, want_platform, expires_at_s, consumed = row
         if consumed is not None:
             raise ValueError("link code already used")
-        if _utc_now() > _parse_ts(expires_at_s):
+        if now > _parse_ts(expires_at_s):
             raise ValueError("link code expired")
         if want_platform is not None and want_platform != platform:
             raise ValueError(f"code is for {want_platform}, not {platform}")
+        return code_id, user_id
 
+    async def _claim_link_code(self, code_id: str, *, now_s: str) -> None:
+        db = self._require_db()
+        cur = await db.execute(
+            "UPDATE dash_link_codes SET consumed_at = ? "
+            "WHERE id = ? AND consumed_at IS NULL AND expires_at > ?",
+            (now_s, code_id, now_s),
+        )
+        if cur.rowcount != 1:
+            raise ValueError("link code already used")
+
+    async def _attach_platform_identity(
+        self,
+        user_id: str,
+        *,
+        platform: str,
+        platform_uid: str,
+        canonical: str,
+    ) -> None:
+        db = self._require_db()
         async with db.execute(
             "SELECT user_id FROM platform_identities WHERE platform_key = ?",
             (canonical,),
@@ -119,9 +131,33 @@ class ControlPlaneLinkOps:
                 "VALUES (?, ?, ?, ?)",
                 (canonical, platform, platform_uid, user_id),
             )
-        await db.execute(
-            "UPDATE dash_link_codes SET consumed_at = ? WHERE id = ?",
-            (_utc_now().isoformat(), code_id),
+
+    async def consume_link_code(
+        self,
+        raw_token: str,
+        *,
+        platform_key: str,
+    ) -> str:
+        """Validate code and attach *platform_key* → dash user. Returns user_id.
+
+        Consume is claimed atomically (``UPDATE … WHERE consumed_at IS NULL``)
+        so concurrent ``/link`` cannot double-use the same code.
+        """
+        parsed = parse_platform_key(platform_key)
+        if parsed is None:
+            raise ValueError(f"invalid platform key: {platform_key!r}")
+        platform, platform_uid, canonical = parsed
+
+        db = self._require_db()
+        th = hash_token(raw_token)
+        now_s = _utc_now().isoformat()
+        code_id, user_id = await self._load_valid_link_code(th, platform=platform)
+        await self._claim_link_code(code_id, now_s=now_s)
+        await self._attach_platform_identity(
+            user_id,
+            platform=platform,
+            platform_uid=platform_uid,
+            canonical=canonical,
         )
         await db.commit()
         log.info("Platform link: %s → user %s", canonical, user_id)

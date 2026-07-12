@@ -59,6 +59,13 @@ async def _try_dashboard_link(
         user_id = await cp.consume_link_code(code, platform_key=msg.user_id)
     except ValueError:
         return None
+    # Keep UserStore write-through cache coherent with control-plane SQL writes.
+    user_store = getattr(hub, "_user_store", None)
+    if user_store is not None and hasattr(user_store, "rewarm_identity_cache"):
+        try:
+            await user_store.rewarm_identity_cache()
+        except Exception:  # noqa: BLE001 — cache refresh must not break link UX
+            log.debug("UserStore rewarm after dashboard link failed", exc_info=True)
     ready = await cp.chat_ready(user_id) if hasattr(cp, "chat_ready") else False
     if ready:
         status = "chat-ready (Telegram + Discord linked)."

@@ -1,3 +1,4 @@
+import { bffFetch } from "@/shared/api/bff-fetch";
 import type {
   AgentHealth,
   OpsEngineHealth,
@@ -12,14 +13,14 @@ export async function fetchAgentStatus(agent?: string, harness?: string): Promis
     params.set("harness", harness);
   }
   const qs = params.toString();
-  const res = await fetch(`/api/bff/agents/status${qs ? `?${qs}` : ""}`);
+  const res = await bffFetch(`/api/bff/agents/status${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("status fetch failed");
   const data = (await res.json()) as { agents: AgentHealth[] };
   return data.agents;
 }
 
 export async function fetchOpsHealth(): Promise<OpsEngineHealth[]> {
-  const res = await fetch("/api/bff/ops/health");
+  const res = await bffFetch("/api/bff/ops/health");
   if (!res.ok) throw new Error("ops health fetch failed");
   const data = (await res.json()) as { engines: OpsEngineHealth[] };
   return data.engines;
@@ -37,7 +38,7 @@ export async function fetchOpsLogs(
 }> {
   const params = new URLSearchParams({ preset, limit: String(limit) });
   if (container) params.set("container", container);
-  const res = await fetch(`/api/bff/ops/logs?${params}`);
+  const res = await bffFetch(`/api/bff/ops/logs?${params}`);
   if (!res.ok) throw new Error("ops logs fetch failed");
   return res.json() as Promise<{
     preset: OpsLogPreset;

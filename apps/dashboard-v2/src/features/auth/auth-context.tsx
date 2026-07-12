@@ -78,6 +78,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("anonymous");
     setActiveOrgId(null);
     setOrgState(null);
+    // Leave protected surface (hard nav clears RQ cache state).
+    if (typeof window !== "undefined") {
+      window.location.assign("/login");
+    }
   }, []);
 
   const setOrg = useCallback((orgId: string | null) => {

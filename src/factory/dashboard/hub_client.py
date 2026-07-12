@@ -71,7 +71,24 @@ class HubStoreUnavailableError(RuntimeError):
     """Hub RPC returned ``{"error": "store_unavailable"}``."""
 
 
+class HubUnauthorizedError(PermissionError):
+    """Hub RPC returned ``{"error": "unauthorized"}`` (missing principal)."""
+
+
+class HubForbiddenError(PermissionError):
+    """Hub RPC returned ``{"error": "forbidden"}`` (authz denied)."""
+
+
+def _raise_authz_rpc_error(raw: dict[str, Any]) -> None:
+    err = raw.get("error")
+    if err == "unauthorized":
+        raise HubUnauthorizedError(str(raw.get("message") or "unauthorized"))
+    if err == "forbidden":
+        raise HubForbiddenError(str(raw.get("message") or "forbidden"))
+
+
 def _raise_admin_user_rpc_error(raw: dict[str, Any]) -> None:
+    _raise_authz_rpc_error(raw)
     err = raw.get("error")
     if err == "not_found":
         raise HubUserNotFoundError(str(raw.get("message") or "not_found"))
@@ -82,6 +99,7 @@ def _raise_admin_user_rpc_error(raw: dict[str, Any]) -> None:
 
 
 def _raise_agent_rpc_error(raw: dict[str, Any]) -> None:
+    _raise_authz_rpc_error(raw)
     err = raw.get("error")
     if err == "not_found":
         raise HubAgentNotFoundError(str(raw.get("message") or "not_found"))
@@ -118,7 +136,10 @@ class DashboardHubClient:
             json.dumps(wire).encode(),
             timeout=_RPC_TIMEOUT,
         )
-        return json.loads(msg.data.decode())
+        raw = json.loads(msg.data.decode())
+        if isinstance(raw, dict):
+            _raise_authz_rpc_error(raw)
+        return raw
 
     async def list_sessions(
         self, agent: str, *, limit: int = 20

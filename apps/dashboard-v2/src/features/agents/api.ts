@@ -1,3 +1,4 @@
+import { bffFetch } from "@/shared/api/bff-fetch";
 import { parseBffResponse } from "@/shared/api/client";
 import type { HarnessKind } from "@/shared/lib/chats-storage";
 
@@ -29,7 +30,7 @@ export interface AgentConfig {
 export type SoulSections = Record<string, string>;
 
 export async function fetchAgentsConfigList(): Promise<{ agents: AgentSummary[] }> {
-  const res = await fetch("/api/bff/agents");
+  const res = await bffFetch("/api/bff/agents");
   return parseBffResponse<{ agents: AgentSummary[] }>(res);
 }
 
@@ -40,7 +41,7 @@ export async function createAgentConfig(body: {
   display_name?: string;
   tagline?: string;
 }): Promise<AgentConfig> {
-  const res = await fetch("/api/bff/agents", {
+  const res = await bffFetch("/api/bff/agents", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -49,7 +50,7 @@ export async function createAgentConfig(body: {
 }
 
 export async function fetchAgentConfig(name: string): Promise<AgentConfig> {
-  const res = await fetch(`/api/bff/agents/${encodeURIComponent(name)}`);
+  const res = await bffFetch(`/api/bff/agents/${encodeURIComponent(name)}`);
   if (!res.ok) throw new Error("agent get failed");
   return res.json() as Promise<AgentConfig>;
 }
@@ -63,7 +64,7 @@ export async function patchAgentConfig(
     tagline?: string;
   },
 ): Promise<AgentConfig> {
-  const res = await fetch(`/api/bff/agents/${encodeURIComponent(name)}`, {
+  const res = await bffFetch(`/api/bff/agents/${encodeURIComponent(name)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -76,13 +77,13 @@ export async function fetchAgentSoul(name: string): Promise<{
   sections: SoulSections;
   updated_at: string;
 }> {
-  const res = await fetch(`/api/bff/agents/${encodeURIComponent(name)}/soul`);
+  const res = await bffFetch(`/api/bff/agents/${encodeURIComponent(name)}/soul`);
   if (!res.ok) throw new Error("soul get failed");
   return res.json() as Promise<{ sections: SoulSections; updated_at: string }>;
 }
 
 export async function putAgentSoul(name: string, body: { markdown: string }): Promise<unknown> {
-  const res = await fetch(`/api/bff/agents/${encodeURIComponent(name)}/soul`, {
+  const res = await bffFetch(`/api/bff/agents/${encodeURIComponent(name)}/soul`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -95,7 +96,7 @@ export async function previewAgentSoul(
   name: string,
   body: { sections: SoulSections },
 ): Promise<{ composed: string; truncated: boolean }> {
-  const res = await fetch(`/api/bff/agents/${encodeURIComponent(name)}/soul/preview`, {
+  const res = await bffFetch(`/api/bff/agents/${encodeURIComponent(name)}/soul/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

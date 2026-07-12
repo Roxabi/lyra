@@ -126,13 +126,13 @@ def _meta_envelope(row: AgentRow) -> SoulMetaEnvelope | None:
 
 
 def _admin_mutate_gate() -> dict | None:
-    """V1: agents/soul writes are admin-only when principal is present."""
+    """V1: agents/soul writes require admin principal (fail-closed)."""
     from factory.core.auth.control_plane_authz import can_mutate_agents
     from factory.core.auth.control_plane_wire import get_request_principal
 
     principal = get_request_principal()
     if principal is None:
-        return None
+        return {"error": "unauthorized", "message": "principal required"}
     if can_mutate_agents(principal):
         return None
     return {"error": "forbidden", "message": "admin only for agent mutations"}

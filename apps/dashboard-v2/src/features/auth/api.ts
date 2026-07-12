@@ -1,7 +1,7 @@
-import { BffApiError, parseBffResponse, readBffErrorDetail } from "@/shared/api/client";
-import { operatorAuthHeaders } from "@/shared/api/operator-auth";
+import { bffFetch, bffJson } from "@/shared/api/bff-fetch";
+import { BffApiError, readBffErrorDetail } from "@/shared/api/client";
 
-const ORG_KEY = "factory.dashboard.activeOrgId";
+export { getActiveOrgId, setActiveOrgId } from "@/shared/api/org-context";
 
 export type AuthUser = {
   id: string;
@@ -38,60 +38,16 @@ export type LinkStatus = {
   required: string[];
 };
 
-export function getActiveOrgId(): string | null {
-  try {
-    return localStorage.getItem(ORG_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setActiveOrgId(orgId: string | null): void {
-  try {
-    if (orgId) localStorage.setItem(ORG_KEY, orgId);
-    else localStorage.removeItem(ORG_KEY);
-  } catch {
-    // private mode
-  }
-}
-
-function sessionHeaders(init?: HeadersInit): Headers {
-  const headers = new Headers(init);
-  const auth = operatorAuthHeaders();
-  for (const [k, v] of Object.entries(auth)) {
-    if (typeof v === "string") headers.set(k, v);
-  }
-  const org = getActiveOrgId();
-  if (org) headers.set("X-Factory-Org-Id", org);
-  return headers;
-}
-
-/** Cookie session + optional API key / org header. Always credentials:include. */
-export async function authFetch(path: string, init?: RequestInit): Promise<Response> {
-  const headers = sessionHeaders(init?.headers);
-  return fetch(path, { ...init, headers, credentials: "include" });
-}
-
-export async function authJson<T>(path: string, init?: RequestInit): Promise<T> {
-  return parseBffResponse<T>(await authFetch(path, init));
-}
+/** @deprecated Use bffFetch — kept as alias for call sites. */
+export const authFetch = bffFetch;
+/** @deprecated Use bffJson — kept as alias for call sites. */
+export const authJson = bffJson;
 
 export async function fetchMe(): Promise<AuthSession | null> {
-  const res = await authFetch("/api/bff/auth/me");
+  const res = await bffFetch("/api/bff/auth/me");
   if (res.status === 401) return null;
-  if (res.status === 503) {
-    // Control-plane not wired — open console (legacy Tailnet path)
-    return {
-      user: null,
-      principal: {
-        user_id: "sys:legacy",
-        roles: ["admin"],
-        org_ids: [],
-        active_org_id: null,
-        via: "sys",
-      },
-    };
-  }
+  // 503 (CP unwired) is not an admin free-pass — treat as unauthenticated.
+  if (res.status === 503) return null;
   if (!res.ok) {
     throw new BffApiError(res.status, await readBffErrorDetail(res));
   }
@@ -99,7 +55,7 @@ export async function fetchMe(): Promise<AuthSession | null> {
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {
-  return authJson<AuthSession>("/api/bff/auth/login", {
+  return bffJson<AuthSession>("/api/bff/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -107,7 +63,7 @@ export async function login(email: string, password: string): Promise<AuthSessio
 }
 
 export async function logout(): Promise<void> {
-  await authFetch("/api/bff/auth/logout", { method: "POST" });
+  await bffFetch("/api/bff/auth/logout", { method: "POST" });
 }
 
 export async function acceptInvite(body: {
@@ -115,7 +71,7 @@ export async function acceptInvite(body: {
   password: string;
   display_name?: string;
 }): Promise<AuthSession> {
-  return authJson<AuthSession>("/api/bff/auth/accept-invite", {
+  return bffJson<AuthSession>("/api/bff/auth/accept-invite", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -123,11 +79,11 @@ export async function acceptInvite(body: {
 }
 
 export async function fetchOrgs(): Promise<{ orgs: OrgRow[]; active_org_id: string | null }> {
-  return authJson("/api/bff/orgs");
+  return bffJson("/api/bff/orgs");
 }
 
 export async function createOrg(name: string): Promise<{ org: OrgRow }> {
-  return authJson("/api/bff/orgs", {
+  return bffJson("/api/bff/orgs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -135,13 +91,13 @@ export async function createOrg(name: string): Promise<{ org: OrgRow }> {
 }
 
 export async function fetchLinkStatus(): Promise<LinkStatus> {
-  return authJson("/api/bff/auth/links");
+  return bffJson("/api/bff/auth/links");
 }
 
 export async function createLinkCode(
   platform?: string | null,
 ): Promise<{ token: string; instructions: string; platform: string | null }> {
-  return authJson("/api/bff/auth/links/code", {
+  return bffJson("/api/bff/auth/links/code", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ platform: platform ?? null }),
@@ -149,5 +105,5 @@ export async function createLinkCode(
 }
 
 export async function unlinkPlatform(platform: string): Promise<void> {
-  await authJson(`/api/bff/auth/links/${platform}`, { method: "DELETE" });
+  await bffJson(`/api/bff/auth/links/${platform}`, { method: "DELETE" });
 }

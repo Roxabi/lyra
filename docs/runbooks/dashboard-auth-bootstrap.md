@@ -1,5 +1,10 @@
 # Runbook — Dashboard control-plane auth bootstrap (ADR-103)
 
+> **2026-07-12 interim:** `factory-dashboard` is **disabled** on M₁ until hub-IdP
+> migration ([`dashboard-auth-hub-idp-migration.md`](../../artifacts/goal/dashboard-auth-hub-idp-migration.md)).
+> Do **not** mount `factory-data` on the dashboard unit. Bootstrap admin will move to
+> **hub** env when Slice 1 lands; the dual-open dashboard path is debt.
+
 ## First install
 
 1. Ensure `auth.db` path is writable (`~/.roxabi/factory/auth.db` or `FACTORY_AUTH_DB`).

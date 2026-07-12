@@ -142,6 +142,106 @@ async function handleMockApi(
   const path = url.pathname;
 
   try {
+    // --- control-plane auth (ADR-103) ---
+    if (method === "GET" && path === "/api/bff/auth/me") {
+      sendJson(res, 200, {
+        user: {
+          id: "rx:user:mock",
+          email: "admin@local.dev",
+          display_name: "Mock Admin",
+          global_role: "admin",
+          status: "active",
+        },
+        principal: {
+          user_id: "rx:user:mock",
+          roles: ["admin"],
+          org_ids: [],
+          active_org_id: null,
+          via: "session",
+        },
+      });
+      return;
+    }
+    if (method === "POST" && path === "/api/bff/auth/login") {
+      sendJson(res, 200, {
+        user: {
+          id: "rx:user:mock",
+          email: "admin@local.dev",
+          display_name: "Mock Admin",
+          global_role: "admin",
+          status: "active",
+        },
+        principal: {
+          user_id: "rx:user:mock",
+          roles: ["admin"],
+          org_ids: [],
+          active_org_id: null,
+          via: "session",
+        },
+      });
+      return;
+    }
+    if (method === "POST" && path === "/api/bff/auth/logout") {
+      sendJson(res, 200, { status: "ok" });
+      return;
+    }
+    if (method === "POST" && path === "/api/bff/auth/accept-invite") {
+      sendJson(res, 200, {
+        user: {
+          id: "rx:user:member",
+          email: "member@local.dev",
+          display_name: "Mock Member",
+          global_role: "member",
+          status: "active",
+        },
+        principal: {
+          user_id: "rx:user:member",
+          roles: ["member"],
+          org_ids: [],
+          active_org_id: null,
+          via: "session",
+        },
+      });
+      return;
+    }
+    if (method === "GET" && path === "/api/bff/auth/links") {
+      sendJson(res, 200, {
+        user_id: "rx:user:mock",
+        links: [],
+        chat_ready: false,
+        required: ["telegram", "discord"],
+      });
+      return;
+    }
+    if (method === "POST" && path === "/api/bff/auth/links/code") {
+      sendJson(res, 200, {
+        code_id: "lnk:mock",
+        token: "mock-link-token",
+        platform: null,
+        instructions: "Send `/link mock-link-token` to the factory bot.",
+      });
+      return;
+    }
+    if (method === "DELETE" && path.startsWith("/api/bff/auth/links/")) {
+      sendJson(res, 200, { status: "unlinked" });
+      return;
+    }
+    if (method === "GET" && path === "/api/bff/orgs") {
+      sendJson(res, 200, { orgs: [], active_org_id: null });
+      return;
+    }
+    if (method === "POST" && path === "/api/bff/orgs") {
+      sendJson(res, 200, {
+        org: {
+          id: "org:mock",
+          name: "Mock Org",
+          created_by: "rx:user:mock",
+          created_at: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
     // GET /api/agents
     if (method === "GET" && path === "/api/agents") {
       sendJson(res, 200, mockAgentsList());

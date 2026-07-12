@@ -7,6 +7,7 @@ import {
   GitPullRequest,
   LayoutDashboard,
   LineChart,
+  Link2,
   MessageCircle,
   Palette,
   Plug,
@@ -69,6 +70,13 @@ export const observeNavItems: AppNavItem[] = [
 ];
 
 export const adminNavItems: AppNavItem[] = [
+  {
+    to: "/account/links",
+    labelKey: "nav.accountLinks",
+    Icon: Link2,
+    wide: true,
+    status: "ready",
+  },
   {
     to: "/design-system",
     labelKey: "nav.designSystem",

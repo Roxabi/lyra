@@ -446,6 +446,7 @@ Prefer **stacked PRs** rather than one mega-PR.
 | 2026-07-12 | 1–3 | Store+ports ControlPlaneStore ; BFF login/session/API key/`require_principal` ; invites ; tests green ; importlinter 15 kept |
 | 2026-07-12 | 4–7 | Orgs + org routes ; principal stamp hub `_wrap` fail-closed ; authorize + agents admin-only ; jobs meta launched_by/org_id |
 | 2026-07-12 | 8–10 | dash_link_codes + BFF links ; PlatformLinkMiddleware TG/DC ; grant_human multi-platform keys |
+| 2026-07-12 | 11–12 | SPA auth pages + org/link UX ; bffFetch credentials ; web.env + bootstrap runbook |
 
 ---
 
@@ -466,8 +467,8 @@ Prefer **stacked PRs** rather than one mega-PR.
 | 8 platform link | **done** (link codes + BFF /auth/links + bot `/link`) |
 | 9 inbound gate | **done** (PlatformLinkMiddleware dual-link) |
 | 10 grants align | **done** (grant_human + admin_rpc platform keys) |
-| 11 SPA | pending |
-| 12 deploy/docs | pending |
+| 11 SPA | **done** (login/invite/links/org switcher + gate) |
+| 12 deploy/docs | **done** (web.env.example + runbook bootstrap) |
 | 13 audit | pending |
 | 14 cleanup | pending |
 

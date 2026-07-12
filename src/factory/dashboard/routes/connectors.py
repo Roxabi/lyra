@@ -14,6 +14,7 @@ from factory.dashboard.e2e import (
     stub_connector_installations,
     stub_github_install_url,
 )
+from factory.dashboard.routes.bff_common import map_hub_errors
 from roxabi_contracts.dashboard import (
     DashboardConnectorInstallationDeleteRequest,
     DashboardConnectorInstallationUpsertRequest,
@@ -38,7 +39,9 @@ def _github_app_slug() -> str | None:
     return raw or None
 
 
-def build_connectors_router(hub: DashboardHubClient) -> APIRouter:  # noqa: C901
+def build_connectors_router(  # noqa: C901, PLR0915
+    hub: DashboardHubClient,
+) -> APIRouter:
     router = APIRouter(prefix="/api/bff/connectors")
 
     @router.get("")
@@ -91,8 +94,11 @@ def build_connectors_router(hub: DashboardHubClient) -> APIRouter:  # noqa: C901
             resp = await hub.list_connector_installations(
                 connector, factory_tenant=operator.factory_tenant
             )
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
         return resp.model_dump()
 
     @router.post("/{connector}/installations")
@@ -117,8 +123,11 @@ def build_connectors_router(hub: DashboardHubClient) -> APIRouter:  # noqa: C901
         )
         try:
             raw = await hub.upsert_connector_installation(req)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
         if raw.get("error") == "tenant_forbidden":
             raise HTTPException(status_code=403, detail="tenant forbidden")
         if raw.get("error"):
@@ -142,8 +151,11 @@ def build_connectors_router(hub: DashboardHubClient) -> APIRouter:  # noqa: C901
         )
         try:
             raw = await hub.delete_connector_installation(req)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
         if raw.get("error") == "tenant_forbidden":
             raise HTTPException(status_code=403, detail="tenant forbidden")
         return raw

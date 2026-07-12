@@ -61,12 +61,8 @@ async def _list_orgs(
     principal: ControlPlanePrincipal = Depends(require_principal),
 ) -> dict[str, Any]:
     cp = _cp_or_503(request)
-    if principal.is_admin:
-        # Admin: all orgs via list of memberships of self is incomplete;
-        # list orgs user belongs to still OK; expand later if needed.
-        orgs = await cp.list_orgs_for_user(principal.user_id)
-    else:
-        orgs = await cp.list_orgs_for_user(principal.user_id)
+    # V1: list memberships of self (admin expansion deferred).
+    orgs = await cp.list_orgs_for_user(principal.user_id)
     return {
         "orgs": [
             {

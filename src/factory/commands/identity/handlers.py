@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, cast
 
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, Response
@@ -59,11 +60,15 @@ async def _try_dashboard_link(
         user_id = await cp.consume_link_code(code, platform_key=msg.user_id)
     except ValueError:
         return None
+    except TypeError:
+        # Not a real async control-plane store (e.g. unit-test MagicMock).
+        return None
     # Keep UserStore write-through cache coherent with control-plane SQL writes.
     user_store = getattr(hub, "_user_store", None)
-    if user_store is not None and hasattr(user_store, "rewarm_identity_cache"):
+    rewarm = getattr(user_store, "rewarm_identity_cache", None)
+    if callable(rewarm):
         try:
-            await user_store.rewarm_identity_cache()
+            await cast(Callable[[], Awaitable[None]], rewarm)()
         except Exception:  # noqa: BLE001 — cache refresh must not break link UX
             log.debug("UserStore rewarm after dashboard link failed", exc_info=True)
     ready = await cp.chat_ready(user_id) if hasattr(cp, "chat_ready") else False

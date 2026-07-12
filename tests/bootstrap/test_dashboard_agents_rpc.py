@@ -17,9 +17,30 @@ from factory.bootstrap.factory.dashboard_agents_rpc import (
 )
 from factory.core.agent.agent_models import AgentRow
 from factory.core.agent.soul_cache import get_soul_document_cache
+from factory.core.auth.control_plane import ControlPlanePrincipal, GlobalRole
+from factory.core.auth.control_plane_wire import (
+    clear_request_principal,
+    set_request_principal,
+)
 from roxabi_contracts.blob_ref import BlobRef
 
 _NC = MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def _admin_principal():
+    """Agent mutate handlers require admin principal after review fix."""
+    set_request_principal(
+        ControlPlanePrincipal(
+            user_id="rx:admin",
+            roles=frozenset({GlobalRole.ADMIN.value}),
+            org_ids=frozenset(),
+            active_org_id=None,
+            via="session",
+        )
+    )
+    yield
+    clear_request_principal()
 
 _SOUL_MD = """## Identity
 Lyra test

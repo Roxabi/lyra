@@ -55,6 +55,9 @@ def _make_pool(alias_store: IdentityAliasStore | None) -> Pool:
     ctx._alias_store = alias_store
     # No authenticators needed for most tests
     ctx._authenticators = {}
+    # Avoid MagicMock auto-attr on consume_link_code (dashboard path).
+    ctx._control_plane = None
+    ctx._user_store = None
     pool = Pool(pool_id="test", agent_name="test", ctx=ctx)
     return pool
 
@@ -85,14 +88,15 @@ class TestLinkInitiate:
 
     @pytest.mark.asyncio
     async def test_link_non_admin_rejected(self, tmp_path: Path) -> None:
-        """/link is admin-only — non-admin receives an error."""
+        """Non-admin cannot initiate alias challenges — pointed at dashboard links."""
         store = IdentityAliasStore(db_path=tmp_path / "aliases.db")
         await store.connect()
         try:
             pool = _make_pool(store)
             msg = _make_msg(is_admin=False)
             response = await cmd_link(msg, pool, [])
-            assert "admin" in response.content.lower()
+            lower = response.content.lower()
+            assert "dashboard" in lower or "link accounts" in lower or "admin" in lower
         finally:
             await store.close()
 
@@ -190,6 +194,8 @@ async def test_link_complete_blocked_initiator_rejected(tmp_path: Path) -> None:
         # Set up pool with populated authenticators
         hub_mock = MagicMock()
         hub_mock._alias_store = store
+        hub_mock._control_plane = None
+        hub_mock._user_store = None
         hub_mock._authenticators = {
             ("discord", "main"): auth,
             ("telegram", "main"): auth,

@@ -455,8 +455,9 @@ class TestPipelineComposition:
 
         stages = build_default_pipeline(_make_hub())._middlewares
 
-        assert len(stages) == 10
-        assert isinstance(stages[6], AuthorizeAgentMiddleware)
+        # +PlatformLinkMiddleware (ADR-103 dual TG/DC gate) → 11 stages.
+        assert len(stages) == 11
+        assert isinstance(stages[7], AuthorizeAgentMiddleware)
 
     async def test_authorizer_forwarded_to_stage(self) -> None:
         from factory.core.hub.middleware import build_default_pipeline

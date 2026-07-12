@@ -12,7 +12,11 @@ from factory.adapters.web.web_server import create_app
 
 
 @pytest.fixture
-def client() -> tuple[TestClient, MagicMock, WebAdapter]:
+def client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[TestClient, MagicMock, WebAdapter]:
+    monkeypatch.setenv("FACTORY_DASHBOARD_OPERATOR_TOKEN", "test-op-token")
+    monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
     bus = MagicMock()
     bus.put = AsyncMock()
     adapter = WebAdapter(
@@ -24,7 +28,9 @@ def client() -> tuple[TestClient, MagicMock, WebAdapter]:
     listener.cache_inbound = MagicMock()
     adapter._outbound_listener = listener
     app = create_app(adapter)
-    return TestClient(app), bus, adapter
+    tc = TestClient(app)
+    tc.headers.update({"Authorization": "Bearer test-op-token"})
+    return tc, bus, adapter
 
 
 class TestWebServer:

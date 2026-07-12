@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from factory.adapters.shared.inbound import (
@@ -19,6 +19,8 @@ from factory.adapters.shared.inbound import (
 )
 from factory.adapters.web.e2e_stub import e2e_enabled, publish_e2e_agui_reply
 from factory.adapters.web.web_agui import StreamFormat, is_stream_terminal, run_error
+from factory.core.auth.control_plane import ControlPlanePrincipal
+from factory.dashboard.auth import require_principal
 from factory.inbound.wire_parser_web import WebWireParser
 from roxabi_contracts.dashboard import ChatRequest, ChatResponse
 
@@ -38,13 +40,17 @@ def build_chat_router(  # noqa: C901
     router = APIRouter()
 
     @router.get("/api/agents")
-    async def list_agents() -> dict[str, list[str]]:
+    async def list_agents(
+        _principal: ControlPlanePrincipal = Depends(require_principal),
+    ) -> dict[str, list[str]]:
+        del _principal
         return {"agents": adapter.agent_names}
 
     @router.post("/api/chat", response_model=ChatResponse)
     async def post_chat(
         req: ChatRequest,
         format: StreamFormat = Query(default="legacy"),
+        principal: ControlPlanePrincipal = Depends(require_principal),
     ) -> ChatResponse:
         session_id = req.session_id or uuid4().hex
         raw = {
@@ -53,6 +59,8 @@ def build_chat_router(  # noqa: C901
             "session_id": session_id,
             "harness": req.harness,
             "model": req.model,
+            "user_id": principal.user_id,
+            "user_name": principal.user_id,
         }
         try:
             adapter.normalize(raw)

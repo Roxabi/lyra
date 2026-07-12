@@ -312,3 +312,7 @@ class DashboardHubClient:
         return await self._request(
             SUBJECTS.connectors_installations_delete, req.model_dump()
         )
+
+    async def rewarm_identity_cache(self) -> dict[str, Any]:
+        """Ask hub to reload UserStore platform_identities after BFF link/unlink."""
+        return await self._request(SUBJECTS.identity_cache_rewarm, {})

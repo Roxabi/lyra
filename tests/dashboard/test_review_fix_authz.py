@@ -128,3 +128,45 @@ class TestBootstrapPassword:
         joined = "\n".join(r.message for r in caplog.records)
         assert "token_urlsafe" not in joined
         assert "password generated" not in joined.lower()
+
+
+class TestIdentityCacheRewarm:
+    @pytest.mark.asyncio
+    async def test_handle_identity_cache_rewarm_calls_user_store(self) -> None:
+        from factory.bootstrap.factory.dashboard.identity_rpc import (
+            handle_identity_cache_rewarm,
+        )
+
+        store = MagicMock()
+        store.rewarm_identity_cache = AsyncMock()
+        hub = MagicMock()
+        hub._user_store = store
+        set_request_principal(
+            ControlPlanePrincipal(
+                user_id="rx:admin",
+                roles=frozenset({GlobalRole.ADMIN.value}),
+                org_ids=frozenset(),
+                active_org_id=None,
+                via="session",
+            )
+        )
+        try:
+            out = await handle_identity_cache_rewarm(hub, MagicMock(), {})
+            assert out["ok"] is True
+            assert out["rewarmed"] is True
+            store.rewarm_identity_cache.assert_awaited_once()
+        finally:
+            clear_request_principal()
+
+
+class TestChatAuth:
+    def test_chat_requires_auth(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        monkeypatch.delenv("FACTORY_DASHBOARD_OPERATOR_TOKEN", raising=False)
+        bus = MagicMock()
+        bus.put = AsyncMock()
+        adapter = WebAdapter(inbound_bus=bus, agent_names=["alpha"], port=19997)
+        adapter.set_nats_client(AsyncMock())
+        tc = TestClient(create_app(adapter))
+        res = tc.post("/api/chat", json={"agent": "alpha", "text": "hi"})
+        assert res.status_code == 401

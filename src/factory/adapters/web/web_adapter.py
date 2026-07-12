@@ -96,13 +96,16 @@ class WebAdapter(OutboundAdapterBase):
         if agent not in self._agent_names:
             raise ValueError(f"unknown agent: {agent!r}")
         scope_id = f"{WEB_SCOPE_PREFIX}{agent}"
+        # Prefer control-plane principal when chat route stamps user_id/name.
+        user_id = str(raw.get("user_id") or "smoke").strip() or "smoke"
+        user_name = str(raw.get("user_name") or "Smoke").strip() or "Smoke"
         return InboundMessage(
             id=uuid4().hex,
             platform="web",
             bot_id=self._bot_id,
             scope_id=scope_id,
-            user_id="smoke",
-            user_name="Smoke",
+            user_id=user_id,
+            user_name=user_name,
             is_mention=True,
             text=text,
             text_raw=text,

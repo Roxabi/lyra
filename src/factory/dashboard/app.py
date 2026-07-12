@@ -31,6 +31,7 @@ def create_dashboard_app(
     tokens = StreamTokenRegistry()
     hub = DashboardHubClient(adapter)
     app.state.control_plane = control_plane
+    app.state.hub_client = hub
 
     app.include_router(build_chat_router(adapter, tokens))
     app.include_router(build_bff_router(adapter, hub, tokens))

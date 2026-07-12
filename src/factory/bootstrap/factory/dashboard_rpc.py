@@ -19,6 +19,9 @@ from factory.bootstrap.factory.dashboard.connectors_rpc import (
     handle_connectors_upsert,
 )
 from factory.bootstrap.factory.dashboard.fleet_rpc import handle_fleet_list
+from factory.bootstrap.factory.dashboard.identity_rpc import (
+    handle_identity_cache_rewarm,
+)
 from factory.bootstrap.factory.dashboard.pipeline_rpc import handle_pipeline_list
 from factory.bootstrap.factory.dashboard.rpc_wrap import wrap_dashboard_handler
 from factory.bootstrap.factory.dashboard.voice_rpc import handle_voice_capabilities
@@ -110,6 +113,7 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.connectors_installations_list, handle_connectors_list),
         (SUBJECTS.connectors_installations_upsert, handle_connectors_upsert),
         (SUBJECTS.connectors_installations_delete, handle_connectors_delete),
+        (SUBJECTS.identity_cache_rewarm, handle_identity_cache_rewarm),
     ):
         sub = await nc.subscribe(subject, cb=wrap_dashboard_handler(hub, nc, handler))
         subs.append(sub)

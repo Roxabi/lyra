@@ -90,6 +90,17 @@ def _set_session_cookie(response: Response, token: str, *, max_age: int) -> None
     )
 
 
+def _clear_session_cookie(response: Response) -> None:
+    """Delete session cookie with the same flags used at mint (browser-required)."""
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        secure=_cookie_secure(),
+        httponly=True,
+        samesite="lax",
+    )
+
+
 def _rate_limit_or_429(request: Request, *, action: str) -> None:
     key = client_key(request, suffix=action)
     if not check_rate_limit(key, limit=20, window_s=60):
@@ -168,9 +179,8 @@ async def _logout_handler(
     raw = request.cookies.get(SESSION_COOKIE_NAME)
     if cp is not None and raw:
         await cp.revoke_session(raw)
-    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    _clear_session_cookie(response)
     return {"status": "ok"}
-
 
 async def _me_handler(
     request: Request,

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol, cast
 
 from factory.core.auth.agent_grants import Capability, Principal, PrincipalKind
 
@@ -26,6 +27,18 @@ class GrantWriter(Protocol):
         ...
 
 
+async def _maybe_rewarm(key_resolver: PlatformKeyResolver) -> None:
+    """Refresh write-through cache if resolver is a UserStore with rewarm."""
+    rewarm = getattr(key_resolver, "rewarm_identity_cache", None)
+    if not callable(rewarm):
+        return
+    try:
+        await cast(Callable[[], Awaitable[None]], rewarm)()
+    except TypeError:
+        # Sync mocks / non-async resolvers in unit tests.
+        return
+
+
 async def grant_human_platforms(  # noqa: PLR0913 — grant matrix args are all required
     *,
     grant_store: GrantWriter,
@@ -39,6 +52,7 @@ async def grant_human_platforms(  # noqa: PLR0913 — grant matrix args are all 
 
     Returns the list of platform keys granted. Raises ValueError if none linked.
     """
+    await _maybe_rewarm(key_resolver)
     keys = sorted(key_resolver.resolve_platform_keys(dash_user_id))
     if not keys:
         raise ValueError(

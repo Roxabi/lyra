@@ -47,7 +47,7 @@ def validate_desired_agents(agent_store: Any, desired_agents: list[str]) -> str 
     return None
 
 
-async def sync_user_agents(  # noqa: PLR0913
+async def sync_user_agents(  # noqa: C901, PLR0913
     grant_store: AgentGrantStore,
     agent_store: Any,
     user_id: str,
@@ -70,6 +70,9 @@ async def sync_user_agents(  # noqa: PLR0913
 
     platform_keys: list[str] = []
     if user_store is not None:
+        # Control-plane link/unlink may have mutated SQL outside UserStore.
+        if hasattr(user_store, "rewarm_identity_cache"):
+            await user_store.rewarm_identity_cache()
         platform_keys = sorted(user_store.resolve_platform_keys(user_id))
 
     current = set(await agents_for_user(grant_store, agent_store, user_id))

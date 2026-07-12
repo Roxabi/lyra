@@ -4,7 +4,7 @@ import type { AgentHealth, DashboardSession, DashboardTurn } from "@/shared/api/
 import type { HarnessKind } from "@/shared/lib/chats-storage";
 
 export async function fetchAgents(): Promise<string[]> {
-  const res = await fetch("/api/agents");
+  const res = await bffFetch("/api/agents");
   if (!res.ok) throw new ChatApiError("agents_fetch_failed");
   const data = (await res.json()) as { agents: string[] };
   return data.agents;
@@ -33,7 +33,7 @@ export async function postChat(body: {
   harness: HarnessKind;
   model: string;
 }): Promise<{ session_id: string; stream_token: string }> {
-  const res = await fetch("/api/chat?format=agui", {
+  const res = await bffFetch("/api/chat?format=agui", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

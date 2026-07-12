@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -12,6 +13,8 @@ from factory.dashboard.auth import control_plane_from_app, require_principal
 from factory.dashboard.security import audit_security
 
 __all__ = ["register_link_routes"]
+
+log = logging.getLogger(__name__)
 
 
 class CreateLinkCodeBody(BaseModel):
@@ -85,6 +88,13 @@ async def _unlink(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not ok:
         raise HTTPException(status_code=404, detail="no link for platform")
+    # Keep hub UserStore write-through cache coherent with control-plane SQL.
+    hub = getattr(request.app.state, "hub_client", None)
+    if hub is not None and hasattr(hub, "rewarm_identity_cache"):
+        try:
+            await hub.rewarm_identity_cache()
+        except Exception:  # noqa: BLE001 — unlink must succeed even if hub offline
+            log.debug("identity cache rewarm after unlink failed", exc_info=True)
     audit_security(
         "platform_unlink",
         user_id=principal.user_id,

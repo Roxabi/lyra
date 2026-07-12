@@ -2,7 +2,7 @@ import { bffFetch } from "@/shared/api/bff-fetch";
 import type { AgentHealth, DashboardJob, OpsEngineHealth } from "@/shared/api/bff-types";
 
 export async function fetchAgents(): Promise<string[]> {
-  const res = await fetch("/api/agents");
+  const res = await bffFetch("/api/agents");
   if (!res.ok) throw new Error("agents fetch failed");
   const data = (await res.json()) as { agents: string[] };
   return data.agents;

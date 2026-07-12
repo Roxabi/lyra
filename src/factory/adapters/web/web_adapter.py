@@ -166,7 +166,7 @@ class WebAdapter(OutboundAdapterBase):
         if self._outbound_listener is not None:
             await self._outbound_listener.start()
         from factory.adapters.web.web_server import create_app, run_uvicorn
-        from factory.infrastructure.stores.identity.control_plane_open import (
+        from factory.infrastructure.stores.identity.control_plane_store import (
             open_control_plane_store,
         )
 

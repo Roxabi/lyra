@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING
 from fastapi import Cookie, Header, HTTPException, Request
 
 from factory.core.auth.control_plane import ControlPlanePrincipal, GlobalRole
+from factory.core.auth.control_plane_wire import (
+    ORG_HEADER,
+    set_request_principal,
+)
 from factory.dashboard.e2e import e2e_enabled
 
 if TYPE_CHECKING:
@@ -114,6 +118,14 @@ def _resolve_legacy_operator(authorization: str | None) -> ControlPlanePrincipal
     return _admin_principal(user_id=default_operator_user_id(), via="api_key")
 
 
+def _active_org_header(request: Request) -> str | None:
+    raw = request.headers.get(ORG_HEADER) or request.headers.get(ORG_HEADER.lower())
+    if raw is None:
+        return None
+    value = raw.strip()
+    return value or None
+
+
 async def require_principal(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -127,17 +139,33 @@ async def require_principal(
     * Directory not wired → fall back to legacy operator token behaviour
       (fail-open when token unset) so existing tests keep working until
       production always injects the directory.
+    * Optional ``X-Factory-Org-Id`` must be a membership (else ignored).
     """
     if e2e_enabled():
-        return _e2e_principal()
+        principal = _e2e_principal()
+        set_request_principal(principal)
+        return principal
 
     cp = control_plane_from_app(request)
     if cp is not None:
         cookie_token = factory_session or request.cookies.get(SESSION_COOKIE_NAME)
-        return await _resolve_with_control_plane(
+        principal = await _resolve_with_control_plane(
             cp, authorization=authorization, cookie_token=cookie_token
         )
-    return _resolve_legacy_operator(authorization)
+        active = _active_org_header(request)
+        if active and active in principal.org_ids:
+            principal = ControlPlanePrincipal(
+                user_id=principal.user_id,
+                roles=principal.roles,
+                org_ids=principal.org_ids,
+                active_org_id=active,
+                via=principal.via,
+            )
+        set_request_principal(principal)
+        return principal
+    principal = _resolve_legacy_operator(authorization)
+    set_request_principal(principal)
+    return principal
 
 
 def require_operator(

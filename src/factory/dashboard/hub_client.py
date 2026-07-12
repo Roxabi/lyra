@@ -99,12 +99,23 @@ class DashboardHubClient:
         return getattr(self._adapter, "_nats_client", None)
 
     async def _request(self, subject: str, payload: dict[str, Any]) -> dict[str, Any]:
+        from factory.core.auth.control_plane_wire import (
+            get_request_principal,
+            stamp_principal_payload,
+        )
+
         nc = self._nc()
         if nc is None:
             raise RuntimeError("NATS client not wired")
+        principal = get_request_principal()
+        wire = (
+            stamp_principal_payload(payload, principal)
+            if principal is not None
+            else payload
+        )
         msg = await nc.request(
             subject,
-            json.dumps(payload).encode(),
+            json.dumps(wire).encode(),
             timeout=_RPC_TIMEOUT,
         )
         return json.loads(msg.data.decode())

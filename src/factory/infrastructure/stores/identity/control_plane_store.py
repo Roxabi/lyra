@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 from pathlib import Path
 
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
@@ -14,6 +16,10 @@ from factory.infrastructure.stores.identity.control_plane_ddl import (
 from factory.infrastructure.stores.identity.control_plane_invites import (
     ControlPlaneInviteOps,
 )
+from factory.infrastructure.stores.identity.control_plane_orgs import (
+    ControlPlaneJobMetaOps,
+    ControlPlaneOrgOps,
+)
 from factory.infrastructure.stores.identity.control_plane_sessions import (
     ControlPlaneSessionOps,
 )
@@ -21,6 +27,7 @@ from factory.infrastructure.stores.identity.control_plane_users import (
     ControlPlaneUserOps,
 )
 from factory.infrastructure.stores.identity.user_store import _CREATE_USERS_EMAIL_INDEX
+from factory.paths import factory_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +36,7 @@ __all__ = [
     "ControlPlaneStore",
     "DDL_CONTROL_PLANE",
     "SESSION_COOKIE_NAME",
+    "open_control_plane_store",
 ]
 
 
@@ -36,6 +44,8 @@ class ControlPlaneStore(
     ControlPlaneUserOps,
     ControlPlaneInviteOps,
     ControlPlaneSessionOps,
+    ControlPlaneOrgOps,
+    ControlPlaneJobMetaOps,
     SqliteStore,
 ):
     """Dashboard users, invites, sessions, API keys on auth.db (or dedicated path)."""
@@ -73,3 +83,45 @@ class ControlPlaneStore(
         if alters:
             await db.commit()
             log.info("ControlPlaneStore migrated users columns: %s", alters)
+
+
+def _auth_db_path() -> Path:
+    override = os.environ.get("FACTORY_AUTH_DB", "").strip()
+    if override:
+        return Path(override)
+    return factory_data_dir() / "auth.db"
+
+
+async def open_control_plane_store(
+    *,
+    db_path: Path | None = None,
+) -> ControlPlaneStore:
+    """Connect ControlPlaneStore and ensure a bootstrap admin when configured."""
+    path = db_path or _auth_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    store = ControlPlaneStore(path)
+    await store.connect()
+
+    email = os.environ.get("FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_EMAIL", "").strip()
+    password = os.environ.get("FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_PASSWORD", "").strip()
+    if email:
+        if not password:
+            password = secrets.token_urlsafe(18)
+            log.warning(
+                "Bootstrap admin password generated for %s (set "
+                "FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_PASSWORD to pin it): %s",
+                email,
+                password,
+            )
+        created = await store.bootstrap_admin_if_empty(
+            email=email,
+            password=password,
+        )
+        if created is None:
+            log.info("Control-plane admin already present — bootstrap skipped")
+    else:
+        log.info(
+            "No FACTORY_DASHBOARD_BOOTSTRAP_ADMIN_EMAIL — "
+            "invite/bootstrap admin via ops when ready"
+        )
+    return store

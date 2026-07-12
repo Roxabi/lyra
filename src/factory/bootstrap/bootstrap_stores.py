@@ -23,6 +23,7 @@ from factory.bootstrap.bootstrap_store_migrations import (
 )
 from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
 from factory.infrastructure.stores.identity.auth_store import AuthStore
+from factory.infrastructure.stores.identity.control_plane_store import ControlPlaneStore
 from factory.infrastructure.stores.identity.identity_alias_store import (
     IdentityAliasStore,
 )
@@ -55,6 +56,7 @@ class StoreBundle:
     identity_alias: IdentityAliasStore
     grant: AgentGrantStore
     bot: BotStore
+    control_plane: ControlPlaneStore
 
 
 @asynccontextmanager
@@ -81,12 +83,16 @@ async def open_stores(
     identity_alias_store: IdentityAliasStore | None = None
     grant_store: AgentGrantStore | None = None
     bot_store: BotStore | None = None
+    control_plane_store: ControlPlaneStore | None = None
     try:
         auth_store = AuthStore(db_path=vault_dir / "auth.db")
         await auth_store.connect()
 
         user_store = UserStore(db_path=vault_dir / "auth.db")
         await user_store.connect()
+
+        control_plane_store = ControlPlaneStore(db_path=vault_dir / "auth.db")
+        await control_plane_store.connect()
 
         identity_alias_store = IdentityAliasStore(
             db_path=vault_dir / "auth.db",
@@ -124,6 +130,7 @@ async def open_stores(
         message_index_store = MessageIndexKvStore(js)
         await message_index_store.connect()
 
+        assert control_plane_store is not None
         yield StoreBundle(
             auth=auth_store,
             agent=agent_store,
@@ -134,6 +141,7 @@ async def open_stores(
             identity_alias=identity_alias_store,
             grant=grant_store,
             bot=bot_store,
+            control_plane=control_plane_store,
         )
     finally:
         all_stores = (
@@ -146,6 +154,7 @@ async def open_stores(
             user_store,
             identity_alias_store,
             grant_store,
+            control_plane_store,
         )
         for store in all_stores:
             if store is not None:

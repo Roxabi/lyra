@@ -24,6 +24,8 @@ from factory.infrastructure.stores.identity.control_plane_ddl import (
     _CREATE_API_KEYS,
     _CREATE_INVITES,
     _CREATE_SESSIONS,
+    JOB_META_DDL,
+    ORG_DDL,
 )
 from factory.infrastructure.stores.identity.identity_alias_store import (
     _CREATE_ALIASES,
@@ -61,6 +63,8 @@ _AUTH_DB_DDL: tuple[str, ...] = (
     _CREATE_INVITES,
     _CREATE_SESSIONS,
     _CREATE_API_KEYS,
+    *ORG_DDL,
+    *JOB_META_DDL,
 )
 
 _SENTINEL_DDL = (

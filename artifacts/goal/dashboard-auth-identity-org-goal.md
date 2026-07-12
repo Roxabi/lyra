@@ -444,6 +444,7 @@ Prefer **stacked PRs** rather than one mega-PR.
 | 2026-07-11 | 0 / 0b | ADR-103 Proposed ; security-routing § control-plane ; companion schema/threat ; **GO humain requis** |
 | 2026-07-12 | GO | Phase 0 **approuvée** — defaults § companion open items 1–5 locked ; start Blocks 1–3 |
 | 2026-07-12 | 1–3 | Store+ports ControlPlaneStore ; BFF login/session/API key/`require_principal` ; invites ; tests green ; importlinter 15 kept |
+| 2026-07-12 | 4–7 | Orgs + org routes ; principal stamp hub `_wrap` fail-closed ; authorize + agents admin-only ; jobs meta launched_by/org_id |
 
 ---
 
@@ -457,10 +458,10 @@ Prefer **stacked PRs** rather than one mega-PR.
 | 1 store | **done** (ControlPlaneStore + protocol + bootstrap admin) |
 | 2 authn BFF | **done** (session cookie + API key + require_principal ; fail-closed when CP wired) |
 | 3 invites | **done** (create/accept/revoke ; no open register) |
-| 4 orgs | pending |
-| 5 stamp+hub gate | pending |
-| 6 resource authz | pending |
-| 7 jobs identity | pending |
+| 4 orgs | **done** (create/members/list ; principal.org_ids) |
+| 5 stamp+hub gate | **done** (`_wrap` principal required ; hub_client stamp) |
+| 6 resource authz | **done** (authorize helper ; agents write admin-only) |
+| 7 jobs identity | **done** (dash_job_launches ; list/steer/cancel filter) |
 | 8 platform link | pending |
 | 9 inbound gate | pending |
 | 10 grants align | pending |

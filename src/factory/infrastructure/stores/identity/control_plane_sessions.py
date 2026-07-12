@@ -199,16 +199,19 @@ class ControlPlaneSessionOps:
         via: str,
         active_org_id: str | None = None,
     ) -> ControlPlanePrincipal:
-        # org membership lands in Block 4 — empty for Phase 1
         via_t: AuthVia
         if via in ("session", "api_key", "platform_link", "sys", "e2e"):
             via_t = via  # type: ignore[assignment]
         else:
             via_t = "session"
+        org_ids = await self.org_ids_for_user(user.id)  # type: ignore[attr-defined]
+        active = active_org_id
+        if active is not None and active not in org_ids:
+            active = None
         return ControlPlanePrincipal(
             user_id=user.id,
             roles=frozenset({user.global_role.value}),
-            org_ids=frozenset(),
-            active_org_id=active_org_id,
+            org_ids=org_ids,
+            active_org_id=active,
             via=via_t,
         )

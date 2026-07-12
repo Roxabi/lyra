@@ -9,6 +9,8 @@ from factory.infrastructure.stores.identity.user_store import _CREATE_USERS
 __all__ = [
     "API_KEY_PREFIX",
     "DDL_CONTROL_PLANE",
+    "JOB_META_DDL",
+    "ORG_DDL",
     "SESSION_COOKIE_NAME",
     "_CREATE_API_KEYS",
     "_CREATE_INVITES",
@@ -56,11 +58,43 @@ CREATE TABLE IF NOT EXISTS dash_api_keys (
 )
 """
 
+_CREATE_ORGS = """
+CREATE TABLE IF NOT EXISTS organizations (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    created_by  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+)
+"""
+
+_CREATE_ORG_MEMBERS = """
+CREATE TABLE IF NOT EXISTS org_members (
+    org_id      TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    org_role    TEXT NOT NULL,
+    PRIMARY KEY (org_id, user_id)
+)
+"""
+
+_CREATE_JOB_LAUNCHES = """
+CREATE TABLE IF NOT EXISTS dash_job_launches (
+    job_id       TEXT PRIMARY KEY,
+    launched_by  TEXT NOT NULL,
+    org_id       TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+)
+"""
+
+ORG_DDL: tuple[str, ...] = (_CREATE_ORGS, _CREATE_ORG_MEMBERS)
+JOB_META_DDL: tuple[str, ...] = (_CREATE_JOB_LAUNCHES,)
+
 DDL_CONTROL_PLANE: tuple[str, ...] = (
     _CREATE_USERS,
     _CREATE_INVITES,
     _CREATE_SESSIONS,
     _CREATE_API_KEYS,
+    *ORG_DDL,
+    *JOB_META_DDL,
 )
 
 

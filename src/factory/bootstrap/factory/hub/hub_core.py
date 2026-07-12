@@ -84,5 +84,6 @@ def _build_hub(deps: BuildHubDeps) -> Hub:
     hub._agent_store = deps.stores.agent
     hub._user_store = deps.stores.user
     hub._blob_store = deps.blob_store
+    hub._control_plane = getattr(deps.stores, "control_plane", None)
 
     return hub

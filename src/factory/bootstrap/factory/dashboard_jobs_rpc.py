@@ -1,9 +1,15 @@
-"""Hub-side NATS RPC handlers for dashboard jobs."""
+"""Hub-side NATS RPC handlers for dashboard jobs (ADR-103 principal + job meta)."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from factory.core.auth.control_plane_authz import (
+    ResourceRef,
+    authorize,
+    filter_jobs_visible,
+)
+from factory.core.auth.control_plane_wire import get_request_principal
 from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.job_catalog import list_active_jobs
 from factory.core.messaging.message import Platform
@@ -38,13 +44,41 @@ _ALLOWED_JOB_NAMES = frozenset({"claude", "omp", "test"})
 _DEFAULT_OMP_MODEL = "grok-4-fast"
 
 
+def _control_plane(hub: Hub):
+    return getattr(hub, "_control_plane", None)
+
+
+def _require_principal():
+    principal = get_request_principal()
+    if principal is None:
+        return None, {
+            "error": "unauthorized",
+            "message": "principal required",
+        }
+    return principal, None
+
+
 async def handle_jobs_list(hub: Hub, _nc: NATS, _payload: dict[str, Any]) -> dict:
+    principal, err = _require_principal()
+    if err is not None:
+        return err
+    assert principal is not None
     rows = await list_active_jobs(hub)
+    cp = _control_plane(hub)
+    if cp is not None:
+        meta = await cp.job_meta_map([str(r["job_id"]) for r in rows])
+        rows = filter_jobs_visible(principal, rows, meta_by_job=meta)
+    elif not principal.is_admin:
+        rows = []
     jobs = [DashboardJob.model_validate(row) for row in rows]
     return DashboardJobsListResponse(jobs=jobs).model_dump()
 
 
 async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dict:
+    principal, err = _require_principal()
+    if err is not None:
+        return err
+    assert principal is not None
     req = DashboardJobsLaunchRequest.model_validate(payload)
     if req.agent not in hub.agent_registry:
         return DashboardJobsLaunchResponse(
@@ -57,14 +91,17 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
             message=f"job_name not allowed: {req.job_name!r}",
         ).model_dump()
 
+    org_id = principal.active_org_id
+    if org_id is not None and org_id not in principal.org_ids:
+        return DashboardJobsLaunchResponse(
+            accepted=False,
+            message="active org not in memberships",
+        ).model_dump()
+
     pool_id = (
         req.pool_id
         or RoutingKey(Platform.WEB, _WEB_BOT, f"agent:{req.agent}").to_pool_id()
     )
-    # Operator-initiated launch is a fresh root entry point — it runs in its own
-    # dashboard-RPC subscription task that TraceMiddleware never touches, so it
-    # always mints a NEW root trace (like inbound), never reuses ambient context.
-    # mint_work_envelope_fields raises without a trace_id (#2069).
     fields = mint_work_envelope_fields(
         trace_id=TraceContext.generate(),
         pool_id=pool_id,
@@ -100,6 +137,8 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
             "model_cfg": model_cfg,
             "system_prompt": system_prompt,
             "stream": True,
+            "launched_by": principal.user_id,
+            "org_id": org_id,
         },
         reply_to=f"_INBOX.{job_id}",
     )
@@ -113,6 +152,13 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
         pool_id=pool_id,
     ):
         await nc.publish(dispatch_subject, wire)
+
+    cp = _control_plane(hub)
+    if cp is not None:
+        await cp.record_job_launch(
+            job_id, launched_by=principal.user_id, org_id=org_id
+        )
+
     return DashboardJobsLaunchResponse(
         accepted=True,
         job_id=job_id,
@@ -121,8 +167,41 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
     ).model_dump()
 
 
-async def handle_jobs_steer(_hub: Hub, nc: NATS, payload: dict[str, Any]) -> dict:
+async def _authorize_job_action(
+    hub: Hub, principal, job_id: str, action: str
+) -> dict | None:
+    """Return error dict if denied, else None."""
+    if principal.is_admin:
+        return None
+    cp = _control_plane(hub)
+    launched_by, org_id = (None, None)
+    if cp is not None:
+        launched_by, org_id = await cp.get_job_meta(job_id)
+    decision = authorize(
+        principal,
+        action,
+        ResourceRef(kind="job", owner_user_id=launched_by, org_id=org_id),
+    )
+    if decision.allowed:
+        return None
+    return {
+        "error": "forbidden",
+        "message": f"not allowed to {action} job {job_id}",
+    }
+
+
+async def handle_jobs_steer(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dict:
+    principal, err = _require_principal()
+    if err is not None:
+        return err
+    assert principal is not None
     req = DashboardJobsSteerRequest.model_validate(payload)
+    denied = await _authorize_job_action(hub, principal, req.job_id, "jobs.steer")
+    if denied is not None:
+        resp = DashboardJobsSteerResponse(
+            accepted=False, message=denied["message"]
+        ).model_dump()
+        return {**resp, "error": "forbidden"}
     subject = jobs_steer(req.job_id)
     await nc.publish(subject, req.text.encode())
     return DashboardJobsSteerResponse(
@@ -132,7 +211,19 @@ async def handle_jobs_steer(_hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
 
 
 async def handle_jobs_cancel(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dict:
+    principal, err = _require_principal()
+    if err is not None:
+        return err
+    assert principal is not None
     req = DashboardJobsCancelRequest.model_validate(payload)
+    denied = await _authorize_job_action(hub, principal, req.job_id, "jobs.cancel")
+    if denied is not None:
+        return {
+            **DashboardJobsCancelResponse(
+                accepted=False, message=denied["message"]
+            ).model_dump(),
+            "error": "forbidden",
+        }
     job_id = req.job_id
     coord = getattr(hub, "_active_jobs_coord", None)
     if coord is not None and hasattr(coord, "close"):

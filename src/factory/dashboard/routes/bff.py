@@ -32,6 +32,7 @@ from factory.dashboard.routes.bff_admin import register_admin_routes
 from factory.dashboard.routes.bff_agents import register_agent_routes
 from factory.dashboard.routes.bff_common import map_hub_errors
 from factory.dashboard.routes.bff_jobs import register_jobs_routes
+from factory.dashboard.routes.link_routes import register_link_routes
 from factory.dashboard.routes.org_routes import register_org_routes
 from factory.dashboard.stream_tokens import StreamTokenRegistry
 from roxabi_contracts.dashboard import (
@@ -251,4 +252,5 @@ def build_bff_router(  # noqa: C901, PLR0915
 
     register_auth_routes(router)
     register_org_routes(router)
+    register_link_routes(router)
     return router

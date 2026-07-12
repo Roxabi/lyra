@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from factory.infrastructure.stores.identity.user_store import _CREATE_USERS
+from factory.infrastructure.stores.identity.user_store import (
+    _CREATE_PLATFORM_IDENTITIES,
+    _CREATE_USERS,
+)
 
 __all__ = [
     "API_KEY_PREFIX",
     "DDL_CONTROL_PLANE",
     "JOB_META_DDL",
+    "LINK_DDL",
     "ORG_DDL",
     "SESSION_COOKIE_NAME",
     "_CREATE_API_KEYS",
@@ -85,16 +89,31 @@ CREATE TABLE IF NOT EXISTS dash_job_launches (
 )
 """
 
+_CREATE_LINK_CODES = """
+CREATE TABLE IF NOT EXISTS dash_link_codes (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    platform    TEXT,
+    token_hash  TEXT NOT NULL UNIQUE,
+    expires_at  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    consumed_at TEXT
+)
+"""
+
 ORG_DDL: tuple[str, ...] = (_CREATE_ORGS, _CREATE_ORG_MEMBERS)
 JOB_META_DDL: tuple[str, ...] = (_CREATE_JOB_LAUNCHES,)
+LINK_DDL: tuple[str, ...] = (_CREATE_LINK_CODES,)
 
 DDL_CONTROL_PLANE: tuple[str, ...] = (
     _CREATE_USERS,
+    _CREATE_PLATFORM_IDENTITIES,
     _CREATE_INVITES,
     _CREATE_SESSIONS,
     _CREATE_API_KEYS,
     *ORG_DDL,
     *JOB_META_DDL,
+    *LINK_DDL,
 )
 
 

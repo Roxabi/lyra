@@ -16,6 +16,9 @@ from factory.infrastructure.stores.identity.control_plane_ddl import (
 from factory.infrastructure.stores.identity.control_plane_invites import (
     ControlPlaneInviteOps,
 )
+from factory.infrastructure.stores.identity.control_plane_links import (
+    ControlPlaneLinkOps,
+)
 from factory.infrastructure.stores.identity.control_plane_orgs import (
     ControlPlaneJobMetaOps,
     ControlPlaneOrgOps,
@@ -46,6 +49,7 @@ class ControlPlaneStore(
     ControlPlaneSessionOps,
     ControlPlaneOrgOps,
     ControlPlaneJobMetaOps,
+    ControlPlaneLinkOps,
     SqliteStore,
 ):
     """Dashboard users, invites, sessions, API keys on auth.db (or dedicated path)."""

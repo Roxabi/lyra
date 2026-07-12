@@ -180,6 +180,7 @@ def build_default_pipeline(
     event_bus: PipelineEventBus | None = None,
 ) -> MiddlewarePipeline:
     """Build the standard middleware pipeline with all 10 stages."""
+    from .middleware_guards import PlatformLinkMiddleware
     from .middleware_stages import (
         AuthorizeAgentMiddleware,
         CommandMiddleware,
@@ -198,6 +199,7 @@ def build_default_pipeline(
             TraceMiddleware(),
             ValidatePlatformMiddleware(),
             ResolveIdentityMiddleware(),
+            PlatformLinkMiddleware(),
             RateLimitMiddleware(),
             SttMiddleware(),
             ResolveBindingMiddleware(),

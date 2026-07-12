@@ -5,12 +5,16 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from factory.core.auth.agent_grants import (
-    AuthDecision,
-    Capability,
-    Principal,
-    PrincipalKind,
+from factory.bootstrap.factory.dashboard.admin_grants import (
+    agents_for_user as _agents_for_user,
 )
+from factory.bootstrap.factory.dashboard.admin_grants import (
+    sync_user_agents as _sync_user_agents,
+)
+from factory.bootstrap.factory.dashboard.admin_grants import (
+    validate_desired_agents as _validate_desired_agents,
+)
+from factory.core.auth.agent_grants import Capability, Principal, PrincipalKind
 from roxabi_contracts.dashboard import (
     DashboardAdminAccessResponse,
     DashboardAdminPlatformIdentity,
@@ -63,21 +67,6 @@ def _platform_identity(
     return None
 
 
-async def _agents_for_user(
-    grant_store: AgentGrantStore, agent_store: Any, user_id: str
-) -> list[str]:
-    agent_names = sorted(r.name for r in agent_store.get_all())
-    agents: list[str] = []
-    for agent_name in agent_names:
-        decision: AuthDecision = grant_store.authorize(
-            agent_name=agent_name,
-            user_id=user_id,
-        )
-        if decision.allowed:
-            agents.append(agent_name)
-    return sorted(agents)
-
-
 async def _user_access_row(
     user: User,
     *,
@@ -95,48 +84,6 @@ async def _user_access_row(
         discord=_platform_identity(identities, "discord"),
         agents=agents,
     )
-
-
-async def _sync_user_agents(  # noqa: PLR0913
-    grant_store: AgentGrantStore,
-    agent_store: Any,
-    user_id: str,
-    desired_agents: list[str],
-    *,
-    source: str = "admin.user.patch",
-    granted_out: list[str] | None = None,
-) -> list[str]:
-    unknown_msg = _validate_desired_agents(agent_store, desired_agents)
-    if unknown_msg is not None:
-        raise ValueError(unknown_msg)
-
-    current = set(await _agents_for_user(grant_store, agent_store, user_id))
-    desired = set(desired_agents)
-    principal = Principal(kind=PrincipalKind.USER, id=user_id)
-    granted = granted_out if granted_out is not None else []
-
-    for agent_name in sorted(desired - current):
-        await grant_store.grant(
-            agent_name,
-            principal,
-            capability=Capability.USE,
-            granted_by="dashboard",
-            source=source,
-        )
-        granted.append(agent_name)
-
-    for agent_name in sorted(current - desired):
-        await grant_store.revoke(agent_name, principal, capability=Capability.USE)
-
-    return granted
-
-
-def _validate_desired_agents(agent_store: Any, desired_agents: list[str]) -> str | None:
-    known = {r.name for r in agent_store.get_all()}
-    unknown = sorted(name for name in desired_agents if name not in known)
-    if unknown:
-        return f"unknown agent(s): {', '.join(unknown)}"
-    return None
 
 
 async def _rollback_created_admin_user(
@@ -253,6 +200,7 @@ async def handle_admin_user_create(
                 req.agents,
                 source="admin.user.create",
                 granted_out=granted_agents,
+                user_store=user_store,
             )
     except Exception as exc:
         if user is not None:
@@ -314,7 +262,13 @@ async def handle_admin_user_patch(hub: Hub, _nc: NATS, payload: dict[str, Any]) 
             and "agents" in fields_set
             and req.agents is not None
         ):
-            await _sync_user_agents(grant_store, agent_store, user_id, req.agents)
+            await _sync_user_agents(
+                grant_store,
+                agent_store,
+                user_id,
+                req.agents,
+                user_store=user_store,
+            )
     except ValueError as exc:
         return {"error": "conflict", "message": str(exc)}
 

@@ -8,7 +8,7 @@ import logging
 from factory.obs.hub_tracer import hub_ingress_span
 
 from ...auth.trust import TrustLevel
-from ...messaging.message import InboundMessage, Platform
+from ...messaging.message import InboundMessage, Platform, Response
 from ...trace import TraceContext
 from ..pipeline.pipeline_events import MessageDropped
 from ..pipeline.pipeline_types import DROP, Action, PipelineResult
@@ -97,6 +97,68 @@ class ResolveIdentityMiddleware:
             )
             return DROP
         return await next(msg, ctx)
+
+
+_LINK_CMD_PREFIXES = (
+    "/link",
+    "/join",
+    "/invite",
+    "/unpair",
+    "/unlink",
+    "!link",
+    "!join",
+)
+
+_UNLINKED_REFUSAL = (
+    "Account not linked for chat. Open the Dashboard → Link accounts, "
+    "then send `/link <code>` here for Telegram and Discord."
+)
+
+
+class PlatformLinkMiddleware:
+    """Stage 2b (ADR-103): refuse TG/DC agent turns until dual platform link.
+
+    Admin does **not** bypass (console may work without link; chat requires it).
+    Pairing/link commands always pass so users can complete onboarding.
+    When no checker is wired on the hub, pass-through (tests / pre-deploy).
+    """
+
+    async def __call__(
+        self, msg: InboundMessage, ctx: PipelineContext, next: Next
+    ) -> PipelineResult:
+        from factory.core.auth.platform_link_gate import platform_requires_link
+
+        if not platform_requires_link(msg.platform):
+            return await next(msg, ctx)
+
+        text = (msg.text or "").strip().lower()
+        if any(text.startswith(p) for p in _LINK_CMD_PREFIXES):
+            return await next(msg, ctx)
+
+        checker = getattr(ctx.hub, "_platform_link_checker", None)
+        if checker is None:
+            return await next(msg, ctx)
+
+        ready = await checker.is_platform_chat_ready(msg.user_id)
+        if ready:
+            return await next(msg, ctx)
+
+        log.info(
+            "platform_unlinked user=%s platform=%s — pull refusal",
+            msg.user_id,
+            msg.platform,
+        )
+        ctx.emit(
+            MessageDropped(
+                msg_id=msg.id,
+                stage=type(self).__name__,
+                reason="platform_unlinked",
+            )
+        )
+        return PipelineResult(
+            action=Action.COMMAND_HANDLED,
+            response=Response(content=_UNLINKED_REFUSAL),
+        )
 
 
 class RateLimitMiddleware:

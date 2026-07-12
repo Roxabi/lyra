@@ -445,6 +445,7 @@ Prefer **stacked PRs** rather than one mega-PR.
 | 2026-07-12 | GO | Phase 0 **approuvée** — defaults § companion open items 1–5 locked ; start Blocks 1–3 |
 | 2026-07-12 | 1–3 | Store+ports ControlPlaneStore ; BFF login/session/API key/`require_principal` ; invites ; tests green ; importlinter 15 kept |
 | 2026-07-12 | 4–7 | Orgs + org routes ; principal stamp hub `_wrap` fail-closed ; authorize + agents admin-only ; jobs meta launched_by/org_id |
+| 2026-07-12 | 8–10 | dash_link_codes + BFF links ; PlatformLinkMiddleware TG/DC ; grant_human multi-platform keys |
 
 ---
 
@@ -462,9 +463,9 @@ Prefer **stacked PRs** rather than one mega-PR.
 | 5 stamp+hub gate | **done** (`_wrap` principal required ; hub_client stamp) |
 | 6 resource authz | **done** (authorize helper ; agents write admin-only) |
 | 7 jobs identity | **done** (dash_job_launches ; list/steer/cancel filter) |
-| 8 platform link | pending |
-| 9 inbound gate | pending |
-| 10 grants align | pending |
+| 8 platform link | **done** (link codes + BFF /auth/links + bot `/link`) |
+| 9 inbound gate | **done** (PlatformLinkMiddleware dual-link) |
+| 10 grants align | **done** (grant_human + admin_rpc platform keys) |
 | 11 SPA | pending |
 | 12 deploy/docs | pending |
 | 13 audit | pending |

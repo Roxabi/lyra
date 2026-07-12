@@ -47,18 +47,54 @@ def _get_alias_store(pool: Pool) -> IdentityAliasStoreProtocol | None:
     return getattr(hub, "_alias_store", None)
 
 
+async def _try_dashboard_link(
+    msg: InboundMessage, pool: Pool, code: str
+) -> Response | None:
+    """Complete dashboard link code. Returns None if not a dash code."""
+    hub = getattr(pool, "_ctx", None)
+    cp = getattr(hub, "_control_plane", None) if hub is not None else None
+    if cp is None or not hasattr(cp, "consume_link_code"):
+        return None
+    try:
+        user_id = await cp.consume_link_code(code, platform_key=msg.user_id)
+    except ValueError:
+        return None
+    ready = await cp.chat_ready(user_id) if hasattr(cp, "chat_ready") else False
+    if ready:
+        status = "chat-ready (Telegram + Discord linked)."
+    else:
+        status = (
+            "partial — link the other platform "
+            "(Telegram and Discord both required)."
+        )
+    log.info(
+        "dashboard platform link completed user=%s via %s", user_id, msg.user_id
+    )
+    return Response(
+        content=f"Dashboard account linked (`{msg.user_id}`).\n{status}"
+    )
+
+
 async def cmd_link(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     """Link identities across platforms.
 
-    No args: initiate challenge (generate code).
-    With args: complete challenge (validate code from another platform).
+    With args: dashboard link code first, else admin cross-platform challenge.
+    No args: admin-only challenge initiate.
     """
+    if args:
+        dash = await _try_dashboard_link(msg, pool, args[0])
+        if dash is not None:
+            return dash
+
     alias_store = _get_alias_store(pool)
     if alias_store is None:
         return Response(content="Identity linking is not available.")
 
     if not msg.is_admin:
-        return Response(content=_ADMIN_ONLY)
+        return Response(
+            content="Invalid or expired link code. "
+            "Open the Dashboard → Link accounts to get a fresh code."
+        )
 
     if not args:
         # Initiate: generate challenge code

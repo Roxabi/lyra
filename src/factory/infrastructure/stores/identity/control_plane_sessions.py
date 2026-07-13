@@ -62,6 +62,13 @@ class ControlPlaneSessionOps:
         return rec, token
 
     async def resolve_session(self, raw_token: str) -> ControlPlanePrincipal | None:
+        got = await self.resolve_session_with_id(raw_token)
+        return got[0] if got is not None else None
+
+    async def resolve_session_with_id(
+        self, raw_token: str
+    ) -> tuple[ControlPlanePrincipal, str] | None:
+        """Return (principal, session_id) for opaque token; roles from store."""
         if not raw_token:
             return None
         db = self._require_db()
@@ -73,7 +80,7 @@ class ControlPlaneSessionOps:
             row = await cur.fetchone()
         if row is None:
             return None
-        _sid, user_id, expires_at_s = row
+        sid, user_id, expires_at_s = row
         if _utc_now() > _parse_ts(expires_at_s):
             await db.execute("DELETE FROM dash_sessions WHERE token_hash = ?", (th,))
             await db.commit()
@@ -81,7 +88,8 @@ class ControlPlaneSessionOps:
         user = await self.get_user(user_id)
         if user is None or user.status != UserStatus.ACTIVE:
             return None
-        return await self.principal_for_user(user, via="session")
+        principal = await self.principal_for_user(user, via="session")
+        return principal, str(sid)
 
     async def revoke_session(self, raw_token: str) -> bool:
         if not raw_token:
@@ -177,20 +185,29 @@ class ControlPlaneSessionOps:
         return n > 0
 
     async def resolve_api_key(self, raw_key: str) -> ControlPlanePrincipal | None:
+        got = await self.resolve_api_key_with_id(raw_key)
+        return got[0] if got is not None else None
+
+    async def resolve_api_key_with_id(
+        self, raw_key: str
+    ) -> tuple[ControlPlanePrincipal, str] | None:
+        """Return (principal, api_key_id) for secret; roles from store."""
         if not raw_key:
             return None
         db = self._require_db()
         async with db.execute(
-            "SELECT user_id, revoked_at FROM dash_api_keys WHERE key_hash = ?",
+            "SELECT id, user_id, revoked_at FROM dash_api_keys WHERE key_hash = ?",
             (hash_token(raw_key),),
         ) as cur:
             row = await cur.fetchone()
-        if row is None or row[1] is not None:
+        if row is None or row[2] is not None:
             return None
-        user = await self.get_user(row[0])
+        key_id, user_id, _revoked = row
+        user = await self.get_user(user_id)
         if user is None or user.status != UserStatus.ACTIVE:
             return None
-        return await self.principal_for_user(user, via="api_key")
+        principal = await self.principal_for_user(user, via="api_key")
+        return principal, str(key_id)
 
     async def principal_for_user(
         self,

@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any
 
 from factory.core.auth.control_plane import ControlPlanePrincipal, ControlPlaneUser
 from factory.core.auth.control_plane_authz import authorize
-from factory.core.auth.control_plane_wire import get_request_principal
 from roxabi_contracts.dashboard.auth_models import (
     DashboardAuthApiKeyResolveRequest,
     DashboardAuthApiKeyResolveResponse,
@@ -118,17 +117,18 @@ async def handle_auth_session_resolve(
             ok=False, error="unavailable", message="control-plane not configured"
         ).model_dump()
     req = DashboardAuthSessionResolveRequest.model_validate(payload)
-    principal = await cp.resolve_session(req.session_token)
-    if principal is None:
+    got = await cp.resolve_session_with_id(req.session_token)
+    if got is None:
         return DashboardAuthSessionResolveResponse(
             ok=False, error="unauthorized", message="session expired or invalid"
         ).model_dump()
+    principal, session_id = got
     user = await cp.get_user(principal.user_id)
     return DashboardAuthSessionResolveResponse(
         ok=True,
         user=_user_public(user) if user is not None else None,
-        principal=_principal_public(principal),
-        session_id=None,
+        principal=_principal_public(principal, session_id=session_id),
+        session_id=session_id,
     ).model_dump()
 
 
@@ -142,16 +142,18 @@ async def handle_auth_api_key_resolve(
             ok=False, error="unavailable", message="control-plane not configured"
         ).model_dump()
     req = DashboardAuthApiKeyResolveRequest.model_validate(payload)
-    principal = await cp.resolve_api_key(req.api_key)
-    if principal is None:
+    got = await cp.resolve_api_key_with_id(req.api_key)
+    if got is None:
         return DashboardAuthApiKeyResolveResponse(
             ok=False, error="unauthorized", message="invalid api key"
         ).model_dump()
+    principal, api_key_id = got
     user = await cp.get_user(principal.user_id)
     return DashboardAuthApiKeyResolveResponse(
         ok=True,
         user=_user_public(user) if user is not None else None,
-        principal=_principal_public(principal),
+        principal=_principal_public(principal, api_key_id=api_key_id),
+        api_key_id=api_key_id,
     ).model_dump()
 
 
@@ -173,16 +175,25 @@ async def handle_auth_logout(
 async def handle_auth_invite_create(
     hub: Hub, _nc: NATS, payload: dict[str, Any]
 ) -> dict[str, Any]:
-    """Admin-only invite create (principal required via wrap)."""
+    """Admin-only invite create — proof-bound rehydrate (ignore wire roles)."""
     cp = _cp(hub)
     if cp is None:
         return DashboardAuthInviteCreateResponse(
             ok=False, error="unavailable", message="control-plane not configured"
         ).model_dump()
-    principal = get_request_principal()
+    req = DashboardAuthInviteCreateRequest.model_validate(payload)
+    # Slice 1 interim + Slice 3 design: never authorize on client-stamped roles.
+    # Require opaque session_token; rehydrate principal from ControlPlaneStore.
+    if not req.session_token:
+        return DashboardAuthInviteCreateResponse(
+            ok=False,
+            error="unauthorized",
+            message="session_token required",
+        ).model_dump()
+    principal = await cp.resolve_session(req.session_token)
     if principal is None:
         return DashboardAuthInviteCreateResponse(
-            ok=False, error="unauthorized", message="principal required"
+            ok=False, error="unauthorized", message="session expired or invalid"
         ).model_dump()
     decision = authorize(principal, "users.invite")
     if not decision.allowed:
@@ -194,7 +205,6 @@ async def handle_auth_invite_create(
         return DashboardAuthInviteCreateResponse(
             ok=False, error="forbidden", message="admin only"
         ).model_dump()
-    req = DashboardAuthInviteCreateRequest.model_validate(payload)
     expires = datetime.now(timezone.utc) + timedelta(hours=req.ttl_hours)
     try:
         rec, token = await cp.create_invite(
@@ -203,8 +213,10 @@ async def handle_auth_invite_create(
             expires_at=expires,
         )
     except ValueError as exc:
+        # Stable client code; detail only in logs (no email enumeration).
+        log.info("auth_rpc invite_create_fail reason=%s", str(exc)[:80])
         return DashboardAuthInviteCreateResponse(
-            ok=False, error="bad_request", message=str(exc)
+            ok=False, error="bad_request", message="invite create failed"
         ).model_dump()
     return DashboardAuthInviteCreateResponse(
         ok=True,
@@ -234,8 +246,9 @@ async def handle_auth_invite_accept(
             display_name=req.display_name,
         )
     except ValueError as exc:
+        log.info("auth_rpc invite_accept_fail reason=%s", str(exc)[:80])
         return DashboardAuthInviteAcceptResponse(
-            ok=False, error="bad_request", message=str(exc)
+            ok=False, error="bad_request", message="invalid or expired invite"
         ).model_dump()
     session, token = await cp.create_session(user.id, ttl_seconds=_DEFAULT_SESSION_TTL)
     principal = await cp.principal_for_user(user, via="session")

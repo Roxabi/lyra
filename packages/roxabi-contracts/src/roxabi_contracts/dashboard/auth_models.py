@@ -77,6 +77,8 @@ class DashboardAuthLogoutResponse(BaseModel):
 class DashboardAuthInviteCreateRequest(BaseModel):
     email: str
     ttl_hours: int = Field(default=72, ge=1, le=24 * 30)
+    # Opaque session proof — hub rehydrates principal; wire roles ignored (Slice 1).
+    session_token: str | None = None
 
 
 class DashboardAuthInviteCreateResponse(BaseModel):

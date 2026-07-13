@@ -16,17 +16,19 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Public identity RPCs (login / resolve / accept-invite) — no principal stamp.
-# Keep in sync with SUBJECTS.auth_* public set (ADR-103 Slice 1).
-_PUBLIC_AUTH_SUBJECTS: frozenset[str] = frozenset(
-    {
-        "factory.dashboard.auth.login",
-        "factory.dashboard.auth.logout",
-        "factory.dashboard.auth.session.resolve",
-        "factory.dashboard.auth.invite.accept",
-        "factory.dashboard.auth.api_key.resolve",
-    }
-)
+def _public_auth_subjects() -> frozenset[str]:
+    """Public identity RPCs — no principal stamp (SSoT: SUBJECTS)."""
+    from roxabi_contracts.dashboard import SUBJECTS
+
+    return frozenset(
+        {
+            SUBJECTS.auth_login,
+            SUBJECTS.auth_logout,
+            SUBJECTS.auth_session_resolve,
+            SUBJECTS.auth_invite_accept,
+            SUBJECTS.auth_api_key_resolve,
+        }
+    )
 
 
 def wrap_dashboard_handler(
@@ -55,7 +57,7 @@ def wrap_dashboard_handler(
             need_principal = (
                 require_principal
                 if require_principal is not None
-                else msg.subject not in _PUBLIC_AUTH_SUBJECTS
+                else msg.subject not in _public_auth_subjects()
             )
             principal = parse_principal_from_payload(payload)
             if need_principal and principal is None:
@@ -67,6 +69,7 @@ def wrap_dashboard_handler(
                     reason="principal_required",
                 )
                 err = {
+                    "ok": False,
                     "error": "unauthorized",
                     "message": "principal required",
                 }
@@ -82,11 +85,11 @@ def wrap_dashboard_handler(
                 clear_request_principal()
         except (ValidationError, json.JSONDecodeError, UnicodeDecodeError, KeyError):
             log.exception("dashboard_rpc handler failed subject=%s", msg.subject)
-            err = {"error": "bad_request"}
+            err = {"ok": False, "error": "bad_request"}
             await msg.respond(json.dumps(err).encode())
         except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.exception("dashboard_rpc handler failed subject=%s", msg.subject)
-            err = {"error": "internal_error"}
+            err = {"ok": False, "error": "internal_error"}
             await msg.respond(json.dumps(err).encode())
 
     return _cb

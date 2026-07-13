@@ -121,3 +121,20 @@ class DashboardAuthApiKeyResolveResponse(BaseModel):
     user: DashboardAuthUser | None = None
     principal: DashboardAuthPrincipal | None = None
     api_key_id: str | None = None
+
+
+class DashboardAuthPasswordChangeRequest(BaseModel):
+    """Authenticated password change.
+
+    Wire still carries ``session_token`` for principal rehydrate (rpc_wrap strips
+    it before the handler). Handler uses rehydrated principal only.
+    """
+
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+
+class DashboardAuthPasswordChangeResponse(BaseModel):
+    ok: bool = True
+    error: str | None = None
+    message: str | None = None

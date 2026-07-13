@@ -19,6 +19,7 @@ from factory.bootstrap.factory.dashboard.auth_rpc import (
     handle_auth_invite_create,
     handle_auth_login,
     handle_auth_logout,
+    handle_auth_password_change,
     handle_auth_session_resolve,
 )
 from factory.bootstrap.factory.dashboard.connectors_rpc import (
@@ -128,6 +129,7 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.auth_invite_create, handle_auth_invite_create),
         (SUBJECTS.auth_invite_accept, handle_auth_invite_accept),
         (SUBJECTS.auth_api_key_resolve, handle_auth_api_key_resolve),
+        (SUBJECTS.auth_password_change, handle_auth_password_change),
     ):
         sub = await nc.subscribe(subject, cb=wrap_dashboard_handler(hub, nc, handler))
         subs.append(sub)

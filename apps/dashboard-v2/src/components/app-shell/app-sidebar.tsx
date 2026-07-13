@@ -8,6 +8,7 @@ import {
   observeNavItems,
   operateNavItems,
 } from "@/app/nav";
+import { NavUser } from "@/components/app-shell/nav-user";
 import {
   Sidebar,
   SidebarContent,
@@ -54,7 +55,13 @@ function NavSection({ titleKey, items }: { titleKey: string; items: AppNavItem[]
 
             return (
               <SidebarMenuItem key={item.to}>
-                <SidebarMenuButton isActive={active} tooltip={label} render={<Link to={item.to} />}>
+                <SidebarMenuButton
+                  isActive={active}
+                  tooltip={label}
+                  // Link renders <a>; Base UI error #31 if nativeButton stays true.
+                  nativeButton={false}
+                  render={<Link to={item.to} />}
+                >
                   <Icon />
                   <span>{label}</span>
                 </SidebarMenuButton>
@@ -75,7 +82,7 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link to="/" />}>
+            <SidebarMenuButton size="lg" nativeButton={false} render={<Link to="/" />}>
               <img src="/factory-mark.svg" alt="" className="size-8" aria-hidden />
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{t("appName")}</span>
@@ -93,10 +100,11 @@ export function AppSidebar() {
         <NavSection titleKey="nav.sectionAdmin" items={adminNavItems} />
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-2">
+      <SidebarFooter className="border-t border-sidebar-border gap-2 p-2">
         <span className="px-2 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground group-data-[collapsible=icon]:hidden">
           {t("nav.badgeV2")}
         </span>
+        <NavUser />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

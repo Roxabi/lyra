@@ -28,6 +28,8 @@ from roxabi_contracts.dashboard.auth_models import (
     DashboardAuthLoginResponse,
     DashboardAuthLogoutRequest,
     DashboardAuthLogoutResponse,
+    DashboardAuthPasswordChangeRequest,
+    DashboardAuthPasswordChangeResponse,
     DashboardAuthPrincipal,
     DashboardAuthSessionResolveRequest,
     DashboardAuthSessionResolveResponse,
@@ -170,6 +172,39 @@ async def handle_auth_logout(
     if req.session_token:
         await cp.revoke_session(req.session_token)
     return DashboardAuthLogoutResponse(ok=True).model_dump()
+
+
+async def handle_auth_password_change(
+    hub: Hub, _nc: NATS, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Authenticated: verify current password, set new (rehydrated principal)."""
+    from factory.core.auth.control_plane_wire import get_request_principal
+
+    cp = _cp(hub)
+    if cp is None:
+        return DashboardAuthPasswordChangeResponse(
+            ok=False, error="unavailable", message="control-plane not configured"
+        ).model_dump()
+    principal = get_request_principal()
+    if principal is None:
+        return DashboardAuthPasswordChangeResponse(
+            ok=False, error="unauthorized", message="principal required"
+        ).model_dump()
+    req = DashboardAuthPasswordChangeRequest.model_validate(payload)
+    user = await cp.get_user(principal.user_id)
+    if user is None or not user.email:
+        return DashboardAuthPasswordChangeResponse(
+            ok=False, error="unauthorized", message="user not found"
+        ).model_dump()
+    verified = await cp.verify_password(user.email, req.current_password)
+    if verified is None or verified.id != user.id:
+        log.info("auth_rpc password_change_deny user_id=%s", user.id)
+        return DashboardAuthPasswordChangeResponse(
+            ok=False, error="unauthorized", message="current password invalid"
+        ).model_dump()
+    await cp.set_password(user.id, req.new_password)
+    log.info("auth_rpc password_change_ok user_id=%s", user.id)
+    return DashboardAuthPasswordChangeResponse(ok=True).model_dump()
 
 
 async def handle_auth_invite_create(

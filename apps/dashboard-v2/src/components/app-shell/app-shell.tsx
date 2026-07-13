@@ -4,7 +4,7 @@ import { resolveLayoutFlags } from "@/app/nav";
 import { ShellTitleProvider } from "@/app/shell-title";
 import { AppHeader } from "@/components/app-shell/app-header";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
-import { SidebarInset, useSidebar } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
@@ -38,12 +38,12 @@ function ShellLayout() {
 
 export function AppShell() {
   return (
-    <>
+    <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="min-h-dvh">
         <ShellLayout />
       </SidebarInset>
       <Toaster />
-    </>
+    </SidebarProvider>
   );
 }

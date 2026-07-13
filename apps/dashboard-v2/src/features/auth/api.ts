@@ -66,6 +66,17 @@ export async function logout(): Promise<void> {
   await bffFetch("/api/bff/auth/logout", { method: "POST" });
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await bffJson("/api/bff/auth/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
+
 export async function acceptInvite(body: {
   token: string;
   password: string;

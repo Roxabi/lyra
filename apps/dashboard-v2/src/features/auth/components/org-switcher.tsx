@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,19 +56,30 @@ export function OrgSwitcher() {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
+        {/*
+          Native controls (not Button-as-Item) to avoid Base UI #31:
+          nested useButton(native) mismatches inside Menu.
+        */}
         <div className="flex flex-col gap-2 p-2">
           <Input
             placeholder={t("org.newName")}
             value={name}
             onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           />
-          <Button
-            size="sm"
+          <button
+            type="button"
+            className="inline-flex h-7 items-center justify-center rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground disabled:opacity-50"
             disabled={!name.trim() || create.isPending}
-            onClick={() => create.mutate()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              create.mutate();
+            }}
           >
             {t("org.create")}
-          </Button>
+          </button>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -112,15 +112,23 @@ def test_me_via_hub_session_resolve(client: TestClient) -> None:
             "status": "active",
         },
     }
-    with patch(
-        "factory.dashboard.routes.hub_auth.auth_session_resolve",
-        new=AsyncMock(return_value=resolve_raw),
+    # require_principal imports hub_auth at call time; /me uses auth_routes binding.
+    with (
+        patch(
+            "factory.dashboard.routes.hub_auth.auth_session_resolve",
+            new=AsyncMock(return_value=resolve_raw),
+        ),
+        patch(
+            "factory.dashboard.routes.auth_routes.auth_session_resolve",
+            new=AsyncMock(return_value=resolve_raw),
+        ),
     ):
         client.cookies.set("factory_session", "opaque-session-token-xyz")
         me = client.get("/api/bff/auth/me")
     assert me.status_code == 200, me.text
     assert me.json()["principal"]["user_id"] == "rx:u1"
     assert me.json()["principal"]["via"] == "session"
+    assert me.json()["user"]["email"] == "admin@test.local"
 
 
 def test_me_unauth_401(client: TestClient) -> None:

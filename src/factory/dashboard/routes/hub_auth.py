@@ -16,6 +16,7 @@ from roxabi_contracts.dashboard.auth_models import (
     DashboardAuthInviteCreateRequest,
     DashboardAuthLoginRequest,
     DashboardAuthLogoutRequest,
+    DashboardAuthPasswordChangeRequest,
     DashboardAuthPrincipal,
     DashboardAuthSessionResolveRequest,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "auth_invite_create",
     "auth_login",
     "auth_logout",
+    "auth_password_change",
     "auth_session_resolve",
     "principal_from_wire",
 ]
@@ -134,5 +136,22 @@ async def auth_invite_accept(
     )
     raw = await hub._request(  # noqa: SLF001
         SUBJECTS.auth_invite_accept, req.model_dump()
+    )
+    return _check(raw)
+
+
+async def auth_password_change(
+    hub: DashboardHubClient,
+    *,
+    current_password: str,
+    new_password: str,
+) -> dict[str, Any]:
+    """Hub request; session_token stamped by hub client from request context."""
+    req = DashboardAuthPasswordChangeRequest(
+        current_password=current_password,
+        new_password=new_password,
+    )
+    raw = await hub._request(  # noqa: SLF001
+        SUBJECTS.auth_password_change, req.model_dump()
     )
     return _check(raw)

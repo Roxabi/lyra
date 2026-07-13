@@ -94,6 +94,9 @@ class DashboardSubjects(BaseModel):
     auth_api_key_resolve: Literal["factory.dashboard.auth.api_key.resolve"] = (
         "factory.dashboard.auth.api_key.resolve"
     )
+    auth_password_change: Literal["factory.dashboard.auth.password.change"] = (
+        "factory.dashboard.auth.password.change"
+    )
 
 
 SUBJECTS = DashboardSubjects()

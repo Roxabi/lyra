@@ -37,6 +37,8 @@ from factory.dashboard.routes.hub_auth import (
     auth_invite_accept,
     auth_login,
     auth_logout,
+    auth_password_change,
+    auth_session_resolve,
     principal_from_wire,
 )
 from factory.dashboard.security import audit_security, client_key
@@ -53,6 +55,11 @@ class AcceptInviteBody(BaseModel):
     token: str
     password: str = Field(min_length=8)
     display_name: str | None = None
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
 
 
 async def _login_handler(
@@ -202,14 +209,74 @@ async def _me_handler(
     request: Request,
     principal: ControlPlanePrincipal = Depends(require_principal),
 ) -> dict[str, Any]:
+    hub = hub_client_from_app(request)
     cp = cp_or_none(request)
     user = None
+    if hub is not None and cp is None:
+        # Thin BFF: re-resolve session to load user row from hub IdP.
+        raw_tok = request.cookies.get(SESSION_COOKIE_NAME)
+        if raw_tok:
+            try:
+                raw = await auth_session_resolve(hub, session_token=raw_tok)
+                return {
+                    "principal": principal_public(principal),
+                    "user": raw.get("user"),
+                }
+            except (HubAuthError, RuntimeError):
+                # HubAuthError / NATS not wired in unit tests without mock.
+                pass
     if cp is not None:
         user = await cp.get_user(principal.user_id)
     return {
         "principal": principal_public(principal),
         "user": user_public(user) if user is not None else None,
     }
+
+
+async def _change_password_handler(
+    body: ChangePasswordBody,
+    request: Request,
+    principal: ControlPlanePrincipal = Depends(require_principal),
+) -> dict[str, str]:
+    del principal
+    rate_limit_or_429(request, action="change_password")
+    hub = hub_client_from_app(request)
+    cp = cp_or_none(request)
+    raw_tok = request.cookies.get(SESSION_COOKIE_NAME)
+
+    if hub is not None and cp is None:
+        if not raw_tok:
+            raise HTTPException(status_code=401, detail="session required")
+        try:
+            # session_token is stamped into NATS wire by require_principal path
+            await auth_password_change(
+                hub,
+                current_password=body.current_password,
+                new_password=body.new_password,
+            )
+        except HubAuthError as exc:
+            raise http_from_hub_error(exc) from exc
+        audit_security("password_change_ok", client=client_key(request))
+        return {"status": "ok"}
+
+    if cp is None:
+        raise HTTPException(
+            status_code=503, detail="control-plane identity not configured"
+        )
+    if not raw_tok:
+        raise HTTPException(status_code=401, detail="session required")
+    session_principal = await cp.resolve_session(raw_tok)
+    if session_principal is None:
+        raise HTTPException(status_code=401, detail="session expired or invalid")
+    user = await cp.get_user(session_principal.user_id)
+    if user is None or not user.email:
+        raise HTTPException(status_code=401, detail="user not found")
+    verified = await cp.verify_password(user.email, body.current_password)
+    if verified is None or verified.id != user.id:
+        raise HTTPException(status_code=401, detail="current password invalid")
+    await cp.set_password(user.id, body.new_password)
+    audit_security("password_change_ok", user_id=user.id, client=client_key(request))
+    return {"status": "ok"}
 
 
 def register_auth_routes(router: APIRouter) -> None:
@@ -220,6 +287,9 @@ def register_auth_routes(router: APIRouter) -> None:
     )
     router.add_api_route("/auth/logout", _logout_handler, methods=["POST"])
     router.add_api_route("/auth/me", _me_handler, methods=["GET"])
+    router.add_api_route(
+        "/auth/change-password", _change_password_handler, methods=["POST"]
+    )
     router.add_api_route("/auth/invites", create_invite_handler, methods=["POST"])
     router.add_api_route("/auth/invites", list_invites_handler, methods=["GET"])
     router.add_api_route(

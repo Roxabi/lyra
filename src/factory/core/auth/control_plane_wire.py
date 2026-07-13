@@ -36,6 +36,7 @@ _PRINCIPAL_KEYS = frozenset(
         "principal_active_org_id",
         "principal_via",
         "session_token",
+        "api_key",
     }
 )
 

@@ -1,4 +1,4 @@
-"""Hub principal rehydrate ignores client roles (ADR-103 Slice 3)."""
+"""Hub principal rehydrate — proof-bound, ignore client roles (ADR-103 Slice 3)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ async def cp_store(tmp_path: Path):
         password="admin-secret-99",
         display_name="Admin",
     )
-    # member
     await store.create_user(
         email="member@test.local",
         password="member-secret-99",
@@ -44,53 +43,120 @@ def _hub(cp: ControlPlaneStore) -> MagicMock:
     return hub
 
 
+async def _login(hub: MagicMock, email: str, password: str) -> dict:
+    return await handle_auth_login(
+        hub, MagicMock(), {"email": email, "password": password}
+    )
+
+
 @pytest.mark.asyncio
-async def test_rehydrate_ignores_forged_admin_roles(
+async def test_rehydrate_no_proof_denies_even_with_user_id(
     cp_store: ControlPlaneStore,
 ) -> None:
+    """Bare principal_user_id must not authenticate (impersonation closed)."""
     member = await cp_store.get_user_by_email("member@test.local")
     assert member is not None
     forged = ControlPlanePrincipal(
         user_id=member.id,
-        roles=frozenset({GlobalRole.ADMIN.value}),  # forged
+        roles=frozenset({GlobalRole.ADMIN.value}),
         org_ids=frozenset(),
         active_org_id=None,
         via="session",
     )
     hub = _hub(cp_store)
     principal = await rehydrate_principal(hub, wire=forged, payload={})
+    assert principal is None
+
+
+@pytest.mark.asyncio
+async def test_rehydrate_invalid_session_denies(
+    cp_store: ControlPlaneStore,
+) -> None:
+    hub = _hub(cp_store)
+    principal = await rehydrate_principal(
+        hub, wire=None, payload={"session_token": "not-a-real-token"}
+    )
+    assert principal is None
+
+
+@pytest.mark.asyncio
+async def test_rehydrate_via_session_token_ignores_forged_roles(
+    cp_store: ControlPlaneStore,
+) -> None:
+    """Valid session proof + forged admin roles → store MEMBER roles only."""
+    hub = _hub(cp_store)
+    login = await _login(hub, "member@test.local", "member-secret-99")
+    token = login["session_token"]
+    member_id = login["principal"]["user_id"]
+    forged = ControlPlanePrincipal(
+        user_id=member_id,
+        roles=frozenset({GlobalRole.ADMIN.value}),
+        org_ids=frozenset(),
+        active_org_id=None,
+        via="session",
+    )
+    principal = await rehydrate_principal(
+        hub, wire=forged, payload={"session_token": token}
+    )
     assert principal is not None
-    assert principal.user_id == member.id
+    assert principal.user_id == member_id
     assert GlobalRole.MEMBER.value in principal.roles
     assert GlobalRole.ADMIN.value not in principal.roles
 
 
 @pytest.mark.asyncio
-async def test_rehydrate_via_session_token(cp_store: ControlPlaneStore) -> None:
+async def test_rehydrate_via_api_key_proof(cp_store: ControlPlaneStore) -> None:
     hub = _hub(cp_store)
-    login = await handle_auth_login(
-        hub,
-        MagicMock(),
-        {"email": "admin@test.local", "password": "admin-secret-99"},
-    )
-    token = login["session_token"]
+    login = await _login(hub, "admin@test.local", "admin-secret-99")
+    user_id = login["principal"]["user_id"]
+    _rec, secret = await cp_store.create_api_key(user_id, name="ci")
     principal = await rehydrate_principal(
-        hub,
-        wire=None,
-        payload={"session_token": token},
+        hub, wire=None, payload={"api_key": secret}
     )
     assert principal is not None
     assert GlobalRole.ADMIN.value in principal.roles
 
 
 @pytest.mark.asyncio
-async def test_wrap_forged_roles_still_member_on_business_rpc(
+async def test_wrap_business_rpc_requires_session_proof(
     cp_store: ControlPlaneStore,
 ) -> None:
-    """Protected subject rehydrates; handler sees store roles not wire admin."""
+    """Stamp alone (no session_token) → unauthorized on protected subject."""
     member = await cp_store.get_user_by_email("member@test.local")
     assert member is not None
     hub = _hub(cp_store)
+    handler = AsyncMock(return_value={"ok": True})
+    cb = wrap_dashboard_handler(hub, MagicMock(), handler)
+    forged = ControlPlanePrincipal(
+        user_id=member.id,
+        roles=frozenset({GlobalRole.ADMIN.value}),
+        org_ids=frozenset(),
+        active_org_id=None,
+        via="session",
+    )
+    payload = stamp_principal_payload({}, forged)
+    # No session_token — proof missing
+    assert "session_token" not in payload
+    msg = MagicMock()
+    msg.subject = "factory.dashboard.jobs.list"
+    msg.data = json.dumps(payload).encode()
+    msg.respond = AsyncMock()
+    await cb(msg)
+    handler.assert_not_awaited()
+    raw = json.loads(msg.respond.await_args.args[0].decode())
+    assert raw["error"] == "unauthorized"
+    assert raw.get("ok") is False
+
+
+@pytest.mark.asyncio
+async def test_wrap_forged_roles_still_member_with_session_token(
+    cp_store: ControlPlaneStore,
+) -> None:
+    """Protected subject + valid session + forged admin stamp → store MEMBER."""
+    hub = _hub(cp_store)
+    login = await _login(hub, "member@test.local", "member-secret-99")
+    token = login["session_token"]
+    member_id = login["principal"]["user_id"]
     seen: list[ControlPlanePrincipal | None] = []
 
     async def _handler(_hub, _nc, _payload):
@@ -101,13 +167,13 @@ async def test_wrap_forged_roles_still_member_on_business_rpc(
 
     cb = wrap_dashboard_handler(hub, MagicMock(), _handler)
     forged = ControlPlanePrincipal(
-        user_id=member.id,
+        user_id=member_id,
         roles=frozenset({GlobalRole.ADMIN.value}),
         org_ids=frozenset(),
         active_org_id=None,
         via="session",
     )
-    payload = stamp_principal_payload({}, forged)
+    payload = stamp_principal_payload({"session_token": token}, forged)
     msg = MagicMock()
     msg.subject = "factory.dashboard.jobs.list"
     msg.data = json.dumps(payload).encode()

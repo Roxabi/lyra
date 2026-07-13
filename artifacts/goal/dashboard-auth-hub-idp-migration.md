@@ -1,6 +1,8 @@
 # Migration — Hub IdP + thin BFF (ADR-103 amended)
 
-**Status:** Slice 0–3 shipped on branch; Slice 4 SSoT re-enable (M₁ unmask after image)
+**Status:** Slices 0–5 done on branch `feat/hub-idp-thin-bff-migration`.
+**M₁ ops:** unmask + converge only after `staging-svc` image digests include Slices 2–3.
+**Slice 6 (C-lite):** skipped — no measured need; SPA+BFF stay edge.
 **Target:** ADR-103 Accepted 2026-07-12 (store owner = hub)
 **Interim ops:** prod stays `disabled = true` until **Slice 4 exit** (Slice 3 green is necessary but not sufficient)
 **Forbidden bandage:** do **not** mount `factory-data` RW on `factory-dashboard`
@@ -149,6 +151,8 @@ Browser → dashboard (thin BFF + SPA + chat) → NATS → hub sole ControlPlane
 
 Only if measured: move BFF route modules into hub process; dashboard reverse-proxies `/api/bff`.
 SPA + chat stay edge. **Not** required for IdP uniqueness.
+
+**2026-07-13 decision:** **skip** until measured BFF/hub latency or ops need; thin BFF + hub IdP satisfies uniqueness.
 
 ---
 

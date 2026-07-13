@@ -1,8 +1,9 @@
 # Runbook — Dashboard control-plane auth bootstrap (ADR-103)
 
-> **2026-07-12 interim:** `factory-dashboard` is **disabled** on M₁ until hub-IdP
-> migration ([`dashboard-auth-hub-idp-migration.md`](../../artifacts/goal/dashboard-auth-hub-idp-migration.md)).
-> Do **not** mount `factory-data` on the dashboard unit.
+> **ADR-103 hub IdP:** durable identity opens on **hub only**. Dashboard is a thin
+> BFF (NATS `factory.dashboard.auth.*`). Do **not** mount `factory-data` on the
+> dashboard unit. Migration:
+> [`dashboard-auth-hub-idp-migration.md`](../../artifacts/goal/dashboard-auth-hub-idp-migration.md).
 
 ## Disable / re-enable (ops)
 
@@ -55,15 +56,12 @@ systemctl --user is-active factory-dashboard
 3. Thin BFF on dashboard resolves sessions via **hub RPC** (no local ControlPlaneStore).
 4. SPA → Sign in; invite; link TG+DC; grants on platform ids.
 
-## Historical dual-open path (debt — local/dev only)
+## Dual-open (removed)
 
-> **Prod M₁:** do **not** run these against factory-dashboard until Slice 4.
-> Dual-open (`open_control_plane_store` in web adapter) is **superseded** as target.
-
-1. Writable `auth.db` path on the host used by the **local** web process.
-2. `FACTORY_DASHBOARD_BOOTSTRAP_*` on that process (password required if email set).
-3. `factory adapter web` — store open at astart (debt path).
-4. SPA login / invite / link as before.
+`WebAdapter.astart` no longer calls `open_control_plane_store`. Bootstrap helper
+`open_control_plane_for_dashboard` **raises** if invoked. Local pytest may inject
+a `ControlPlaneDirectory` into `create_app(..., control_plane=store)` without
+opening auth.db in the production composition root.
 
 ## Cookies
 
@@ -77,7 +75,8 @@ TG/DC agent turns refuse until dual-linked (`PlatformLinkMiddleware`).
 
 ## Health
 
-Liveness / HealthCmd remains unauthenticated. Do not put auth on `/healthz`.
+Public `GET /healthz` → `{"status":"ok"}` (no principal). HealthCmd must probe
+`/healthz` only — never `/api/agents` (auth-gated).
 (Slice 3: HealthCmd must not require `/api/agents` 200.)
 
 ## Rollback (emergency)

@@ -97,6 +97,11 @@ class DashboardSubjects(BaseModel):
     auth_password_change: Literal["factory.dashboard.auth.password.change"] = (
         "factory.dashboard.auth.password.change"
     )
+    # Orgs live on hub ControlPlaneStore (thin BFF must not open auth.db)
+    org_list: Literal["factory.dashboard.org.list"] = "factory.dashboard.org.list"
+    org_create: Literal["factory.dashboard.org.create"] = (
+        "factory.dashboard.org.create"
+    )
 
 
 SUBJECTS = DashboardSubjects()

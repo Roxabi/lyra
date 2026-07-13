@@ -481,27 +481,33 @@ function SidebarMenuButton({
   size = "default",
   tooltip,
   className,
-  nativeButton,
   ...props
 }: useRender.ComponentProps<"button"> &
   React.ComponentProps<"button"> & {
     isActive?: boolean;
     tooltip?: string | React.ComponentProps<typeof TooltipContent>;
-    /** When render is non-<button> (e.g. Link), set false — Base UI error #31. */
-    nativeButton?: boolean;
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar();
+  // TooltipTrigger is a native-button host. Wrapping a Link (or other non-button
+  // `render`) causes Base UI production error #31. For composition renders we
+  // fall back to the HTML title attribute when collapsed tooltips are needed.
+  const tooltipLabel = typeof tooltip === "string" ? tooltip : undefined;
+  const useRichTooltip = Boolean(tooltip) && render == null;
+  const titleFallback =
+    !useRichTooltip && tooltipLabel && (state === "collapsed" || isMobile)
+      ? tooltipLabel
+      : undefined;
+
   const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
       {
         className: cn(sidebarMenuButtonVariants({ variant, size }), className),
-        // useRender/useButton read nativeButton from props.
-        ...(nativeButton === undefined ? {} : { nativeButton }),
-      } as React.ComponentProps<"button">,
+        ...(titleFallback ? { title: titleFallback } : {}),
+      },
       props,
     ),
-    render: !tooltip ? render : <TooltipTrigger render={render} />,
+    render: useRichTooltip ? <TooltipTrigger /> : render,
     state: {
       slot: "sidebar-menu-button",
       sidebar: "menu-button",
@@ -510,7 +516,7 @@ function SidebarMenuButton({
     },
   });
 
-  if (!tooltip) {
+  if (!useRichTooltip) {
     return comp;
   }
 

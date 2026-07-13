@@ -11,8 +11,10 @@ __all__ = [
     "ORG_HEADER",
     "clear_request_principal",
     "get_request_principal",
+    "get_request_session_token",
     "parse_principal_from_payload",
     "set_request_principal",
+    "set_request_session_token",
     "stamp_principal_payload",
     "strip_principal_payload",
 ]
@@ -22,6 +24,9 @@ ORG_HEADER = "X-Factory-Org-Id"
 _request_principal: ContextVar[ControlPlanePrincipal | None] = ContextVar(
     "control_plane_principal", default=None
 )
+_request_session_token: ContextVar[str | None] = ContextVar(
+    "control_plane_session_token", default=None
+)
 
 _PRINCIPAL_KEYS = frozenset(
     {
@@ -30,6 +35,7 @@ _PRINCIPAL_KEYS = frozenset(
         "principal_org_ids",
         "principal_active_org_id",
         "principal_via",
+        "session_token",
     }
 )
 
@@ -42,20 +48,37 @@ def get_request_principal() -> ControlPlanePrincipal | None:
     return _request_principal.get()
 
 
+def set_request_session_token(token: str | None) -> None:
+    """Opaque session proof for hub rehydrate (Slice 3) — not roles."""
+    _request_session_token.set(token)
+
+
+def get_request_session_token() -> str | None:
+    return _request_session_token.get()
+
+
 def clear_request_principal() -> None:
     _request_principal.set(None)
+    _request_session_token.set(None)
 
 
 def stamp_principal_payload(
     payload: dict[str, Any], principal: ControlPlanePrincipal
 ) -> dict[str, Any]:
-    """Return a copy of *payload* with security-bearing principal fields."""
+    """Return a copy of *payload* with security-bearing principal fields.
+
+    Roles on the wire are informational only — hub rehydrates from store
+    (ADR-103 Slice 3). Optional ``session_token`` is the proof field.
+    """
     out = dict(payload)
     out["principal_user_id"] = principal.user_id
     out["principal_roles"] = sorted(principal.roles)
     out["principal_org_ids"] = sorted(principal.org_ids)
     out["principal_active_org_id"] = principal.active_org_id
     out["principal_via"] = principal.via
+    tok = get_request_session_token()
+    if tok and "session_token" not in out:
+        out["session_token"] = tok
     return out
 
 

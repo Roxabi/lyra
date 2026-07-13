@@ -1,4 +1,4 @@
-"""Dashboard RPC wrap — principal gate (ADR-103 Block 5 + auth public subjects)."""
+"""Dashboard RPC wrap — principal gate + store rehydrate (ADR-103 Slice 3)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from factory.core.hub import Hub
 
 log = logging.getLogger(__name__)
+
 
 def _public_auth_subjects() -> frozenset[str]:
     """Public identity RPCs — no principal stamp (SSoT: SUBJECTS)."""
@@ -38,13 +39,12 @@ def wrap_dashboard_handler(
     *,
     require_principal: bool | None = None,
 ):
-    """Fail-closed principal check (unless public auth subject), then handler.
-
-    *require_principal*: force True/False; when None, derive from *msg.subject*
-    against :data:`_PUBLIC_AUTH_SUBJECTS`.
-    """
+    """Fail-closed principal check + rehydrate (unless public auth subject)."""
 
     async def _cb(msg: Msg) -> None:
+        from factory.bootstrap.factory.dashboard.principal_rehydrate import (
+            rehydrate_principal,
+        )
         from factory.core.auth.control_plane_wire import (
             clear_request_principal,
             parse_principal_from_payload,
@@ -59,24 +59,28 @@ def wrap_dashboard_handler(
                 if require_principal is not None
                 else msg.subject not in _public_auth_subjects()
             )
-            principal = parse_principal_from_payload(payload)
-            if need_principal and principal is None:
-                from factory.dashboard.security import audit_security
+            wire = parse_principal_from_payload(payload)
+            if need_principal:
+                principal = await rehydrate_principal(hub, wire=wire, payload=payload)
+                if principal is None:
+                    from factory.dashboard.security import audit_security
 
-                audit_security(
-                    "rpc_deny",
-                    subject=msg.subject,
-                    reason="principal_required",
-                )
-                err = {
-                    "ok": False,
-                    "error": "unauthorized",
-                    "message": "principal required",
-                }
-                await msg.respond(json.dumps(err).encode())
-                return
-            if principal is not None:
+                    audit_security(
+                        "rpc_deny",
+                        subject=msg.subject,
+                        reason="principal_rehydrate_failed",
+                    )
+                    err = {
+                        "ok": False,
+                        "error": "unauthorized",
+                        "message": "principal required",
+                    }
+                    await msg.respond(json.dumps(err).encode())
+                    return
                 set_request_principal(principal)
+            elif wire is not None:
+                # Public path may still carry stamp — do not trust roles.
+                set_request_principal(wire)
             try:
                 business = strip_principal_payload(payload)
                 result = await handler(hub, nc, business)

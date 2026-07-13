@@ -13,6 +13,7 @@ from factory.core.auth.control_plane import ControlPlanePrincipal, GlobalRole
 from factory.core.auth.control_plane_wire import (
     ORG_HEADER,
     set_request_principal,
+    set_request_session_token,
 )
 from factory.dashboard.e2e import e2e_enabled
 from factory.dashboard.routes.hub_auth import (
@@ -198,6 +199,7 @@ async def require_principal(
     if e2e_enabled():
         principal = _e2e_principal()
         set_request_principal(principal)
+        set_request_session_token(None)
         return principal
 
     cookie_token = factory_session or request.cookies.get(SESSION_COOKIE_NAME)
@@ -233,6 +235,11 @@ async def require_principal(
             via=principal.via,
         )
     set_request_principal(principal)
+    # Opaque cookie token is the hub rehydrate proof (Slice 3).
+    if principal.via == "session" and cookie_token:
+        set_request_session_token(cookie_token)
+    else:
+        set_request_session_token(None)
     return principal
 
 

@@ -6,7 +6,11 @@ load ``bff`` (which depends on ``auth``).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .bff import build_bff_router as build_bff_router
+    from .connectors import build_connectors_router as build_connectors_router
 
 __all__ = ["build_bff_router", "build_connectors_router"]
 

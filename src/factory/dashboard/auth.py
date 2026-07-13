@@ -208,8 +208,7 @@ async def require_principal(
 
     # Prefer hub identity RPC when NATS-backed client is present (prod thin BFF).
     # Skip hub when tests inject a local control_plane (no NATS).
-    use_hub = hub is not None and cp is None
-    if use_hub:
+    if hub is not None and cp is None:
         principal = await _resolve_via_hub(
             hub, authorization=authorization, cookie_token=cookie_token
         )

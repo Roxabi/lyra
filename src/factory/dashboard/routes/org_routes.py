@@ -1,4 +1,4 @@
-"""Organization BFF routes (ADR-103 Block 4)."""
+"""Organization BFF routes — local CP (tests) or hub RPC (thin BFF / ADR-103)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,13 @@ from pydantic import BaseModel, Field
 from factory.core.auth.control_plane import ControlPlanePrincipal
 from factory.core.auth.control_plane_authz import authorize
 from factory.core.auth.control_plane_org import OrgRole
-from factory.dashboard.auth import control_plane_from_app, require_principal
+from factory.dashboard.auth import (
+    control_plane_from_app,
+    hub_client_from_app,
+    require_principal,
+)
+from factory.dashboard.routes.auth_common import http_from_hub_error
+from factory.dashboard.routes.hub_auth import HubAuthError, org_create, org_list
 
 __all__ = ["register_org_routes"]
 
@@ -41,6 +47,16 @@ async def _create_org(
     decision = authorize(principal, "orgs.create")
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.reason)
+    hub = hub_client_from_app(request)
+    cp = control_plane_from_app(request)
+    if hub is not None and cp is None:
+        try:
+            raw = await org_create(hub, name=body.name)
+        except HubAuthError as exc:
+            raise http_from_hub_error(exc) from exc
+        org = raw.get("org") or {}
+        return {"org": org}
+
     cp = _cp_or_503(request)
     try:
         org = await cp.create_org(name=body.name, created_by=principal.user_id)
@@ -60,6 +76,18 @@ async def _list_orgs(
     request: Request,
     principal: ControlPlanePrincipal = Depends(require_principal),
 ) -> dict[str, Any]:
+    hub = hub_client_from_app(request)
+    cp = control_plane_from_app(request)
+    if hub is not None and cp is None:
+        try:
+            raw = await org_list(hub)
+        except HubAuthError as exc:
+            raise http_from_hub_error(exc) from exc
+        return {
+            "orgs": raw.get("orgs") or [],
+            "active_org_id": raw.get("active_org_id") or principal.active_org_id,
+        }
+
     cp = _cp_or_503(request)
     # V1: list memberships of self (admin expansion deferred).
     orgs = await cp.list_orgs_for_user(principal.user_id)

@@ -5,7 +5,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Building2,
   ChevronsUpDown,
@@ -66,6 +66,7 @@ export function NavUser() {
   const { t } = useTranslation("common");
   const { t: ta } = useTranslation("auth");
   const { isMobile } = useSidebar();
+  const navigate = useNavigate();
   const { status, session, logout, activeOrgId, setOrg } = useAuth();
   const { theme, setTheme } = useTheme();
   const qc = useQueryClient();
@@ -76,6 +77,8 @@ export function NavUser() {
     queryKey: ["auth", "orgs"],
     queryFn: fetchOrgs,
     enabled: status === "authenticated",
+    // Soft-fail: empty org list if hub/BFF briefly unavailable (no toast storm).
+    retry: 1,
   });
   const create = useMutation({
     mutationFn: () => createOrg(orgName.trim()),
@@ -95,8 +98,6 @@ export function NavUser() {
           <SidebarMenuButton
             size="lg"
             tooltip={ta("login.submit")}
-            // Link is <a> — Base UI requires nativeButton=false (error #31).
-            nativeButton={false}
             render={<Link to="/login" search={{ redirect: undefined }} />}
           >
             <UserRound />
@@ -120,12 +121,14 @@ export function NavUser() {
         <SidebarMenuItem>
           <DropdownMenu>
             <DropdownMenuTrigger
-              // Trigger expects native <button>; SidebarMenuButton is a <button>.
+              // Menu.Trigger is nativeButton=true. Do NOT pass tooltip on the
+              // rendered SidebarMenuButton — tooltip wraps TooltipTrigger (non-
+              // <button>) and triggers Base UI production error #31.
+              aria-label={t("userMenu.open", { name: primary })}
               render={
                 <SidebarMenuButton
                   size="lg"
                   className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
-                  tooltip={t("userMenu.open", { name: primary })}
                 />
               }
             >
@@ -220,9 +223,9 @@ export function NavUser() {
 
               <DropdownMenuGroup>
                 <DropdownMenuItem
-                  // Close menu then navigate — Item is non-native (div).
-                  render={<Link to="/account/links" />}
-                  nativeButton={false}
+                  onClick={() => {
+                    void navigate({ to: "/account/links" });
+                  }}
                 >
                   <Link2 />
                   {ta("session.linkAccounts")}

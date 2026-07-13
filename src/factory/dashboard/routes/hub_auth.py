@@ -19,6 +19,7 @@ from roxabi_contracts.dashboard.auth_models import (
     DashboardAuthPasswordChangeRequest,
     DashboardAuthPrincipal,
     DashboardAuthSessionResolveRequest,
+    DashboardOrgCreateRequest,
 )
 
 if TYPE_CHECKING:
@@ -33,6 +34,8 @@ __all__ = [
     "auth_logout",
     "auth_password_change",
     "auth_session_resolve",
+    "org_create",
+    "org_list",
     "principal_from_wire",
 ]
 
@@ -154,4 +157,15 @@ async def auth_password_change(
     raw = await hub._request(  # noqa: SLF001
         SUBJECTS.auth_password_change, req.model_dump()
     )
+    return _check(raw)
+
+
+async def org_list(hub: DashboardHubClient) -> dict[str, Any]:
+    raw = await hub._request(SUBJECTS.org_list, {})  # noqa: SLF001
+    return _check(raw)
+
+
+async def org_create(hub: DashboardHubClient, *, name: str) -> dict[str, Any]:
+    req = DashboardOrgCreateRequest(name=name)
+    raw = await hub._request(SUBJECTS.org_create, req.model_dump())  # noqa: SLF001
     return _check(raw)

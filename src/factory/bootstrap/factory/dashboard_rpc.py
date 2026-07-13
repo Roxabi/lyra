@@ -31,6 +31,10 @@ from factory.bootstrap.factory.dashboard.fleet_rpc import handle_fleet_list
 from factory.bootstrap.factory.dashboard.identity_rpc import (
     handle_identity_cache_rewarm,
 )
+from factory.bootstrap.factory.dashboard.org_rpc import (
+    handle_org_create,
+    handle_org_list,
+)
 from factory.bootstrap.factory.dashboard.pipeline_rpc import handle_pipeline_list
 from factory.bootstrap.factory.dashboard.rpc_wrap import wrap_dashboard_handler
 from factory.bootstrap.factory.dashboard.voice_rpc import handle_voice_capabilities
@@ -130,6 +134,8 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.auth_invite_accept, handle_auth_invite_accept),
         (SUBJECTS.auth_api_key_resolve, handle_auth_api_key_resolve),
         (SUBJECTS.auth_password_change, handle_auth_password_change),
+        (SUBJECTS.org_list, handle_org_list),
+        (SUBJECTS.org_create, handle_org_create),
     ):
         sub = await nc.subscribe(subject, cb=wrap_dashboard_handler(hub, nc, handler))
         subs.append(sub)

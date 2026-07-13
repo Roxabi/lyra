@@ -138,3 +138,33 @@ class DashboardAuthPasswordChangeResponse(BaseModel):
     ok: bool = True
     error: str | None = None
     message: str | None = None
+
+
+class DashboardOrgRow(BaseModel):
+    id: str
+    name: str
+    created_by: str
+    created_at: str
+
+
+class DashboardOrgListRequest(BaseModel):
+    """Principal from session rehydrate (empty body OK)."""
+
+
+class DashboardOrgListResponse(BaseModel):
+    ok: bool = True
+    error: str | None = None
+    message: str | None = None
+    orgs: list[DashboardOrgRow] = Field(default_factory=list)
+    active_org_id: str | None = None
+
+
+class DashboardOrgCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class DashboardOrgCreateResponse(BaseModel):
+    ok: bool = True
+    error: str | None = None
+    message: str | None = None
+    org: DashboardOrgRow | None = None

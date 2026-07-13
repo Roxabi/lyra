@@ -50,6 +50,7 @@ def wrap_dashboard_handler(
             parse_principal_from_payload,
             set_request_principal,
             strip_principal_payload,
+            strip_proof_payload,
         )
 
         try:
@@ -82,7 +83,11 @@ def wrap_dashboard_handler(
                 # Public path may still carry stamp — do not trust roles.
                 set_request_principal(wire)
             try:
+                # Public auth handlers (session.resolve / api_key.resolve) need
+                # proof fields; protected handlers get them stripped after rehydrate.
                 business = strip_principal_payload(payload)
+                if need_principal:
+                    business = strip_proof_payload(business)
                 result = await handler(hub, nc, business)
                 await msg.respond(json.dumps(result).encode())
             finally:

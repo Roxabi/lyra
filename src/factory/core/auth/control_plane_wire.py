@@ -19,6 +19,7 @@ __all__ = [
     "set_request_session_token",
     "stamp_principal_payload",
     "strip_principal_payload",
+    "strip_proof_payload",
 ]
 
 ORG_HEADER = "X-Factory-Org-Id"
@@ -33,6 +34,8 @@ _request_api_key: ContextVar[str | None] = ContextVar(
     "control_plane_api_key", default=None
 )
 
+# Wire stamp only — proof fields are NOT stripped here. Protected handlers drop
+# proofs after rehydrate in rpc_wrap (public auth RPCs need session_token/api_key).
 _PRINCIPAL_KEYS = frozenset(
     {
         "principal_user_id",
@@ -40,10 +43,9 @@ _PRINCIPAL_KEYS = frozenset(
         "principal_org_ids",
         "principal_active_org_id",
         "principal_via",
-        "session_token",
-        "api_key",
     }
 )
+_PROOF_KEYS = frozenset({"session_token", "api_key"})
 
 
 def set_request_principal(principal: ControlPlanePrincipal | None) -> None:
@@ -103,6 +105,11 @@ def stamp_principal_payload(
 
 def strip_principal_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in payload.items() if k not in _PRINCIPAL_KEYS}
+
+
+def strip_proof_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Drop session_token / api_key after rehydrate (business handlers)."""
+    return {k: v for k, v in payload.items() if k not in _PROOF_KEYS}
 
 
 def parse_principal_from_payload(

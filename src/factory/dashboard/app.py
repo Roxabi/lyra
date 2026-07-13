@@ -33,6 +33,11 @@ def create_dashboard_app(
     app.state.control_plane = control_plane
     app.state.hub_client = hub
 
+    @app.get("/healthz")
+    async def healthz() -> dict[str, str]:
+        """Public liveness for HealthCmd (ADR-103 Slice 3)."""
+        return {"status": "ok"}
+
     app.include_router(build_chat_router(adapter, tokens))
     app.include_router(build_bff_router(adapter, hub, tokens))
     app.include_router(build_connectors_router(hub))

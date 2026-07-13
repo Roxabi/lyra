@@ -75,6 +75,25 @@ class DashboardSubjects(BaseModel):
     identity_cache_rewarm: Literal["factory.dashboard.identity.cache_rewarm"] = (
         "factory.dashboard.identity.cache_rewarm"
     )
+    # ADR-103 hub sole IdP — identity lifecycle (opaque sessions; roles rehydrate)
+    auth_login: Literal["factory.dashboard.auth.login"] = (
+        "factory.dashboard.auth.login"
+    )
+    auth_logout: Literal["factory.dashboard.auth.logout"] = (
+        "factory.dashboard.auth.logout"
+    )
+    auth_session_resolve: Literal["factory.dashboard.auth.session.resolve"] = (
+        "factory.dashboard.auth.session.resolve"
+    )
+    auth_invite_create: Literal["factory.dashboard.auth.invite.create"] = (
+        "factory.dashboard.auth.invite.create"
+    )
+    auth_invite_accept: Literal["factory.dashboard.auth.invite.accept"] = (
+        "factory.dashboard.auth.invite.accept"
+    )
+    auth_api_key_resolve: Literal["factory.dashboard.auth.api_key.resolve"] = (
+        "factory.dashboard.auth.api_key.resolve"
+    )
 
 
 SUBJECTS = DashboardSubjects()

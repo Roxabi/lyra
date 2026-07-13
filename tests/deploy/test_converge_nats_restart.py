@@ -35,12 +35,12 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 CONVERGE_SH = REPO_ROOT / "deploy" / "converge.sh"
 
 # Enabled factory clients restarted on structural drift (quadlet_containers minus
-# factory-nats). factory-dashboard is disabled=true (ADR-103 hub sole IdP) until
-# thin-BFF Slice 4 — converge must NOT restart it.
+# factory-nats). factory-dashboard re-enabled Slice 4 (thin BFF / hub IdP).
 STRUCTURAL_CLIENTS = [
     "factory-hub",
     "factory-telegram",
     "factory-discord",
+    "factory-dashboard",
     "factory-clipool",
     "factory-turn-writer",
     "factory-gh-helper",

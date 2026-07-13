@@ -13,6 +13,14 @@ from factory.bootstrap.factory.dashboard.admin_rpc import (
     handle_admin_user_create,
     handle_admin_user_patch,
 )
+from factory.bootstrap.factory.dashboard.auth_rpc import (
+    handle_auth_api_key_resolve,
+    handle_auth_invite_accept,
+    handle_auth_invite_create,
+    handle_auth_login,
+    handle_auth_logout,
+    handle_auth_session_resolve,
+)
 from factory.bootstrap.factory.dashboard.connectors_rpc import (
     handle_connectors_delete,
     handle_connectors_list,
@@ -114,6 +122,12 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.connectors_installations_upsert, handle_connectors_upsert),
         (SUBJECTS.connectors_installations_delete, handle_connectors_delete),
         (SUBJECTS.identity_cache_rewarm, handle_identity_cache_rewarm),
+        (SUBJECTS.auth_login, handle_auth_login),
+        (SUBJECTS.auth_logout, handle_auth_logout),
+        (SUBJECTS.auth_session_resolve, handle_auth_session_resolve),
+        (SUBJECTS.auth_invite_create, handle_auth_invite_create),
+        (SUBJECTS.auth_invite_accept, handle_auth_invite_accept),
+        (SUBJECTS.auth_api_key_resolve, handle_auth_api_key_resolve),
     ):
         sub = await nc.subscribe(subject, cb=wrap_dashboard_handler(hub, nc, handler))
         subs.append(sub)

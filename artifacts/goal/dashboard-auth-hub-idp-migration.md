@@ -1,6 +1,8 @@
 # Migration — Hub IdP + thin BFF (ADR-103 amended)
 
-**Status:** planned
+**Status:** Slices 0–5 done on branch `feat/hub-idp-thin-bff-migration`.
+**M₁ ops:** unmask + converge only after `staging-svc` image digests include Slices 2–3.
+**Slice 6 (C-lite):** skipped — no measured need; SPA+BFF stay edge.
 **Target:** ADR-103 Accepted 2026-07-12 (store owner = hub)
 **Interim ops:** prod stays `disabled = true` until **Slice 4 exit** (Slice 3 green is necessary but not sufficient)
 **Forbidden bandage:** do **not** mount `factory-data` RW on `factory-dashboard`
@@ -73,6 +75,17 @@ Browser → dashboard (thin BFF + SPA + chat) → NATS → hub sole ControlPlane
 
 **Depends:** Slice 0.
 
+**Principal wire design (implement rehydrate fail-closed in Slice 3):**
+
+| Field on wire | Trust |
+|---------------|--------|
+| `session_token` / API key | proof — hub validates via store |
+| `user_id` + `session_id` / api_key id | stamp after resolve — edge may cache |
+| `roles` / `org_ids` | **never** trusted from client; hub rehydrates from store |
+| business RPC principal stamp | Slice 3: rehydrate by user_id + validate proof; ignore client roles |
+
+**Subjects (V1):** `factory.dashboard.auth.{login,logout,session.resolve,invite.create,invite.accept,api_key.resolve}`
+
 ---
 
 ### Slice 2 — Thin BFF: stop local store open
@@ -138,6 +151,8 @@ Browser → dashboard (thin BFF + SPA + chat) → NATS → hub sole ControlPlane
 
 Only if measured: move BFF route modules into hub process; dashboard reverse-proxies `/api/bff`.
 SPA + chat stay edge. **Not** required for IdP uniqueness.
+
+**2026-07-13 decision:** **skip** until measured BFF/hub latency or ops need; thin BFF + hub IdP satisfies uniqueness.
 
 ---
 

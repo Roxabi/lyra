@@ -105,6 +105,12 @@ class ControlPlaneDirectory(Protocol):
 
     async def resolve_session(self, raw_token: str) -> ControlPlanePrincipal | None: ...
 
+    async def resolve_session_with_id(
+        self, raw_token: str
+    ) -> tuple[ControlPlanePrincipal, str] | None:
+        """Return (principal, session_id) or None when invalid/expired."""
+        ...
+
     async def revoke_session(self, raw_token: str) -> bool: ...
 
     async def revoke_user_sessions(self, user_id: str) -> int: ...
@@ -127,6 +133,12 @@ class ControlPlaneDirectory(Protocol):
     ) -> bool: ...
 
     async def resolve_api_key(self, raw_key: str) -> ControlPlanePrincipal | None: ...
+
+    async def resolve_api_key_with_id(
+        self, raw_key: str
+    ) -> tuple[ControlPlanePrincipal, str] | None:
+        """Return (principal, api_key_id) or None when invalid/revoked."""
+        ...
 
     async def principal_for_user(
         self,

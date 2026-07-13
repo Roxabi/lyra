@@ -1,4 +1,4 @@
-"""Dashboard RPC wrap — principal gate (ADR-103 Block 5)."""
+"""Dashboard RPC wrap — principal gate + store rehydrate (ADR-103 Slice 3)."""
 
 from __future__ import annotations
 
@@ -17,10 +17,34 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def wrap_dashboard_handler(hub: "Hub", nc: "NATS", handler: Any):
-    """Fail-closed principal check, then run business handler."""
+def _public_auth_subjects() -> frozenset[str]:
+    """Public identity RPCs — no principal stamp (SSoT: SUBJECTS)."""
+    from roxabi_contracts.dashboard import SUBJECTS
+
+    return frozenset(
+        {
+            SUBJECTS.auth_login,
+            SUBJECTS.auth_logout,
+            SUBJECTS.auth_session_resolve,
+            SUBJECTS.auth_invite_accept,
+            SUBJECTS.auth_api_key_resolve,
+        }
+    )
+
+
+def wrap_dashboard_handler(
+    hub: "Hub",
+    nc: "NATS",
+    handler: Any,
+    *,
+    require_principal: bool | None = None,
+):
+    """Fail-closed principal check + rehydrate (unless public auth subject)."""
 
     async def _cb(msg: Msg) -> None:
+        from factory.bootstrap.factory.dashboard.principal_rehydrate import (
+            rehydrate_principal,
+        )
         from factory.core.auth.control_plane_wire import (
             clear_request_principal,
             parse_principal_from_payload,
@@ -30,22 +54,33 @@ def wrap_dashboard_handler(hub: "Hub", nc: "NATS", handler: Any):
 
         try:
             payload = json.loads(msg.data.decode()) if msg.data else {}
-            principal = parse_principal_from_payload(payload)
-            if principal is None:
-                from factory.dashboard.security import audit_security
+            need_principal = (
+                require_principal
+                if require_principal is not None
+                else msg.subject not in _public_auth_subjects()
+            )
+            wire = parse_principal_from_payload(payload)
+            if need_principal:
+                principal = await rehydrate_principal(hub, wire=wire, payload=payload)
+                if principal is None:
+                    from factory.dashboard.security import audit_security
 
-                audit_security(
-                    "rpc_deny",
-                    subject=msg.subject,
-                    reason="principal_required",
-                )
-                err = {
-                    "error": "unauthorized",
-                    "message": "principal required",
-                }
-                await msg.respond(json.dumps(err).encode())
-                return
-            set_request_principal(principal)
+                    audit_security(
+                        "rpc_deny",
+                        subject=msg.subject,
+                        reason="principal_rehydrate_failed",
+                    )
+                    err = {
+                        "ok": False,
+                        "error": "unauthorized",
+                        "message": "principal required",
+                    }
+                    await msg.respond(json.dumps(err).encode())
+                    return
+                set_request_principal(principal)
+            elif wire is not None:
+                # Public path may still carry stamp — do not trust roles.
+                set_request_principal(wire)
             try:
                 business = strip_principal_payload(payload)
                 result = await handler(hub, nc, business)
@@ -54,11 +89,11 @@ def wrap_dashboard_handler(hub: "Hub", nc: "NATS", handler: Any):
                 clear_request_principal()
         except (ValidationError, json.JSONDecodeError, UnicodeDecodeError, KeyError):
             log.exception("dashboard_rpc handler failed subject=%s", msg.subject)
-            err = {"error": "bad_request"}
+            err = {"ok": False, "error": "bad_request"}
             await msg.respond(json.dumps(err).encode())
         except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.exception("dashboard_rpc handler failed subject=%s", msg.subject)
-            err = {"error": "internal_error"}
+            err = {"ok": False, "error": "internal_error"}
             await msg.respond(json.dumps(err).encode())
 
     return _cb

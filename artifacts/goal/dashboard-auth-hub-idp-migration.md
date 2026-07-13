@@ -1,6 +1,6 @@
 # Migration — Hub IdP + thin BFF (ADR-103 amended)
 
-**Status:** in progress (Slice 0 done; Slice 1+)
+**Status:** Slice 0–3 shipped on branch; Slice 4 SSoT re-enable (M₁ unmask after image)
 **Target:** ADR-103 Accepted 2026-07-12 (store owner = hub)
 **Interim ops:** prod stays `disabled = true` until **Slice 4 exit** (Slice 3 green is necessary but not sufficient)
 **Forbidden bandage:** do **not** mount `factory-data` RW on `factory-dashboard`

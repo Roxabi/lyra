@@ -28,10 +28,9 @@ template = true
 container = "factory-dashboard.container"
 required_secrets = ["factory-nats-web", "factory_otel_token"]
 host_roles = ["factory-hub"]
-# ADR-103 amended (hub sole IdP): dual-open dashboard crashes RO without factory-data.
-# Disabled until thin-BFF migration Slice 4 — do NOT bandage with factory-data mount.
+# ADR-103 Slice 4: re-enabled thin BFF — no factory-data mount; hub sole auth.db.
+# Requires staging-svc image with Slices 2–3 (hub auth RPC + rehydrate + /healthz).
 # See artifacts/goal/dashboard-auth-hub-idp-migration.md
-disabled = true
 
 [component.clipool]
 container = "factory-clipool.container"

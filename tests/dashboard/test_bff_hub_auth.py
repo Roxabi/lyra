@@ -113,7 +113,7 @@ def test_me_via_hub_session_resolve(client: TestClient) -> None:
         },
     }
     with patch(
-        "factory.dashboard.auth.auth_session_resolve",
+        "factory.dashboard.routes.hub_auth.auth_session_resolve",
         new=AsyncMock(return_value=resolve_raw),
     ):
         client.cookies.set("factory_session", "opaque-session-token-xyz")
@@ -141,7 +141,7 @@ def test_logout_via_hub(client: TestClient) -> None:
     }
     with (
         patch(
-            "factory.dashboard.auth.auth_session_resolve",
+            "factory.dashboard.routes.hub_auth.auth_session_resolve",
             new=AsyncMock(return_value=resolve_raw),
         ),
         patch(

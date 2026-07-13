@@ -16,12 +16,6 @@ from factory.core.auth.control_plane_wire import (
     set_request_session_token,
 )
 from factory.dashboard.e2e import e2e_enabled
-from factory.dashboard.routes.hub_auth import (
-    HubAuthError,
-    auth_api_key_resolve,
-    auth_session_resolve,
-    principal_from_wire,
-)
 
 if TYPE_CHECKING:
     from factory.core.stores.control_plane_protocol import ControlPlaneDirectory
@@ -99,6 +93,14 @@ async def _resolve_via_hub(
     authorization: str | None,
     cookie_token: str | None,
 ) -> ControlPlanePrincipal:
+    # Lazy import — avoid routes package cycle (auth ← bff ← routes.__init__).
+    from factory.dashboard.routes.hub_auth import (
+        HubAuthError,
+        auth_api_key_resolve,
+        auth_session_resolve,
+        principal_from_wire,
+    )
+
     if authorization and authorization.startswith("Bearer "):
         presented = authorization.removeprefix("Bearer ").strip()
         try:
@@ -209,6 +211,7 @@ async def require_principal(
     # Prefer hub identity RPC when NATS-backed client is present (prod thin BFF).
     # Skip hub when tests inject a local control_plane (no NATS).
     if hub is not None and cp is None:
+        assert hub is not None  # narrow for typecheckers
         principal = await _resolve_via_hub(
             hub, authorization=authorization, cookie_token=cookie_token
         )

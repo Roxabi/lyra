@@ -14,6 +14,7 @@ import { AcceptInvitePage } from "@/features/auth/accept-invite-page";
 import { AccountLinksPage } from "@/features/auth/account-links-page";
 import { fetchMe } from "@/features/auth/api";
 import { LoginPage } from "@/features/auth/login-page";
+import { safeRedirectPath } from "@/features/auth/safe-redirect";
 import { ChatPage } from "@/features/chat/chat-page";
 import { FleetPage } from "@/features/fleet/fleet-page";
 import { IntegrationsPage } from "@/features/integrations/integrations-page";
@@ -43,10 +44,8 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
   beforeLoad: async ({ location }) => {
     if (PUBLIC_PATHS.has(location.pathname)) return;
-    const safeRedirect =
-      location.pathname.startsWith("/") && !location.pathname.startsWith("//")
-        ? `${location.pathname}${location.searchStr ?? ""}`
-        : "/";
+    const raw = `${location.pathname}${location.searchStr ?? ""}`;
+    const safeRedirect = safeRedirectPath(raw);
     try {
       const me = await fetchMe();
       if (me === null) {
@@ -76,9 +75,13 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
   component: LoginPage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>) => {
+    const raw = search.redirect;
+    if (typeof raw !== "string") return { redirect: undefined };
+    // Reject open redirects (`//evil`, absolute URLs); keep only same-origin paths.
+    const safe = safeRedirectPath(raw);
+    return { redirect: safe === raw ? raw : undefined };
+  },
 });
 
 const acceptInviteRoute = createRoute({

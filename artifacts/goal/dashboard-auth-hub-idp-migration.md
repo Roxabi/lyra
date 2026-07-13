@@ -1,6 +1,6 @@
 # Migration — Hub IdP + thin BFF (ADR-103 amended)
 
-**Status:** planned
+**Status:** in progress (Slice 0 done; Slice 1+)
 **Target:** ADR-103 Accepted 2026-07-12 (store owner = hub)
 **Interim ops:** prod stays `disabled = true` until **Slice 4 exit** (Slice 3 green is necessary but not sufficient)
 **Forbidden bandage:** do **not** mount `factory-data` RW on `factory-dashboard`
@@ -72,6 +72,17 @@ Browser → dashboard (thin BFF + SPA + chat) → NATS → hub sole ControlPlane
 **Exit:** hub identity RPC green in CI; dual-open code may still exist but new path does not depend on dashboard store open.
 
 **Depends:** Slice 0.
+
+**Principal wire design (implement rehydrate fail-closed in Slice 3):**
+
+| Field on wire | Trust |
+|---------------|--------|
+| `session_token` / API key | proof — hub validates via store |
+| `user_id` + `session_id` / api_key id | stamp after resolve — edge may cache |
+| `roles` / `org_ids` | **never** trusted from client; hub rehydrates from store |
+| business RPC principal stamp | Slice 3: rehydrate by user_id + validate proof; ignore client roles |
+
+**Subjects (V1):** `factory.dashboard.auth.{login,logout,session.resolve,invite.create,invite.accept,api_key.resolve}`
 
 ---
 

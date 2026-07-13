@@ -23,16 +23,38 @@ from roxabi_nats._serialize import serialize
 from tests.nats.conftest import requires_nats_server
 
 
-def _fleet_rpc_payload() -> bytes:
-    """Dashboard fleet RPC requires a stamped principal (ADR-103)."""
+async def _fleet_rpc_payload(hub: Hub) -> bytes:
+    """Stamped principal + real session_token proof (ADR-103 Slice 3 rehydrate)."""
+    import tempfile
+    from pathlib import Path
+
+    from factory.infrastructure.stores.identity.control_plane_store import (
+        ControlPlaneStore,
+    )
+
+    # Ephemeral store on hub for proof-bound rehydrate in integration tests.
+    tmp = Path(tempfile.mkdtemp()) / "auth.db"
+    store = ControlPlaneStore(tmp)
+    await store.connect()
+    await store.bootstrap_admin_if_empty(
+        email="fleet-admin@test.local",
+        password="fleet-admin-secret-99",
+        display_name="FleetAdmin",
+    )
+    hub._control_plane = store  # noqa: SLF001
+    user = await store.get_user_by_email("fleet-admin@test.local")
+    assert user is not None
+    _session, token = await store.create_session(user.id)
     principal = ControlPlanePrincipal(
-        user_id="rx:test-admin",
+        user_id=user.id,
         roles=frozenset({GlobalRole.ADMIN.value}),
         org_ids=frozenset(),
         active_org_id=None,
         via="session",
     )
-    return json.dumps(stamp_principal_payload({}, principal)).encode()
+    return json.dumps(
+        stamp_principal_payload({"session_token": token}, principal)
+    ).encode()
 
 
 @pytest.fixture
@@ -109,9 +131,10 @@ async def test_fleet_list_rpc_request_reply(
 
     subs = await start_dashboard_rpc(hub, nc)
     try:
-        msg = await nc.request(SUBJECTS.fleet_list, _fleet_rpc_payload(), timeout=2)
+        payload = await _fleet_rpc_payload(hub)
+        msg = await nc.request(SUBJECTS.fleet_list, payload, timeout=2)
         data = json.loads(msg.data.decode())
-        assert "rows" in data
+        assert "rows" in data, data
         hub_row = next(
             r for r in data["rows"] if r["container_name"] == "factory-hub"
         )
@@ -135,6 +158,7 @@ async def test_fleet_ingest_then_rpc_list(
     store._catalog = fleet_catalog  # noqa: SLF001
 
     rpc_subs = await start_dashboard_rpc(hub, nc)
+    payload = await _fleet_rpc_payload(hub)
     report = new_container_report(
         host="ingest-rpc-host",
         container_name="factory-hub",
@@ -146,8 +170,10 @@ async def test_fleet_ingest_then_rpc_list(
     hub_row = None
     for _ in range(20):
         await asyncio.sleep(0.05)  # NATS delivery window
-        msg = await nc.request(SUBJECTS.fleet_list, _fleet_rpc_payload(), timeout=2)
+        msg = await nc.request(SUBJECTS.fleet_list, payload, timeout=2)
         data = json.loads(msg.data.decode())
+        if "rows" not in data:
+            continue
         hub_row = next(
             (r for r in data["rows"] if r["container_name"] == "factory-hub"),
             None,

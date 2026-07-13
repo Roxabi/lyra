@@ -104,6 +104,13 @@ async def _resolve_via_hub(
 
     if authorization and authorization.startswith("Bearer "):
         presented = authorization.removeprefix("Bearer ").strip()
+        # Shared operator token is local config — never round-trip hub/NATS.
+        # (Also keeps TestClient suites without NATS working; avoids double RPC.)
+        op = _configured_operator_token()
+        if op and hmac.compare_digest(presented, op):
+            return _admin_principal(
+                user_id=default_operator_user_id(), via="api_key"
+            )
         try:
             raw = await auth_api_key_resolve(hub, api_key=presented)
             principal = principal_from_wire(raw.get("principal"))
@@ -111,11 +118,9 @@ async def _resolve_via_hub(
                 return principal
         except HubAuthError:
             pass
-        op = _configured_operator_token()
-        if op and hmac.compare_digest(presented, op):
-            return _admin_principal(
-                user_id=default_operator_user_id(), via="api_key"
-            )
+        except RuntimeError:
+            # NATS not wired yet (e.g. early boot) — fail closed for real keys.
+            pass
         raise HTTPException(status_code=401, detail="invalid credentials")
 
     if cookie_token:

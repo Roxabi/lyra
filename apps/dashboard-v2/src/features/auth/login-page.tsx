@@ -24,9 +24,10 @@ export function LoginPage() {
 
   const redirectTo = safeRedirectPath(search.redirect);
 
+  // href preserves path+search (e.g. /ops?container=x); `to` is pathname-only.
   useEffect(() => {
     if (status === "authenticated" || status === "legacy") {
-      void navigate({ to: redirectTo });
+      void navigate({ href: redirectTo, replace: true });
     }
   }, [status, navigate, redirectTo]);
 
@@ -36,7 +37,8 @@ export function LoginPage() {
     setPending(true);
     try {
       await login(email.trim(), password);
-      await navigate({ to: redirectTo });
+      // Effect also navigates after status flip; href keeps query from safeRedirect.
+      await navigate({ href: redirectTo, replace: true });
     } catch (err) {
       setError(err instanceof BffApiError ? err.detail : t("login.failed"));
     } finally {

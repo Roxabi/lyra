@@ -10,9 +10,11 @@ from factory.core.auth.control_plane import ControlPlanePrincipal
 __all__ = [
     "ORG_HEADER",
     "clear_request_principal",
+    "get_request_api_key",
     "get_request_principal",
     "get_request_session_token",
     "parse_principal_from_payload",
+    "set_request_api_key",
     "set_request_principal",
     "set_request_session_token",
     "stamp_principal_payload",
@@ -26,6 +28,9 @@ _request_principal: ContextVar[ControlPlanePrincipal | None] = ContextVar(
 )
 _request_session_token: ContextVar[str | None] = ContextVar(
     "control_plane_session_token", default=None
+)
+_request_api_key: ContextVar[str | None] = ContextVar(
+    "control_plane_api_key", default=None
 )
 
 _PRINCIPAL_KEYS = frozenset(
@@ -58,9 +63,19 @@ def get_request_session_token() -> str | None:
     return _request_session_token.get()
 
 
+def set_request_api_key(key: str | None) -> None:
+    """API-key secret proof for hub rehydrate (Slice 3) — not roles."""
+    _request_api_key.set(key)
+
+
+def get_request_api_key() -> str | None:
+    return _request_api_key.get()
+
+
 def clear_request_principal() -> None:
     _request_principal.set(None)
     _request_session_token.set(None)
+    _request_api_key.set(None)
 
 
 def stamp_principal_payload(
@@ -69,7 +84,7 @@ def stamp_principal_payload(
     """Return a copy of *payload* with security-bearing principal fields.
 
     Roles on the wire are informational only — hub rehydrates from store
-    (ADR-103 Slice 3). Optional ``session_token`` is the proof field.
+    (ADR-103 Slice 3). Proof fields: ``session_token`` and/or ``api_key``.
     """
     out = dict(payload)
     out["principal_user_id"] = principal.user_id
@@ -80,6 +95,9 @@ def stamp_principal_payload(
     tok = get_request_session_token()
     if tok and "session_token" not in out:
         out["session_token"] = tok
+    api_key = get_request_api_key()
+    if api_key and "api_key" not in out:
+        out["api_key"] = api_key
     return out
 
 

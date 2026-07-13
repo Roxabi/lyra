@@ -12,6 +12,7 @@ from fastapi import Cookie, Header, HTTPException, Request
 from factory.core.auth.control_plane import ControlPlanePrincipal, GlobalRole
 from factory.core.auth.control_plane_wire import (
     ORG_HEADER,
+    set_request_api_key,
     set_request_principal,
     set_request_session_token,
 )
@@ -202,6 +203,7 @@ async def require_principal(
         principal = _e2e_principal()
         set_request_principal(principal)
         set_request_session_token(None)
+        set_request_api_key(None)
         return principal
 
     cookie_token = factory_session or request.cookies.get(SESSION_COOKIE_NAME)
@@ -237,11 +239,16 @@ async def require_principal(
             via=principal.via,
         )
     set_request_principal(principal)
-    # Opaque cookie token is the hub rehydrate proof (Slice 3).
+    # Hub rehydrate proofs (Slice 3): session cookie and/or Bearer API key secret.
+    set_request_session_token(None)
+    set_request_api_key(None)
     if principal.via == "session" and cookie_token:
         set_request_session_token(cookie_token)
-    else:
-        set_request_session_token(None)
+    if principal.via == "api_key" and authorization:
+        if authorization.startswith("Bearer "):
+            presented = authorization.removeprefix("Bearer ").strip()
+            if presented:
+                set_request_api_key(presented)
     return principal
 
 
@@ -271,6 +278,9 @@ def require_operator(
         raise HTTPException(status_code=401, detail="invalid operator token")
     principal = _admin_principal(user_id=user_id, via="api_key")
     set_request_principal(principal)
+    # Stamp presented Bearer so hub wire can carry proof (may not resolve as CP key).
+    set_request_api_key(presented)
+    set_request_session_token(None)
     return OperatorContext(user_id=user_id, factory_tenant=tenant)
 
 

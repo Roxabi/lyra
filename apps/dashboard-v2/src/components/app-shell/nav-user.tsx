@@ -10,6 +10,7 @@ import {
   Building2,
   ChevronsUpDown,
   KeyRound,
+  Languages,
   Link2,
   LogOut,
   Moon,
@@ -250,7 +251,7 @@ export function NavUser() {
                   }}
                 >
                   {nextTheme === "light" ? <Sun /> : <Moon />}
-                  {t("userMenu.theme")}: {t(`theme.${nextTheme}`)}
+                  {t(`theme.${nextTheme}`)}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => {
@@ -258,7 +259,7 @@ export function NavUser() {
                     persistLocale(nextLocale);
                   }}
                 >
-                  {t("userMenu.language")}:{" "}
+                  <Languages />
                   {nextLocale === "fr" ? t("userMenu.localeFr") : t("userMenu.localeEn")}
                 </DropdownMenuItem>
               </DropdownMenuGroup>

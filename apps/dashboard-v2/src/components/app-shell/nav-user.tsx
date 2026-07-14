@@ -33,6 +33,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  sidebarMenuButtonVariants,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { createOrg, fetchOrgs } from "@/features/auth/api";
@@ -120,17 +121,18 @@ export function NavUser() {
       <SidebarMenu>
         <SidebarMenuItem>
           <DropdownMenu>
+            {/*
+              Native <button> trigger only — NEVER render={<SidebarMenuButton />}.
+              Menu.Trigger is nativeButton=true; composing with SidebarMenuButton
+              (useRender host) still trips Base UI production error #31 on M1.
+            */}
             <DropdownMenuTrigger
-              // Menu.Trigger is nativeButton=true. Do NOT pass tooltip on the
-              // rendered SidebarMenuButton — tooltip wraps TooltipTrigger (non-
-              // <button>) and triggers Base UI production error #31.
+              type="button"
               aria-label={t("userMenu.open", { name: primary })}
-              render={
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
-                />
-              }
+              className={cn(
+                sidebarMenuButtonVariants({ size: "lg" }),
+                "data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground",
+              )}
             >
               <span
                 className={cn(
@@ -140,7 +142,7 @@ export function NavUser() {
               >
                 {initials}
               </span>
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{primary}</span>
                 <span className="truncate text-xs text-muted-foreground">
                   {currentOrg?.name ?? ta("org.personal")}
@@ -155,17 +157,16 @@ export function NavUser() {
               align="end"
               sideOffset={4}
             >
-              <DropdownMenuLabel className="p-0 font-normal">
-                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <span className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
-                    {initials}
-                  </span>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{primary}</span>
-                    <span className="truncate text-xs text-muted-foreground">{secondary}</span>
-                  </div>
+              {/* Plain header — Menu.GroupLabel must sit inside Menu.Group. */}
+              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
+                  {initials}
+                </span>
+                <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">{primary}</span>
+                  <span className="truncate text-xs text-muted-foreground">{secondary}</span>
                 </div>
-              </DropdownMenuLabel>
+              </div>
 
               <DropdownMenuSeparator />
 

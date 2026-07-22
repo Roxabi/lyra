@@ -574,9 +574,7 @@
         "_inbox.hub.>"
       ],
       "subscribe": [
-        "roxabi.memory.capture",
-        "roxabi.memory.query.search",
-        "roxabi.memory.query.assemble",
+        "roxabi.memory.>",
         "_inbox.cortex-memory.>"
       ],
       "deploy": {

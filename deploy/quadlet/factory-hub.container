@@ -32,9 +32,9 @@ UserNS=keep-id:uid=1500,gid=1500
 # specifier expansion), producing a malformed arg. Drop the prefix; rely on
 # provision.sh to ensure hub.env exists (see deploy/quadlet/hub.env.example).
 EnvironmentFile=%h/.roxabi/factory/env/hub.env
-# hub.env contains only hub-scoped vars (FACTORY_HEALTH_SECRET,
-# ROXABI_VAULT_DIR). Adapter tokens (Telegram, Discord, TTS/STT)
-# are excluded — hub does not need them. See deploy/quadlet/hub.env.example.
+# hub.env contains only hub-scoped vars (FACTORY_HEALTH_SECRET, …).
+# Adapter tokens (Telegram, Discord, TTS/STT) are excluded — hub does not need
+# them. Knowledge I/O is NATS → cortex-memory (no local vault).
 # NATS_URL is overridden inline below; cutover = update .env.hub directly.
 Environment=NATS_URL=nats://factory-nats:4222
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
@@ -56,10 +56,8 @@ Volume=%h/.roxabi/factory/turn-writer/:/home/factory/.roxabi/factory/turn-writer
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 # acl-matrix for `factory ops verify` (default path deploy/nats/acl-matrix.json, cwd=/app).
 Volume=%h/projects/roxabi-factory/deploy/nats/acl-matrix.json:/app/deploy/nats/acl-matrix.json:ro,z
-# Vault DB — hub runs `vault put` as subprocess; vault CLI defaults to ~/.roxabi-vault/vault.db
-# which must be bind-mounted so writes reach the host DB. VAULT_DB tells the CLI the container path.
-Volume=%h/.roxabi-vault:/home/factory/.roxabi-vault:z
-Environment=VAULT_DB=/home/factory/.roxabi-vault/vault.db
+# Knowledge I/O: CortexVault → NATS roxabi.memory.* (cortex-memory satellite).
+# No local vault DB mount — hub no longer shells out to `vault` CLI.
 # ~/.claude/ mounts moved to factory-clipool.container (issue #941 — security boundary)
 # Health endpoint — probed by `python -m factory.monitoring` via host loopback (localhost:8443).
 # Bind to 0.0.0.0 inside container so PublishPort forwarding reaches uvicorn;

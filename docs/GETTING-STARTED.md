@@ -199,7 +199,7 @@ cd ~/projects/roxabi-factory && python3 deploy/setup.py
    - **voiceCLI** — TTS/STT (requires NVIDIA GPU, ~3GB)
    - **roxabi-forge** — HTML diagram gallery
    - **imageCLI** — image generation CLI
-   - **roxabi-vault** — knowledge vault
+   - **roxabi-cortex** — long-term memory satellite (cortex-memory NATS)
 4. `make quadlet-install` — install Quadlet units to `~/.config/containers/systemd/`
 5. Create log directories (`~/.local/state/*/logs/`)
 6. Scaffold `config.toml` from example

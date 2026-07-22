@@ -457,7 +457,6 @@ dependencies = [
     { name = "roxabi-obs" },
     { name = "roxabi-otel" },
     { name = "roxabi-satellite" },
-    { name = "roxabi-vault" },
     { name = "tabulate" },
     { name = "telegramify-markdown" },
     { name = "tomli-w" },
@@ -508,7 +507,6 @@ requires-dist = [
     { name = "roxabi-obs", editable = "packages/roxabi-obs" },
     { name = "roxabi-otel", editable = "packages/roxabi-otel" },
     { name = "roxabi-satellite", editable = "packages/roxabi-satellite" },
-    { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
     { name = "tabulate", specifier = ">=0.9" },
     { name = "telegramify-markdown", specifier = ">=1.1.5" },
     { name = "tomli-w", specifier = ">=1.0" },
@@ -1738,14 +1736,6 @@ requires-dist = [
     { name = "roxabi-nats", editable = "packages/roxabi-nats" },
 ]
 provides-extras = ["testing"]
-
-[[package]]
-name = "roxabi-vault"
-version = "0.1.0"
-source = { git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging#d8517eddea79ce535af52f668e020324a899efbb" }
-dependencies = [
-    { name = "aiosqlite" },
-]
 
 [[package]]
 name = "rpds-py"

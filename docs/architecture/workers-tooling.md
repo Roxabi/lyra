@@ -122,7 +122,7 @@ External CLIs (voicecli, imagecli, gws, scraper) follow a 3-layer Install–Wrap
 
 #### Tool-provider protocol (session tools)
 
-`ScrapeProvider` and `VaultProvider` are async Protocols defined in `factory.integrations.base`. Concrete implementations (`WebIntelScraper`, `VaultCli`) live in `factory.integrations.web_intel` and `factory.integrations.vault_cli`. Both are bundled into a `SessionTools` dataclass injected into every `SessionCommandEntry` as a required (non-optional) parameter; the entry types the field abstractly so `factory.core` stays decoupled from the concrete bundle. The historical `session_helpers.py` (which hardcoded subprocess invocations inside core) was deleted. The `commands/search` plugin receives its `VaultProvider` via a module-level injectable set at agent startup — a separate injection path from `SessionCommandEntry`. → ADR-030
+`ScrapeProvider` and `VaultProvider` are async Protocols defined in `factory.integrations.base`. Concrete implementations (`WebIntelScraper`, `CortexVault`) live in `factory.integrations.web_intel` and `factory.integrations.cortex_vault`. Both are bundled into a `SessionTools` dataclass injected into every `SessionCommandEntry` as a required (non-optional) parameter; the entry types the field abstractly so `factory.core` stays decoupled from the concrete bundle. The historical `session_helpers.py` (which hardcoded subprocess invocations inside core) was deleted. The `commands/search` plugin receives its `VaultProvider` via a module-level injectable set at agent startup — a separate injection path from `SessionCommandEntry`. → ADR-030
 
 #### Processor registry & concurrent outbound dispatch
 

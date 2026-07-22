@@ -64,6 +64,11 @@ host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-socialmedia", "factory-socialmedia-api-key", "factory_blobstore_token"]
 disabled = true
 
+# cortex-memory satellite unit lives in roxabi-cortex
+# (packages/memory/deploy/quadlet/cortex-memory.container) — not installed by
+# factory make quadlet-install. Secret factory-nats-cortex-memory is provisioned
+# via factory-genkeys --add-identity cortex-memory (see docs/runbooks/cortex-memory.md).
+
 [component.ingress]
 container = "factory-ingress.container"
 host_roles = ["factory-hub"]

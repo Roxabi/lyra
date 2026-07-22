@@ -2,7 +2,7 @@
 
 Mirrors the LlmProvider pattern in factory.llm.base:
   - Protocols define the interface (ScrapeProvider, VaultProvider, AudioConverter)
-  - Implementations live in sibling modules (web_intel, vault_cli, audio)
+  - Implementations live in sibling modules (web_intel, cortex_vault, audio)
   - SessionTools bundles providers for injection at session command registration
 
 VaultProvider.search intentionally does NOT raise — search failure is non-fatal.
@@ -25,7 +25,7 @@ class ScrapeProvider(Protocol):
 
 @runtime_checkable
 class VaultProvider(Protocol):
-    """Async vault access: write and search the knowledge base."""
+    """Async knowledge store: capture, search, and assemble context."""
 
     async def add(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
@@ -39,6 +39,16 @@ class VaultProvider(Protocol):
     ) -> None: ...
 
     async def search(self, query: str, timeout: float = 30.0) -> str: ...
+
+    async def assemble(
+        self,
+        *,
+        goal: str | None = None,
+        budget_tokens: int = 700,
+        namespace: str | None = None,
+        user_id: str | None = None,
+        timeout: float = 2.0,
+    ) -> str: ...
 
 
 class AudioConversionFailed(Exception):

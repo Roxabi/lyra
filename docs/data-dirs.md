@@ -54,9 +54,14 @@ This directory is **excluded from Syncthing** across all hosts. It is large, app
 
 ---
 
-## `~/.roxabi-vault/` — Vault CLI database
+## `~/.cortex/` — cortex-memory satellite database
 
-Mounted into `factory-hub` so the `vault put` subprocess can write to it. Not part of Syncthing.
+Owned by the **cortex-memory** NATS satellite (`CORTEX_MEMORY_DB`, default
+`~/.cortex/memory.db`). Factory does not open this DB directly — knowledge
+capture/search goes through `roxabi.memory.*` subjects (`CortexVault`).
+
+Legacy `~/.roxabi-vault/` is retired (import once via
+`cortex-memory import-vault`).
 
 ---
 

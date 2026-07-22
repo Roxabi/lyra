@@ -61,11 +61,11 @@ OPTIONAL_MODULES: list[dict[str, object]] = [
         "requires_role": "image-worker",
     },
     {
-        "name": "roxabi-vault",
-        "repo": "git@github.com:Roxabi/roxabi-vault.git",
-        "path": Path.home() / "projects" / "roxabi-vault",
+        "name": "roxabi-cortex",
+        "repo": "git@github.com:Roxabi/roxabi-cortex.git",
+        "path": Path.home() / "projects" / "roxabi-cortex",
         "install": "uv sync",
-        "description": "Knowledge vault",
+        "description": "Long-term memory satellite (cortex-memory)",
         "requires_role": None,
     },
 ]

@@ -793,12 +793,12 @@ class TestSimpleAgentResetBackend:
 class TestSimpleAgentSessionToolsFailure:
     def test_session_tools_build_failure_sets_none(self, monkeypatch: Any) -> None:
         """When SessionTools construction fails, _session_tools is None and no crash."""
-        from factory.integrations import vault_cli, web_intel
+        from factory.integrations import cortex_vault, web_intel
 
         monkeypatch.setattr(
             web_intel, "WebIntelScraper", MagicMock(side_effect=RuntimeError("no bin"))
         )
-        monkeypatch.setattr(vault_cli, "VaultCli", MagicMock())
+        monkeypatch.setattr(cortex_vault, "CortexVault", MagicMock())
 
         provider = MagicMock()
         agent = make_agent(provider)

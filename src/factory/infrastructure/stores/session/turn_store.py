@@ -1,7 +1,7 @@
 """TurnStore — raw conversation turn logging (L1 memory layer, issue #67).
 
 Persists every turn (user + assistant) to the ``conversation_turns`` table
-in a dedicated ``turns.db`` SQLite database (separate from roxabi-vault to
+in a dedicated ``turns.db`` SQLite database (separate from cortex-memory to
 avoid write contention). Provides an audit trail with platform message IDs,
 session context, and a basic query interface.
 Schema: v3 migration — creates ``conversation_turns`` table if absent,

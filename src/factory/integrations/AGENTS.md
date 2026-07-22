@@ -27,9 +27,12 @@ intentional and irreversible within a call.
 - Callers must not validate/sanitize service names a second time — the command
   boundary (plugin command layer) already enforced authorization.
 
-### External services — `vault_cli.py`, `web_intel.py`, `audio.py`
+### External services — `cortex_vault.py`, `web_intel.py`, `audio.py`
 
-Drive out-of-process tools to fetch or store data. Run `grep -n "class \|def " src/factory/integrations/vault_cli.py src/factory/integrations/web_intel.py src/factory/integrations/audio.py` for the current method inventory.
+Drive out-of-process tools to fetch or store data. Knowledge I/O is
+``CortexVault`` (NATS → cortex-memory). Run
+`grep -n "class \|def " src/factory/integrations/cortex_vault.py src/factory/integrations/web_intel.py src/factory/integrations/audio.py`
+for the current method inventory.
 
 ## Failure model
 
@@ -46,8 +49,8 @@ OS-control integrations receive TRUSTED inputs. The plugin command layer
 (callers) already validated and authorized the request. Do not re-sanitize
 inside an integration — it adds no security and creates mismatches.
 
-External-service integrations still validate CLI arguments structurally (e.g.
-`_SAFE_CLI_ARG_RE` in `vault_cli.py`) to prevent subprocess injection, not
+External-service integrations still validate inputs structurally (contract
+schemas for NATS, path checks for audio) to prevent injection, not
 authorization — that distinction matters.
 
 ## Dependency direction

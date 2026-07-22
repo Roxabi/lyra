@@ -5,6 +5,8 @@ the new memory module are expected to FAIL until the backend-dev GREEN phase
 completes the implementation.
 
 Spec trace: S2, S3, S4, S5, S6, S7
+
+Retired: MemoryManager vault backend removed — cortex ADR-087.
 """
 
 from __future__ import annotations
@@ -15,6 +17,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+
+pytestmark = pytest.mark.skip(
+    reason="MemoryManager vault backend removed — cortex ADR-087"
+)
 
 # ---------------------------------------------------------------------------
 # S2 — SessionSnapshot is a frozen dataclass

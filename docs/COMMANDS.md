@@ -287,7 +287,7 @@ cwd = "~/projects/roxabi-factory"   # optional: fixed default cwd for this agent
 [workspaces]
 lyra        = "~/projects/roxabi-factory"
 projects    = "~/projects"
-roxabi-vault = "~/.roxabi-vault"
+cortex      = "~/.cortex"
 ```
 
 ### Usage

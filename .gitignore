@@ -46,3 +46,5 @@ reports/
 
 # Agent scratch workspace (local probes, review notes — not versioned)
 .scratch/
+.semctx/*
+!.semctx/semantic/

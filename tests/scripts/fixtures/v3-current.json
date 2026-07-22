@@ -45,6 +45,11 @@
       "requester": "web-adapter",
       "responder": "hub",
       "subject": "factory.dashboard.>"
+    },
+    {
+      "requester": "hub",
+      "responder": "cortex-memory",
+      "subject": "roxabi.memory.>"
     }
   ],
   "identities": {
@@ -85,6 +90,7 @@
         "$KV.factory-active-jobs.>",
         "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>",
         "$KV.factory_outbound_audio_sent.>",
+        "roxabi.memory.>",
         "_inbox.web-adapter.>"
       ],
       "subscribe": [
@@ -105,7 +111,8 @@
         "factory.job.*.progress",
         "factory.job.*.result",
         "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>",
-        "_inbox.hub.>"
+        "_inbox.hub.>",
+        "roxabi.memory.heartbeat"
       ],
       "deploy": {
         "type": "container",
@@ -552,6 +559,29 @@
       "deploy": {
         "type": "container",
         "secret": "factory-nats-omp"
+      }
+    },
+    "cortex-memory": {
+      "status": "active",
+      "created_at": "2026-07-22",
+      "owner": "factory",
+      "description": "cortex-memory NATS satellite \u2014 knowledge capture/search/assemble (ADR-087). Replaces roxabi-vault CLI path.",
+      "notes": "Request-reply on roxabi.memory.capture|query.search|query.assemble; heartbeat on roxabi.memory.heartbeat. wait_ready=False (no factory-state KV required). Inbox _inbox.cortex-memory.> via identity_name.",
+      "allow_responses": true,
+      "publish": [
+        "roxabi.memory.heartbeat",
+        "factory.metric.host.container_report",
+        "_inbox.hub.>"
+      ],
+      "subscribe": [
+        "roxabi.memory.capture",
+        "roxabi.memory.query.search",
+        "roxabi.memory.query.assemble",
+        "_inbox.cortex-memory.>"
+      ],
+      "deploy": {
+        "type": "container",
+        "secret": "factory-nats-cortex-memory"
       }
     }
   }

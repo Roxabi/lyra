@@ -612,7 +612,7 @@ factory agent unassign --platform telegram --bot <bot_id>
 name = "lyra_default"
 memory_namespace = "lyra"
 permissions = []
-persona = "lyra_default"          # loads system prompt from ~/.roxabi-vault
+persona = "lyra_default"          # loads system prompt from agent soul / config
 show_intermediate = false
 
 [model]

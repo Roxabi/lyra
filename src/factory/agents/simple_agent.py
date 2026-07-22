@@ -202,12 +202,12 @@ class SimpleAgent(AgentBase):
 
         if self._session_tools is None:
             # Transitional fallback: construct locally until all callers inject.
-            from factory.integrations.vault_cli import VaultCli
+            from factory.integrations.cortex_vault import CortexVault
             from factory.integrations.web_intel import WebIntelScraper
 
             try:
                 self._session_tools = SessionTools(
-                    scraper=WebIntelScraper(), vault=VaultCli()
+                    scraper=WebIntelScraper(), vault=CortexVault()
                 )
             except (ImportError, OSError, RuntimeError, ValueError):
                 log.warning(

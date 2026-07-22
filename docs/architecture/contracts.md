@@ -14,8 +14,8 @@ description: Living reference for the shared workspace packages (roxabi-nats, ro
 This document defines what factory exports and imports across project boundaries: the uv
 workspace packages under `packages/`, the hub-side transport layer (`src/factory/transport/`),
 and the registry + lifecycle machinery that routes requests to satellite workers. Satellite
-projects (voiceCLI, imageCLI, llmCLI — historically also roxabi-vault, now deprecated and
-archived) consume these boundaries. Subject-plane semantics and hub dispatch live in
+projects (voiceCLI, imageCLI, llmCLI, cortex-memory — historically also roxabi-vault, now
+deprecated and archived) consume these boundaries. Subject-plane semantics and hub dispatch live in
 `messaging.md`; ACL policy lives in `security-routing.md`.
 
 ## Current state
@@ -69,7 +69,8 @@ Satellites import the same models the hub publishes against — publisher/subscr
 a type error, not a silent wire mismatch.
 
 Domain submodules include `voice`, `image`, `cli`, `llm`, `jobs`, `gh`, `audit`, `state`,
-`fleet`, `dashboard`, `socialmedia`, `turns`, and siblings — the package tree is the inventory.
+`fleet`, `dashboard`, `socialmedia`, `turns`, `memory` (roxabi-cortex satellite, ADR-087 —
+subjects under `roxabi.memory.*`), and siblings — the package tree is the inventory.
 Notable recent moves:
 
 - **CliPool subjects** moved into `roxabi_contracts.cli` (#2023): `factory.jobs.claude`,

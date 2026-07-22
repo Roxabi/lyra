@@ -1,0 +1,22 @@
+# Goals — what the system must achieve. Versioned in Git; edit freely.
+# Plane A (ts-analyzer) only indexes TypeScript today; Python core is authored here
+# as intent + links to docs/importlinter, not as resolved sym: graph nodes.
+
+goal goal.factory.stage-axis-decomposition
+  statement: System variation is decomposed along the stage/pipeline axis, not per platform/adapter.
+  status: declared
+  tag: critical
+
+goal goal.factory.clean-architecture
+  statement: Dependencies point inward; ports are domain-owned; concretions only at the composition root.
+  status: declared
+  tag: critical
+
+goal goal.factory.safe-routing
+  statement: Outbound delivery never reaches the wrong bot or channel; routing is verified at the adapter edge.
+  status: declared
+  tag: security
+
+goal goal.factory.observable-jobs
+  statement: Every user message is one job_id run with event-driven terminal close and durable routing.
+  status: declared

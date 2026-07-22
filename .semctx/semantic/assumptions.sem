@@ -1,0 +1,5 @@
+# Assumptions — believed-but-unproven premises. Kept distinct from established facts.
+
+assumption assumption.factory.ts-surface-is-secondary
+  statement: TypeScript under packages/ and apps/dashboard-v2 is a secondary surface; the load-bearing runtime path is Python (src/factory) + NATS + Quadlet.
+  status: declared

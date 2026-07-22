@@ -92,13 +92,13 @@ class CortexVault:
                 req.model_dump_json().encode(),
                 timeout=timeout or self._default_timeout,
             )
-        except (TimeoutError, OSError, RuntimeError, ValueError) as exc:
+        except Exception as exc:  # noqa: BLE001 — fail-open search is non-fatal
             log.warning("CortexVault.search: %s", exc)
             return ""
 
         try:
             resp = SearchResponse.model_validate_json(raw)
-        except (ValueError, TypeError, KeyError):
+        except Exception:  # noqa: BLE001 — fail-open
             return ""
         if not resp.ok:
             return ""
@@ -138,12 +138,12 @@ class CortexVault:
                 req.model_dump_json().encode(),
                 timeout=timeout if timeout > 0 else self._default_timeout,
             )
-        except (TimeoutError, OSError, RuntimeError, ValueError) as exc:
+        except Exception as exc:  # noqa: BLE001 — fail-open ADR-087
             log.warning("CortexVault.assemble: %s", exc)
             return ""
         try:
             resp = AssembleResponse.model_validate_json(raw)
-        except (ValueError, TypeError, KeyError):
+        except Exception:  # noqa: BLE001 — fail-open
             return ""
         if not resp.ok:
             return ""

@@ -260,7 +260,7 @@ class AgentBase(ABC, SessionManager):
                 user_id=pool.user_id or None,
                 timeout=2.0,
             )
-        except (TimeoutError, OSError, RuntimeError, ValueError, TypeError) as exc:
+        except Exception as exc:  # noqa: BLE001 — fail-open ADR-087
             log.warning("cortex assemble injection failed: %s", exc)
             return ""
 

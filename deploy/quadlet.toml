@@ -64,15 +64,10 @@ host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-socialmedia", "factory-socialmedia-api-key", "factory_blobstore_token"]
 disabled = true
 
-# cortex-memory — unit lives in roxabi-cortex repo; secret is factory-provisioned.
-# Install: ln -s ~/projects/roxabi-cortex/packages/memory/deploy/quadlet/cortex-memory.container \
-#            ~/.config/containers/systemd/
-# Then: factory-genkeys --add-identity cortex-memory && podman secret create …
-[component.cortex-memory]
-container = "cortex-memory.container"
-host_roles = ["factory-hub"]
-required_secrets = ["factory-nats-cortex-memory"]
-disabled = true
+# cortex-memory satellite unit lives in roxabi-cortex
+# (packages/memory/deploy/quadlet/cortex-memory.container) — not installed by
+# factory make quadlet-install. Secret factory-nats-cortex-memory is provisioned
+# via factory-genkeys --add-identity cortex-memory (see docs/runbooks/cortex-memory.md).
 
 [component.ingress]
 container = "factory-ingress.container"

@@ -125,7 +125,7 @@
 
 ### cortex-memory
 - **Publish:** factory.metric.host.container_report, roxabi.memory.heartbeat
-- **Subscribe:** _inbox.cortex-memory.>, roxabi.memory.capture, roxabi.memory.query.assemble, roxabi.memory.query.search
+- **Subscribe:** _inbox.cortex-memory.>, roxabi.memory.>
 
 ### dashboard-reader
 - **Subscribe:** factory.event.>, factory.metric.>

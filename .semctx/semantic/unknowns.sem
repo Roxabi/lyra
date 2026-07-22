@@ -1,0 +1,9 @@
+# Unknowns — open questions that must survive while the system is changed.
+
+unknown unknown.factory.semctx-python-coverage
+  statement: semctx Plane A (ts-analyzer) does not index Python; factory core under src/factory/** is not in the symbol graph — impact on pure-Python diffs is incomplete until a Python analyzer exists.
+  status: declared
+
+unknown unknown.factory.graph-link-resolution
+  statement: Authored invariant links use file: targets (docs, .importlinter) rather than resolved inv:/sym: ids; automated prove-by-test for stage-axis rules still relies on importlinter + qg, not semctx alone.
+  status: declared

@@ -1,0 +1,12 @@
+# Evidence — proofs (tests, static checks, runtime observations) that back a claim.
+
+evidence proof.factory.importlinter
+  statement: .importlinter stage-axis and clean-architecture contracts fail qg/CI when layer or stage purity is violated.
+  status: declared
+  link: file:docs/architecture/engineering-standards.md
+  link: file:AGENTS.md
+
+evidence proof.factory.qg
+  statement: scripts/qg (and CI quality gates from .claude/stack.yml) run the declared static and test gates before merge.
+  status: declared
+  link: file:docs/architecture/engineering-standards.md

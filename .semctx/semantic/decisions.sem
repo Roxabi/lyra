@@ -1,0 +1,25 @@
+# Decisions — recorded choices (why the system is shaped as it is).
+
+decision decision.factory.stage-over-platform
+  statement: Primary axis of decomposition is stage/pipeline (ADR-073), not platform/adapter — prevents N×M drift across adapters.
+  status: declared
+  justifies: invariant.factory.stage-axis-primary
+  justifies: invariant.factory.helpers-per-part
+  link: file:docs/architecture/engineering-standards.md
+  link: file:AGENTS.md
+
+decision decision.factory.hexagonal-composition-root
+  statement: Hexagonal/Clean Architecture with a single composition root (ADR-059) — ports in domain, wiring only in bootstrap.
+  status: declared
+  justifies: invariant.factory.ports-and-composition-root
+  justifies: invariant.factory.layer-imports-inward
+  link: file:docs/architecture/engineering-standards.md
+  link: file:src/factory/bootstrap/AGENTS.md
+
+decision decision.factory.importlinter-enforcement
+  statement: Layer and stage-axis contracts are machine-enforced via .importlinter; new modules join contracts, they are not exempted.
+  status: declared
+  justifies: invariant.factory.stage-axis-primary
+  justifies: invariant.factory.layer-imports-inward
+  link: file:docs/architecture/engineering-standards.md
+  link: file:AGENTS.md

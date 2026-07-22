@@ -1,0 +1,50 @@
+# Invariants — business/architecture rules a change must preserve.
+# Enforced in code primarily by .importlinter (stage-axis contracts) + qg/CI.
+# Plane A is TypeScript-only today; links target indexed docs (not .importlinter itself).
+
+invariant invariant.factory.stage-axis-primary
+  statement: New concern lands in one stage module plus compose primitives; adapters stay thin config only — never duplicate parse/sanitize/route/emit per platform. Machine-enforced by .importlinter stage-axis contracts.
+  status: declared
+  serves: goal.factory.stage-axis-decomposition
+  tag: critical
+  link: file:AGENTS.md
+  link: file:docs/architecture/job-model.md
+  link: file:docs/architecture/engineering-standards.md
+
+invariant invariant.factory.helpers-per-part
+  statement: HELPERS are focused extracts inside a part (inbound/, streaming/, …); no god modules and no cross-part duplication of stage logic.
+  status: declared
+  serves: goal.factory.stage-axis-decomposition
+  tag: critical
+  link: file:AGENTS.md
+  link: file:docs/architecture/engineering-standards.md
+
+invariant invariant.factory.ports-and-composition-root
+  statement: Ports are domain-owned; adapters implement them; concretions are instantiated only in factory.bootstrap — never in domain or application.
+  status: declared
+  serves: goal.factory.clean-architecture
+  tag: critical
+  link: file:docs/architecture/engineering-standards.md
+  link: file:src/factory/bootstrap/AGENTS.md
+
+invariant invariant.factory.layer-imports-inward
+  statement: Domain imports nothing outer; application imports domain only; infrastructure implements domain ports; adapters are outer ring and are never imported by inner layers. Enforced via .importlinter.
+  status: declared
+  serves: goal.factory.clean-architecture
+  tag: critical
+  link: file:docs/architecture/engineering-standards.md
+  link: file:src/factory/core/AGENTS.md
+
+invariant invariant.factory.routing-channel-bot-match
+  statement: Adapters must verify channel and bot_id from RoutingContext before any outbound delivery.
+  status: declared
+  serves: goal.factory.safe-routing
+  tag: security
+  link: file:docs/architecture/security-routing.md
+  link: file:src/factory/adapters/AGENTS.md
+
+invariant invariant.factory.job-id-is-run
+  statement: job_id equals one run (user message → full processing → terminal JobResult); not a turn, not an internal LLM hop.
+  status: declared
+  serves: goal.factory.observable-jobs
+  link: file:docs/architecture/job-model.md

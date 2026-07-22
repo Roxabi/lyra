@@ -209,11 +209,6 @@
 - **Container:** factory-cloudflared.container
 - **Host roles:** factory-hub
 
-### cortex-memory
-- **Container:** cortex-memory.container
-- **Required secrets:** factory-nats-cortex-memory
-- **Host roles:** factory-hub
-
 ### dashboard
 - **Container:** factory-dashboard.container
 - **Required secrets:** factory-nats-web, factory_otel_token

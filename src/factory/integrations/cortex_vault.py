@@ -43,7 +43,11 @@ class CortexVault:
         nc: "NATS | None" = None,
         default_timeout: float = 15.0,
     ) -> None:
-        self._nats_url = nats_url or os.environ.get("NATS_URL") or "nats://127.0.0.1:4222"
+        # No localhost default — set NATS_URL or inject nc (avoids smoke e2e hangs).
+        if nats_url is not None:
+            self._nats_url = nats_url
+        else:
+            self._nats_url = os.environ.get("NATS_URL")
         self._nc = nc
         self._default_timeout = default_timeout
 
@@ -153,6 +157,11 @@ class CortexVault:
         if self._nc is not None:
             msg = await self._nc.request(subject, payload, timeout=timeout)
             return bytes(msg.data)
+
+        if not self._nats_url:
+            raise RuntimeError(
+                "CortexVault: NATS_URL unset and no nc injected"
+            )
 
         from roxabi_nats.connect import nats_connect
 

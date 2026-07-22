@@ -580,8 +580,9 @@
         "_inbox.cortex-memory.>"
       ],
       "deploy": {
-        "type": "container",
-        "secret": "factory-nats-cortex-memory"
+        "type": "external",
+        "host": "roxabituwer",
+        "target_path": "~/.roxabi/factory/nkeys/cortex-memory.seed"
       }
     }
   }

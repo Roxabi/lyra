@@ -23,9 +23,9 @@ make nats-regen-authconf   # or: factory-genkeys (regen authconf from seeds)
 # 2. Add nkey for the new identity (does not rotate other seeds)
 factory-genkeys --add-identity cortex-memory
 
-# 3. Podman secret for the container
-podman secret create factory-nats-cortex-memory \
-  ~/.roxabi/factory/nkeys/cortex-memory.seed
+# 3. Fan-out seed to M₁ (external identity — not a factory Quadlet secret)
+# On M₁: place seed at ~/.roxabi/factory/nkeys/cortex-memory.seed (0600)
+# and set NATS_NKEY_SEED_PATH when running cortex-memory.
 
 # 4. Import legacy vault data (optional, once)
 cd ~/projects/roxabi-cortex/packages/memory

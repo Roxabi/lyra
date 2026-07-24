@@ -197,15 +197,14 @@ class TestOmpRpcDriverSession:
         sub: AsyncMock,
         model_cfg: MagicMock,
     ) -> None:
-        """On success with session_file in JobResult.data, _set_cli_session is called.
+        """On success with session_file, TurnPublisher.publish_set_cli_session is used.
 
-        Contract:
-          - driver must have link_lyra_session() set for the pool_id
-          - _set_cli_session(session_id, session_file_path) is awaited exactly once
-          - session_id is the lyra session_id linked via link_lyra_session()
+        Contract (ADR-075): hub must not SQLite-write turns.db — publish only.
         """
         store = _make_store()
+        publisher = AsyncMock()
         driver.set_turn_store(store)
+        driver.set_turn_publisher(publisher)
         driver.link_lyra_session("pool-3", "lyra-sess-99")
 
         success_result = JobResult.model_validate(
@@ -224,9 +223,11 @@ class TestOmpRpcDriverSession:
         )
 
         assert res.ok is True
-        store._set_cli_session.assert_awaited_once_with(  # noqa: SLF001
-            "lyra-sess-99", "/tmp/omp/.omp/sessions/sess-abc.json"
-        )
+        publisher.publish_set_cli_session.assert_awaited_once()
+        kw = publisher.publish_set_cli_session.await_args.kwargs
+        assert kw["session_id"] == "lyra-sess-99"
+        assert kw["cli_session_id"] == "/tmp/omp/.omp/sessions/sess-abc.json"
+        store._set_cli_session.assert_not_called()  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_complete_skips_persist_when_no_session_file(
@@ -235,9 +236,11 @@ class TestOmpRpcDriverSession:
         sub: AsyncMock,
         model_cfg: MagicMock,
     ) -> None:
-        """When JobResult.data has no session_file, _set_cli_session is NOT called."""
+        """When JobResult.data has no session_file, publisher is NOT called."""
         store = _make_store()
+        publisher = AsyncMock()
         driver.set_turn_store(store)
+        driver.set_turn_publisher(publisher)
         driver.link_lyra_session("pool-4", "lyra-sess-42")
 
         success_result = JobResult.model_validate(
@@ -249,6 +252,7 @@ class TestOmpRpcDriverSession:
             pool_id="pool-4", text="q", model_cfg=model_cfg, system_prompt="s"
         )
 
+        publisher.publish_set_cli_session.assert_not_awaited()
         store._set_cli_session.assert_not_awaited()  # noqa: SLF001
 
     # -- (4) cross-conversation isolation --

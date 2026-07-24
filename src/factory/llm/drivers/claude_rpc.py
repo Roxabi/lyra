@@ -33,9 +33,24 @@ _DEFAULT_TIMEOUT_S: float = 600.0
 
 
 class _ClaudeSessionStore(Protocol):
+    """Read-side only — hub mounts turns.db RO (ADR-075); writes use TurnPublisher."""
+
     async def get_cli_session(self, session_id: str) -> str | None: ...
 
-    async def _set_cli_session(self, session_id: str, cli_session_id: str) -> None: ...
+
+class _ClaudeTurnPublisher(Protocol):
+    """Structural subset of TurnPublisher (avoids llm→transport hard import)."""
+
+    async def publish_set_cli_session(  # noqa: PLR0913 — matches TurnPublisher wire
+        self,
+        *,
+        pool_id: str,
+        session_id: str,
+        platform: str,
+        user_id: str,
+        cli_session_id: str,
+        trace_id: str,
+    ) -> None: ...
 
 
 class ClaudeRpcDriver:
@@ -54,6 +69,7 @@ class ClaudeRpcDriver:
         self._timeout_s = timeout_s
         self._codec = codec or ClaudeJobCodec()
         self._turn_store: _ClaudeSessionStore | None = None
+        self._turn_publisher: _ClaudeTurnPublisher | None = None
         self._pending_resume: dict[str, str] = {}
         self._lyra_sessions: dict[str, str] = {}
 
@@ -64,7 +80,12 @@ class ClaudeRpcDriver:
         """Lifecycle hook — no heartbeat subscription in phase 2."""
 
     def set_turn_store(self, store: _ClaudeSessionStore) -> None:
+        """Wire RO TurnStore for resume lookups (get_cli_session only)."""
         self._turn_store = store
+
+    def set_turn_publisher(self, publisher: _ClaudeTurnPublisher) -> None:
+        """Wire TurnPublisher for set_cli_session writes (hub must not SQLite-write)."""
+        self._turn_publisher = publisher
 
     def link_lyra_session(self, pool_id: str, session_id: str) -> None:
         self._lyra_sessions[pool_id] = session_id
@@ -302,11 +323,32 @@ class ClaudeRpcDriver:
             await self._nc.publish(submit_subject, wire)
 
     async def _persist_session(self, pool_id: str, result: JobResult) -> None:
+        """Publish set_cli_session via TurnPublisher (sole writer = turn-writer).
+
+        Must never call TurnStore SQLite mutators on the hub: the turn-writer/
+        bind is mounted RO (ADR-075 / #1331). Direct writes raise
+        OperationalError and abort the outbound stream mid-flight.
+        """
         data = result.data or {}
         session_id = data.get("session_id")
-        if not session_id or self._turn_store is None:
+        if not session_id:
             return
         linked = self._lyra_sessions.get(pool_id)
         if linked is None:
             return
-        await self._turn_store._set_cli_session(linked, str(session_id))  # noqa: SLF001
+        publisher = self._turn_publisher
+        if publisher is None:
+            log.warning(
+                "claude_rpc: turn_publisher unset — drop set_cli_session "
+                "for lyra_session=%s (hub RO turns.db)",
+                linked,
+            )
+            return
+        await publisher.publish_set_cli_session(
+            pool_id=pool_id,
+            session_id=linked,
+            platform="",
+            user_id="",
+            cli_session_id=str(session_id),
+            trace_id=linked,
+        )

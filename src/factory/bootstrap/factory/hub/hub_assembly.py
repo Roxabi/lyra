@@ -112,6 +112,8 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
 
     cli_nats_driver = await build_llm_client(nc)
     cli_nats_driver.set_turn_store(stores.turn)
+    # Writes must go TurnPublisher → turn-writer (hub turn-writer/ mount is RO).
+    cli_nats_driver.set_turn_publisher(hub._turn_publisher)
     hub.cli_pool = None
 
     freshness_drivers_list.extend(
@@ -119,6 +121,8 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
     )
 
     omp_rpc_driver = OmpRpcDriver(nc)
+    omp_rpc_driver.set_turn_store(stores.turn)
+    omp_rpc_driver.set_turn_publisher(hub._turn_publisher)
 
     register_agents(
         hub,

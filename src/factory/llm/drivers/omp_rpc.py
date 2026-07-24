@@ -34,16 +34,24 @@ _DEFAULT_TIMEOUT_S: float = 600.0
 
 
 class _OmpSessionStore(Protocol):
-    """Read+write session store protocol for OmpRpcDriver.
-
-    Extends the read-only _CliSessionStore shape (get_cli_session) with the
-    write path (_set_cli_session) so the driver can persist the omp session
-    file returned by a successful job result.
-    """
+    """Read-side only — hub mounts turns.db RO (ADR-075); writes use TurnPublisher."""
 
     async def get_cli_session(self, session_id: str) -> str | None: ...
 
-    async def _set_cli_session(self, session_id: str, cli_session_id: str) -> None: ...
+
+class _OmpTurnPublisher(Protocol):
+    """Structural subset of TurnPublisher (avoids llm→transport hard import)."""
+
+    async def publish_set_cli_session(  # noqa: PLR0913 — matches TurnPublisher wire
+        self,
+        *,
+        pool_id: str,
+        session_id: str,
+        platform: str,
+        user_id: str,
+        cli_session_id: str,
+        trace_id: str,
+    ) -> None: ...
 
 
 class OmpRpcDriver:
@@ -55,9 +63,9 @@ class OmpRpcDriver:
 
     SessionAware protocol (V2)
     --------------------------
-    Mirrors LlmClient exactly for the session-management interface so the hub
-    can treat OmpRpcDriver and LlmClient uniformly:
-      - set_turn_store(store)        — wire the TurnStore read+write path
+    Mirrors LlmClient for session management:
+      - set_turn_store(store)        — RO lookups (get_cli_session)
+      - set_turn_publisher(pub)      — set_cli_session writes via NATS
       - link_lyra_session(p, s)      — local mapping pool_id → session_id
       - queue_resume(p, s) -> bool   — resolve + stash cli_session_id
       - reset(pool_id)               — drop pending resume (no NATS msg in V2)
@@ -78,6 +86,7 @@ class OmpRpcDriver:
         self._codec = codec or OmpJobCodec()
         # SessionAware state (mirrors LlmClient.__init__)
         self._turn_store: _OmpSessionStore | None = None
+        self._turn_publisher: _OmpTurnPublisher | None = None
         self._pending_resume: dict[str, str] = {}
         self._lyra_sessions: dict[str, str] = {}
 
@@ -90,6 +99,10 @@ class OmpRpcDriver:
     def set_turn_store(self, store: _OmpSessionStore) -> None:
         """Wire the session store for cli_session_id lookups in queue_resume."""
         self._turn_store = store
+
+    def set_turn_publisher(self, publisher: _OmpTurnPublisher) -> None:
+        """Wire TurnPublisher for set_cli_session (hub must not SQLite-write)."""
+        self._turn_publisher = publisher
 
     def link_lyra_session(self, pool_id: str, session_id: str) -> None:
         """Store the pool_id → session_id mapping for session persistence.
@@ -220,12 +233,8 @@ class OmpRpcDriver:
             decoded = self._codec.decode(result)
             if result.status == "success":
                 session_file = (result.data or {}).get("session_file")
-                if session_file and self._turn_store is not None:
-                    linked_session = self._lyra_sessions.get(pool_id)
-                    if linked_session is not None:
-                        await self._turn_store._set_cli_session(  # noqa: SLF001
-                            linked_session, session_file
-                        )
+                if session_file:
+                    await self._persist_session(pool_id, str(session_file))
                 return decoded
 
             log.warning("omp worker returned error status for job %s", job_id)
@@ -237,3 +246,25 @@ class OmpRpcDriver:
 
         finally:
             await sub.unsubscribe()
+
+    async def _persist_session(self, pool_id: str, session_file: str) -> None:
+        """Publish set_cli_session via TurnPublisher (ADR-075 sole writer)."""
+        linked_session = self._lyra_sessions.get(pool_id)
+        if linked_session is None:
+            return
+        publisher = self._turn_publisher
+        if publisher is None:
+            log.warning(
+                "omp_rpc: turn_publisher unset — drop set_cli_session "
+                "for lyra_session=%s (hub RO turns.db)",
+                linked_session,
+            )
+            return
+        await publisher.publish_set_cli_session(
+            pool_id=pool_id,
+            session_id=linked_session,
+            platform="",
+            user_id="",
+            cli_session_id=session_file,
+            trace_id=linked_session,
+        )

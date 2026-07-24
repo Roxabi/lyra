@@ -10,14 +10,16 @@
     "roxabi-vault@roxabi-vault-marketplace": true,
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "cocoindex-code@cocoindex-code": true
+    "cocoindex-code@cocoindex-code": true,
+    "dev-init@roxabi-marketplace": true
   },
   "extraKnownMarketplaces": {
     "roxabi-marketplace": {
       "source": {
         "source": "github",
         "repo": "Roxabi/roxabi-plugins"
-      }
+      },
+      "autoUpdate": true
     },
     "roxabi-vault-marketplace": {
       "source": {

@@ -167,8 +167,8 @@ class TestColdStartPersistsSessionFile:
         assert res.result == "done"
 
     @pytest.mark.asyncio
-    async def test_session_file_persisted_in_store(self) -> None:
-        """After complete(), store._set_cli_session is called with the session path."""
+    async def test_session_file_persisted_via_publisher(self) -> None:
+        """After complete(), session is published (not SQLite-written on hub)."""
         session_path = "/tmp/omp/.omp/sessions/sess-abc.jsonl"
         result = JobResult.model_validate(
             {
@@ -180,7 +180,9 @@ class TestColdStartPersistsSessionFile:
 
         driver = OmpRpcDriver(nc, timeout_s=5.0)
         store = _make_store()
+        publisher = AsyncMock()
         driver.set_turn_store(store)
+        driver.set_turn_publisher(publisher)
         driver.link_lyra_session("pool-persist", "lyra-sess-persist")
 
         await driver.complete(
@@ -190,9 +192,11 @@ class TestColdStartPersistsSessionFile:
             system_prompt="sys",
         )
 
-        store._set_cli_session.assert_awaited_once_with(  # noqa: SLF001
-            "lyra-sess-persist", session_path
-        )
+        publisher.publish_set_cli_session.assert_awaited_once()
+        call_kw = publisher.publish_set_cli_session.await_args.kwargs
+        assert call_kw["session_id"] == "lyra-sess-persist"
+        assert call_kw["cli_session_id"] == session_path
+        store._set_cli_session.assert_not_called()  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------

@@ -79,23 +79,46 @@ class WebFormatter(BaseFormatter):
     ) -> None:
         del ph
         if self._is_agui():
-            increment = text[len(self._buffer) :]
-            self._buffer = text
-            if increment:
-                await self._publish(
-                    web_agui.text_content(
-                        message_id=self._message_id, delta=increment
+            # AG-UI is append-only. Intermediate edits grow a prefix (⏳ …).
+            # Error/final replacement is NOT a prefix — slicing would garble
+            # ("⏳ pong" + "Something…"[6:] → "ing went wrong…"). On non-prefix
+            # replace, close the intermediate message and open a new one.
+            if text.startswith(self._buffer):
+                increment = text[len(self._buffer) :]
+                self._buffer = text
+                if increment and self._message_id:
+                    await self._publish(
+                        web_agui.text_content(
+                            message_id=self._message_id, delta=increment
+                        )
                     )
+            else:
+                if self._message_id:
+                    await self._publish(
+                        web_agui.text_end(message_id=self._message_id)
+                    )
+                self._message_id = web_agui.new_message_id()
+                self._buffer = text
+                await self._publish(
+                    web_agui.text_start(message_id=self._message_id)
                 )
+                if text:
+                    await self._publish(
+                        web_agui.text_content(
+                            message_id=self._message_id, delta=text
+                        )
+                    )
             if finalize:
-                await self._publish(
-                    web_agui.text_end(message_id=self._message_id)
-                )
-                await self._publish(
-                    web_agui.run_finished(
-                        thread_id=self._session_id, run_id=self._run_id
+                if self._message_id:
+                    await self._publish(
+                        web_agui.text_end(message_id=self._message_id)
                     )
-                )
+                if self._run_id:
+                    await self._publish(
+                        web_agui.run_finished(
+                            thread_id=self._session_id, run_id=self._run_id
+                        )
+                    )
                 self._run_id = ""
                 self._message_id = ""
                 self._buffer = ""

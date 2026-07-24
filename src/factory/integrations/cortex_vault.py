@@ -165,7 +165,10 @@ class CortexVault:
 
         from roxabi_nats.connect import nats_connect
 
-        nc = await nats_connect(self._nats_url)
+        # ADR-051: hub nkey ACL only allows _inbox.hub.> (not nats-py default
+        # _INBOX.<random>.*). Prefer inject nc= at composition root; ephemeral
+        # fallback must still use identity_name=hub.
+        nc = await nats_connect(self._nats_url, identity_name="hub")
         try:
             msg = await nc.request(subject, payload, timeout=timeout)
             return bytes(msg.data)

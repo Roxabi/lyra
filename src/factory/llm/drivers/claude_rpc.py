@@ -41,7 +41,16 @@ class _ClaudeSessionStore(Protocol):
 class _ClaudeTurnPublisher(Protocol):
     """Structural subset of TurnPublisher (avoids llm→transport hard import)."""
 
-    async def publish_set_cli_session(self, **kwargs: object) -> None: ...
+    async def publish_set_cli_session(  # noqa: PLR0913 — matches TurnPublisher wire
+        self,
+        *,
+        pool_id: str,
+        session_id: str,
+        platform: str,
+        user_id: str,
+        cli_session_id: str,
+        trace_id: str,
+    ) -> None: ...
 
 
 class ClaudeRpcDriver:

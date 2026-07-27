@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from factory.core.config.dispatch_config import DispatchConfig
 from factory.core.hub.middleware import PipelineContext
 from factory.core.hub.middleware.middleware_stt import SttMiddleware
 from factory.core.hub.pipeline.message_pipeline import _DROP, Action, PipelineResult
@@ -28,7 +29,7 @@ from tests.helpers.messages import make_text_message, make_voice_message
 # Helpers / stubs
 # ---------------------------------------------------------------------------
 
-MAX_TRANSCRIPT_LEN = 2000  # mirrors middleware_stt.py constant
+MAX_TRANSCRIPT_LEN = DispatchConfig.MAX_TRANSCRIPT_LEN  # SSoT — keep tests in sync
 
 
 @dataclass

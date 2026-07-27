@@ -5,9 +5,9 @@ Inserted between RateLimitMiddleware and ResolveBindingMiddleware so that:
 - Identity resolution (ResolveIdentityMiddleware) runs earlier via the middleware chain.
 - Binding lookup uses the transcribed text (correct for command detection).
 
-Replaces the deleted AudioPipeline.run() consumer loop. All 6 error outcomes
-(unsupported, unavailable, noise, invalid, failed, timeout) and the re-entrance
-guard are preserved from the original implementation.
+Replaces the deleted AudioPipeline.run() consumer loop. Error outcomes
+(unsupported, unavailable, noise, invalid, too_long, failed — timeout maps to
+failed) and the re-entrance guard are preserved from the original implementation.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ _STT_STAGE_OUTCOMES: dict[str, int] = {
     "unavailable": 0,
     "noise": 0,
     "invalid": 0,
+    "too_long": 0,
     "failed": 0,
 }
 
@@ -163,7 +164,7 @@ class SttMiddleware:
         if len(transcript) > MAX_TRANSCRIPT_LEN:
             log.warning("msg id=%s: transcript too long (%d)", msg.id, len(transcript))
             await self._dispatch_error(hub, msg, "stt_too_long")
-            _STT_STAGE_OUTCOMES["invalid"] += 1
+            _STT_STAGE_OUTCOMES["too_long"] += 1
             return _DROP
 
         # 6. Success — echo transcript and continue pipeline.

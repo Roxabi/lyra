@@ -310,6 +310,25 @@ class TestSttMiddleware:
         assert updated.text == mid_text
 
     # ------------------------------------------------------------------
+    # 7c. Exact-cap boundary: len == MAX_TRANSCRIPT_LEN still passes (strict >)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio()
+    async def test_stt_stage_accepts_exact_max_transcript_len(self) -> None:
+        exact = "x" * MAX_TRANSCRIPT_LEN
+        stt = FakeSTT(text=exact)
+        hub = _make_hub(stt=stt)
+        ctx = _make_ctx(hub)
+        msg = make_voice_message()
+        next_fn = AsyncMock(return_value=_SENTINEL_RESULT)
+
+        result = await SttMiddleware()(msg, ctx, next_fn)
+
+        next_fn.assert_called_once()
+        assert result is _SENTINEL_RESULT
+        assert next_fn.call_args[0][0].text == exact
+
+    # ------------------------------------------------------------------
     # 8. Unexpected generic exception → stt_failed, drop
     # ------------------------------------------------------------------
 

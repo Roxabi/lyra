@@ -47,19 +47,22 @@ class TestTemplateLoading:
         mm_en = MessageManager(MESSAGES_TOML_PATH, language="en")
         mm_fr = MessageManager(MESSAGES_TOML_PATH, language="fr")
 
-        # Act / Assert — EN
-        invalid_en = mm_en.get("stt_invalid")
-        too_long_en = mm_en.get("stt_too_long")
-        assert "couldn't be processed" in invalid_en.lower()
-        assert "too long" in too_long_en.lower()
-        assert "10 min" in too_long_en
-
-        # Act / Assert — FR
-        invalid_fr = mm_fr.get("stt_invalid")
-        too_long_fr = mm_fr.get("stt_too_long")
-        assert "n'a pas pu" in invalid_fr.lower() or "pas pu être" in invalid_fr
-        assert "trop long" in too_long_fr.lower()
-        assert "10 min" in too_long_fr
+        # Act / Assert — full-string equality (stable vs copy substring flakes)
+        assert mm_en.get("stt_invalid") == (
+            "That voice message couldn't be processed. Please try again as text."
+        )
+        assert mm_en.get("stt_too_long") == (
+            "That voice message is too long (transcript over the limit). "
+            "Please send shorter clips (~10 min max) or split it into several messages."
+        )
+        assert mm_fr.get("stt_invalid") == (
+            "Ce message vocal n'a pas pu être traité. Réessaie en texte."
+        )
+        assert mm_fr.get("stt_too_long") == (
+            "Ce message vocal est trop long (transcript au-delà de la limite). "
+            "Envoie des clips plus courts (~10 min max) "
+            "ou découpe-le en plusieurs messages."
+        )
 
     def test_stt_too_long_fallback_when_toml_missing(self) -> None:
         # Arrange — no TOML → _FALLBACKS safety net
@@ -69,8 +72,10 @@ class TestTemplateLoading:
         result = mm.get("stt_too_long")
 
         # Assert
-        assert "too long" in result.lower()
-        assert "10 min" in result
+        assert result == (
+            "That voice message is too long (transcript over the limit). "
+            "Please send shorter clips (~10 min max) or split it into several messages."
+        )
 
     def test_loads_platform_specific_string(self) -> None:
         # Arrange

@@ -261,11 +261,11 @@ class TestSttMiddleware:
         assert "stt_invalid" in response.content or "[stt_invalid" in response.content
 
     # ------------------------------------------------------------------
-    # 7. Transcript exceeds MAX_TRANSCRIPT_LEN → stt_invalid, drop
+    # 7. Transcript exceeds MAX_TRANSCRIPT_LEN → stt_too_long, drop
     # ------------------------------------------------------------------
 
     @pytest.mark.asyncio()
-    async def test_stt_stage_invalid_when_over_length(self) -> None:
+    async def test_stt_stage_too_long_when_over_length(self) -> None:
         # Arrange — transcript is longer than the hard cap
         long_text = "x" * (MAX_TRANSCRIPT_LEN + 1)
         stt = FakeSTT(text=long_text)
@@ -277,13 +277,37 @@ class TestSttMiddleware:
         # Act
         result = await SttMiddleware()(msg, ctx, next_fn)
 
-        # Assert — transcript over cap triggers stt_invalid
+        # Assert — transcript over cap triggers stt_too_long (not stt_invalid)
         assert result == _DROP
         assert result.action == Action.DROP
         next_fn.assert_not_called()
         hub.dispatch_response.assert_called_once()
         _reply_msg, response = hub.dispatch_response.call_args[0]
-        assert "stt_invalid" in response.content or "[stt_invalid" in response.content
+        assert "stt_too_long" in response.content or "[stt_too_long" in response.content
+
+    # ------------------------------------------------------------------
+    # 7b. Transcript at former 2k mid-length still passes after cap raise
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio()
+    async def test_stt_stage_accepts_mid_length_transcript(self) -> None:
+        # Arrange — was above the old 2000 cap; must succeed with MAX=8000
+        mid_text = "x" * 2001
+        assert len(mid_text) <= MAX_TRANSCRIPT_LEN
+        stt = FakeSTT(text=mid_text)
+        hub = _make_hub(stt=stt)
+        ctx = _make_ctx(hub)
+        msg = make_voice_message()
+        next_fn = AsyncMock(return_value=_SENTINEL_RESULT)
+
+        # Act
+        result = await SttMiddleware()(msg, ctx, next_fn)
+
+        # Assert — continues pipeline (not drop)
+        next_fn.assert_called_once()
+        assert result is _SENTINEL_RESULT
+        updated = next_fn.call_args[0][0]
+        assert updated.text == mid_text
 
     # ------------------------------------------------------------------
     # 8. Unexpected generic exception → stt_failed, drop

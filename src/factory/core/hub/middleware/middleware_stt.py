@@ -162,7 +162,7 @@ class SttMiddleware:
 
         if len(transcript) > MAX_TRANSCRIPT_LEN:
             log.warning("msg id=%s: transcript too long (%d)", msg.id, len(transcript))
-            await self._dispatch_error(hub, msg, "stt_invalid")
+            await self._dispatch_error(hub, msg, "stt_too_long")
             _STT_STAGE_OUTCOMES["invalid"] += 1
             return _DROP
 

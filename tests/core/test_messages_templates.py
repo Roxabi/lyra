@@ -42,6 +42,36 @@ class TestTemplateLoading:
         # Assert
         assert result == "Available commands:"
 
+    def test_loads_stt_invalid_and_stt_too_long_en_fr(self) -> None:
+        # Arrange — distinct keys for slash-guard vs length cap (#2311 review)
+        mm_en = MessageManager(MESSAGES_TOML_PATH, language="en")
+        mm_fr = MessageManager(MESSAGES_TOML_PATH, language="fr")
+
+        # Act / Assert — EN
+        invalid_en = mm_en.get("stt_invalid")
+        too_long_en = mm_en.get("stt_too_long")
+        assert "couldn't be processed" in invalid_en.lower()
+        assert "too long" in too_long_en.lower()
+        assert "10 min" in too_long_en
+
+        # Act / Assert — FR
+        invalid_fr = mm_fr.get("stt_invalid")
+        too_long_fr = mm_fr.get("stt_too_long")
+        assert "n'a pas pu" in invalid_fr.lower() or "pas pu être" in invalid_fr
+        assert "trop long" in too_long_fr.lower()
+        assert "10 min" in too_long_fr
+
+    def test_stt_too_long_fallback_when_toml_missing(self) -> None:
+        # Arrange — no TOML → _FALLBACKS safety net
+        mm = MessageManager("/no/such/file.toml")
+
+        # Act
+        result = mm.get("stt_too_long")
+
+        # Assert
+        assert "too long" in result.lower()
+        assert "10 min" in result
+
     def test_loads_platform_specific_string(self) -> None:
         # Arrange
         mm = MessageManager(MESSAGES_TOML_PATH)

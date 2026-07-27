@@ -14,7 +14,7 @@ class DispatchConfig:
     MAX_ATTEMPTS    — total delivery attempts (1 initial + len(BACKOFF_DELAYS) retries).
     MAX_TRANSCRIPT_LEN — hard character limit applied to STT transcripts before
                          forwarding to the pipeline; transcripts exceeding this
-                         are dropped with an ``stt_invalid`` reply.
+                         are dropped with an ``stt_too_long`` reply.
     """
 
     BACKOFF_DELAYS: tuple[float, ...] = (1.0, 2.0, 4.0)

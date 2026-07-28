@@ -42,6 +42,41 @@ class TestTemplateLoading:
         # Assert
         assert result == "Available commands:"
 
+    def test_loads_stt_invalid_and_stt_too_long_en_fr(self) -> None:
+        # Arrange — distinct keys for slash-guard vs length cap (#2311 review)
+        mm_en = MessageManager(MESSAGES_TOML_PATH, language="en")
+        mm_fr = MessageManager(MESSAGES_TOML_PATH, language="fr")
+
+        # Act / Assert — full-string equality (stable vs copy substring flakes)
+        assert mm_en.get("stt_invalid") == (
+            "That voice message couldn't be processed. Please try again as text."
+        )
+        assert mm_en.get("stt_too_long") == (
+            "That voice message is too long (transcript over the limit). "
+            "Please send shorter clips (~10 min max) or split it into several messages."
+        )
+        assert mm_fr.get("stt_invalid") == (
+            "Ce message vocal n'a pas pu être traité. Réessaie en texte."
+        )
+        assert mm_fr.get("stt_too_long") == (
+            "Ce message vocal est trop long (transcript au-delà de la limite). "
+            "Envoie des clips plus courts (~10 min max) "
+            "ou découpe-le en plusieurs messages."
+        )
+
+    def test_stt_too_long_fallback_when_toml_missing(self) -> None:
+        # Arrange — no TOML → _FALLBACKS safety net
+        mm = MessageManager("/no/such/file.toml")
+
+        # Act
+        result = mm.get("stt_too_long")
+
+        # Assert
+        assert result == (
+            "That voice message is too long (transcript over the limit). "
+            "Please send shorter clips (~10 min max) or split it into several messages."
+        )
+
     def test_loads_platform_specific_string(self) -> None:
         # Arrange
         mm = MessageManager(MESSAGES_TOML_PATH)

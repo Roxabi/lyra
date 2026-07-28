@@ -28,7 +28,18 @@ _FALLBACKS: dict[str, str] = {
     "cancelled": "Request cancelled.",
     "stt_noise": "I couldn't make out your voice message, please try again.",
     "stt_unsupported": "Voice messages are not supported — STT is not configured.",
+    "stt_unavailable": (
+        "Voice messages are temporarily unavailable. "
+        "Please try again later or send a text message."
+    ),
     "stt_failed": "Sorry, I couldn't transcribe your voice message.",
+    "stt_invalid": (
+        "That voice message couldn't be processed. Please try again as text."
+    ),
+    "stt_too_long": (
+        "That voice message is too long (transcript over the limit). "
+        "Please send shorter clips (~10 min max) or split it into several messages."
+    ),
     "audio_download_failed": "Couldn't retrieve your audio file. Please try again.",
     "model_fallback": (
         "⚠️ {requested_model} is unavailable — replying with {fallback_model}."

@@ -108,7 +108,7 @@ flowchart LR
 - Preferred shape (one subject family, least ACL churn):
 
   | Subject | Request JSON | Response JSON |
-  |---------||--------------|---------------|
+  |---------|--------------|---------------|
   | `factory.turns.get_cli_session` | `{ "session_id": str }` | `{ "cli_session_id": str \| null }` |
   | `factory.turns.get_cli_session_by_pool` | `{ "pool_id": str }` | `{ "cli_session_id": str \| null }` |
   | `factory.turns.get_resume_count` | `{ "session_id": str }` | `{ "resume_count": int }` |

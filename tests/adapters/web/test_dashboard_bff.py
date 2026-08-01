@@ -390,7 +390,8 @@ class TestDashboardBffRealPath:
         tc, _adapter, _nc = wired_client
         a = tc.post("/api/bff/jobs/stream-token").json()["stream_token"]
         b = tc.post("/api/bff/jobs/stream-token").json()["stream_token"]
-        reg = tc.app.state.stream_tokens
+        # TestClient.app is typed loosely; state set in create_dashboard_app.
+        reg = tc.app.state.stream_tokens  # type: ignore[union-attr]
         assert reg.verify(JOBS_STREAM_ID, a)
         assert reg.verify(JOBS_STREAM_ID, b)
 

@@ -85,15 +85,26 @@ class TurnQueryClient:
         return str(val) if val is not None else None
 
     async def get_resume_count(self, session_id: str) -> int:
+        """Return resume_count, or raise on transport/query failure.
+
+        Matches ``TurnStore.get_resume_count``: callers must not treat a failed
+        read as 0 (middleware does ``target_count = current + 1``; a silent 0
+        freezes the high-water mark under max()). Missing session → 0 is only
+        valid when the turn-writer replies successfully with that value.
+        """
         data = await self._request(
             SUBJECTS.get_resume_count, {"session_id": session_id}
         )
         if data is None:
-            return 0
+            raise RuntimeError(
+                f"turn-query get_resume_count failed for session_id={session_id!r}"
+            )
         try:
             return int(data.get("resume_count", 0))
-        except (TypeError, ValueError):
-            return 0
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"turn-query get_resume_count bad reply for session_id={session_id!r}"
+            ) from exc
 
     async def get_last_session(self, pool_id: str) -> str | None:
         data = await self._request(SUBJECTS.get_last_session, {"pool_id": pool_id})

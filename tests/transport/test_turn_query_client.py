@@ -47,11 +47,21 @@ async def test_get_cli_session_no_responders_fail_soft() -> None:
 
 
 @pytest.mark.anyio
-async def test_get_resume_count_fail_soft_zero() -> None:
+async def test_get_resume_count_raises_on_timeout() -> None:
+    """Must not fail-soft to 0 (freezes resume high-water under max())."""
     nc = AsyncMock()
     nc.request = AsyncMock(side_effect=TimeoutError())
     client = TurnQueryClient(nc)
-    assert await client.get_resume_count("s1") == 0
+    with pytest.raises(RuntimeError, match="get_resume_count failed"):
+        await client.get_resume_count("s1")
+
+
+@pytest.mark.anyio
+async def test_get_resume_count_ok() -> None:
+    nc = AsyncMock()
+    nc.request = AsyncMock(return_value=_reply({"resume_count": 4}))
+    client = TurnQueryClient(nc)
+    assert await client.get_resume_count("s1") == 4
 
 
 @pytest.mark.anyio

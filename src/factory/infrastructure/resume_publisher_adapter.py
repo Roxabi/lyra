@@ -1,24 +1,29 @@
 """TurnPublisherAdapter — infrastructure adapter for ResumePublisherPort.
 
-Wraps TurnPublisher (NATS publish) + TurnStore (SQLite read) to satisfy the
-domain port defined in factory.core.ports.resume_publisher.
+Wraps TurnPublisher (NATS publish) + turn read surface (SQLite TurnStore or
+TurnQueryClient) to satisfy the domain port in factory.core.ports.resume_publisher.
 """
 
 from __future__ import annotations
 
-from factory.infrastructure.stores.session.turn_store import TurnStore
+from typing import Protocol
+
 from factory.transport.turn_publisher import TurnPublisher
+
+
+class _ResumeCountReader(Protocol):
+    async def get_resume_count(self, session_id: str) -> int: ...
 
 
 class TurnPublisherAdapter:
     """Adapter implementing ``ResumePublisherPort`` (structural subtyping).
 
     Delegates ``publish_increment_resume_count`` to the NATS-backed
-    ``TurnPublisher`` and ``get_resume_count`` to the SQLite-backed
-    ``TurnStore``.
+    ``TurnPublisher`` and ``get_resume_count`` to the turn read surface
+    (SQLite ``TurnStore`` or NATS ``TurnQueryClient``).
     """
 
-    def __init__(self, publisher: TurnPublisher, store: TurnStore) -> None:
+    def __init__(self, publisher: TurnPublisher, store: _ResumeCountReader) -> None:
         self._publisher = publisher
         self._store = store
 

@@ -99,7 +99,9 @@ def _patch_unified_boundaries(  # noqa: PLR0915
         async def __aexit__(self, *_exc: Any) -> None:
             order.append("open_stores.exit")
 
-    _open_stores_mock = MagicMock(side_effect=lambda _vault_dir, nc: _FakeStoresCtx())
+    _open_stores_mock = MagicMock(
+        side_effect=lambda _vault_dir, nc=None, **_kw: _FakeStoresCtx()
+    )
     monkeypatch.setattr(
         unified_mod,
         "open_stores",
@@ -304,7 +306,7 @@ async def test_sequence_order(
 
     _open_stores_mock = _patch_unified_boundaries["_open_stores_mock"]
     _open_stores_mock.assert_called_once_with(
-        ANY, nc=_patch_unified_boundaries["fake_nc"]
+        ANY, nc=_patch_unified_boundaries["fake_nc"], turn_mode="sqlite"
     )
 
 

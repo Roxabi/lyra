@@ -18,6 +18,7 @@ from factory.core.cli.cli_pool import CliPool, CliPoolDeps
 from factory.core.messaging.utils.metrics import log_contracts_version
 from factory.infrastructure.stores.session.turn_store import TurnStore
 from factory.infrastructure.turn_writer.health import TurnWriterHealthServer
+from factory.infrastructure.turn_writer.query import TurnQueryServer
 from factory.infrastructure.turn_writer.stream_setup import (
     ensure_consumer,
     ensure_stream,
@@ -156,6 +157,9 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
     writer = TurnWriter(store, js)
     await writer.start()
 
+    query_server = TurnQueryServer(store, nc)
+    await query_server.start()
+
     health_host = os.environ.get("FACTORY_TURN_WRITER_HEALTH_HOST", "0.0.0.0")
     health_port = int(os.environ.get("FACTORY_TURN_WRITER_HEALTH_PORT", "8083"))
     health_server = TurnWriterHealthServer(writer, store, nc, health_host, health_port)
@@ -168,6 +172,7 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
     finally:
         log.info("turn-writer: stopping")
         await health_server.stop()
+        await query_server.stop()
         await writer.stop()
         await store.close()
         await cancel_fleet_reporter(fleet_reporter_task)

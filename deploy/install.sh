@@ -356,7 +356,7 @@ echo "  [ok]   ${HOME}/.roxabi/factory/blobstore"
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"
 echo "  [ok]   ${HOME}/.roxabi/factory/turn-writer/"
 # Pre-create turns.db as a regular file so Podman never materialises it as a
-# directory on first boot (both factory-turn-writer and factory-hub bind-mount it;
+# directory on first boot (factory-turn-writer sole owner; hub uses NATS reads #2309;
 # findings #1 + #2 — IsADirectoryError risk at SQLite open time).
 if [[ ! -e "${HOME}/.roxabi/factory/turn-writer/turns.db" ]]; then
   run touch "${HOME}/.roxabi/factory/turn-writer/turns.db"

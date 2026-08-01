@@ -54,7 +54,7 @@ The row will grant `subscribe: factory.typing.>` to `code-worker` (it consumes t
 | `_inbox.clipool-worker.>` | — | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — |
 | `_inbox.cortex-memory.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB |
 | `_inbox.discord-adapter.>` | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `_inbox.hub.>` | SUB | — | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — | — | — | — | PUB | — | — | PUB |
+| `_inbox.hub.>` | SUB | — | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — | PUB | — | — | PUB | — | — | PUB |
 | `_inbox.image-worker.>` | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — |
 | `_inbox.llm-operator.>` | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — |
 | `_inbox.llmcli-llm.>` | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — |
@@ -99,6 +99,14 @@ The row will grant `subscribe: factory.typing.>` to `code-worker` (it consumes t
 | `factory.tool.socialmedia.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — | — | — |
 | `factory.tool.socialmedia.heartbeat` | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — |
 | `factory.turns.>` | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — |
+| `factory.turns.get_cli_session` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_cli_session_by_pool` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_last_session` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_resume_count` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_turns` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_turns_by_session` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.list_recent_sessions` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.list_sessions` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `factory.turns.write` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `factory.typing.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `factory.typing.discord.>` | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |

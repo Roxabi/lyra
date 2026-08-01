@@ -1,7 +1,9 @@
 """JetStream stream + durable consumer bootstrap for TurnWriter.
 
-Stream FACTORY_TURNS: subject factory.turns.>, retention WorkQueue,
-MaxAge=24h, MaxBytes=256MiB. Idempotent — safe to call on each writer boot.
+Stream FACTORY_TURNS: subject factory.turns.write only (not factory.turns.>),
+retention WorkQueue, MaxAge=24h, MaxBytes=256MiB. Idempotent — safe to call
+on each writer boot. Stream is write-only so core NATS query subjects
+(factory.turns.get_*, #2309) are not WorkQueue-ingested as orphan messages.
 
 Consumer turn-writer-v1: durable, AckExplicit, AckWait=60s, MaxDeliver=5,
 filter_subject=factory.turns.write.
@@ -47,7 +49,7 @@ MAX_BYTES = 256 * 1024 * 1024  # 256 MiB
 def _stream_config() -> StreamConfig:
     return StreamConfig(
         name=STREAM_NAME,
-        subjects=["factory.turns.>"],
+        subjects=["factory.turns.write"],
         retention=RetentionPolicy.WORK_QUEUE,
         storage=StorageType.FILE,
         max_age=float(MAX_AGE_SECONDS),

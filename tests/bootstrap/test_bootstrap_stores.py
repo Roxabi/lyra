@@ -68,18 +68,14 @@ def _create_legacy_config_db(path: Path) -> None:
         "INSERT INTO bots (platform, bot_id, agent) "
         "VALUES ('telegram', 'lyra', 'lyra_default')"
     )
-    conn.execute(
-        "CREATE TABLE agents (name TEXT PRIMARY KEY, display_name TEXT)"
-    )
+    conn.execute("CREATE TABLE agents (name TEXT PRIMARY KEY, display_name TEXT)")
     conn.execute(
         "CREATE TABLE bot_agent_map ("
         "platform TEXT NOT NULL, bot_id TEXT NOT NULL, agent_name TEXT NOT NULL, "
         "settings_json TEXT, updated_at TEXT, "
         "PRIMARY KEY (platform, bot_id))"
     )
-    conn.execute(
-        "CREATE TABLE agent_runtime_state (agent_name TEXT PRIMARY KEY)"
-    )
+    conn.execute("CREATE TABLE agent_runtime_state (agent_name TEXT PRIMARY KEY)")
     conn.execute("CREATE TABLE user_prefs (user_id TEXT, key TEXT, value TEXT)")
     conn.commit()
     conn.close()
@@ -161,12 +157,8 @@ class TestEnsureAuthDbSchema:
 
         auth = AuthStore(db_path=tmp_path / "auth.db")
         user = UserStore(db_path=tmp_path / "auth.db")
-        alias = IdentityAliasStore(
-            db_path=tmp_path / "auth.db", user_store=user
-        )
-        grant = AgentGrantStore(
-            db_path=tmp_path / "auth.db", user_store=user
-        )
+        alias = IdentityAliasStore(db_path=tmp_path / "auth.db", user_store=user)
+        grant = AgentGrantStore(db_path=tmp_path / "auth.db", user_store=user)
         try:
             await auth.connect()
             await user.connect()
@@ -200,8 +192,7 @@ class TestEnsureConfigDbBotMigrations:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             assert version == 3
             cols = {
-                row[1]
-                for row in conn.execute("PRAGMA table_info('bots')").fetchall()
+                row[1] for row in conn.execute("PRAGMA table_info('bots')").fetchall()
             }
             assert cols == _TARGET_BOT_COLS
             row = conn.execute(
@@ -581,8 +572,9 @@ class TestOpenStoresLifecycle:
             patch("factory.bootstrap.bootstrap_stores._ensure_config_db"),
             patch("factory.bootstrap.bootstrap_stores._ensure_discord_db"),
         ):
-            # Act — enter open_stores, wire hub, call hub.shutdown(), then exit
-            async with open_stores(tmp_path, nc=mock_nc) as stores:
+            # Act — sqlite turn_mode exercises TurnStore close lifecycle (#1506).
+            # Prod hub default is turn_mode=nats (TurnQueryClient); tested below.
+            async with open_stores(tmp_path, nc=mock_nc, turn_mode="sqlite") as stores:
                 hub.set_turn_store(stores.turn)
                 # hub.shutdown() must NOT close the turn store
                 await hub.shutdown()
@@ -655,3 +647,71 @@ class TestOpenStoresLifecycle:
             ):
                 async with open_stores(tmp_path):
                     pass
+
+    @pytest.mark.asyncio
+    async def test_open_stores_nats_mode_uses_turn_query_client(
+        self, tmp_path: Path
+    ) -> None:
+        """Default turn_mode=nats → TurnQueryClient, no SQLite TurnStore (#2309)."""
+        from factory.transport.turn_query_client import TurnQueryClient
+
+        mock_nc = MagicMock()
+        mock_nc.jetstream.return_value = MagicMock()
+        mock_turn_ctor = MagicMock()
+
+        with (
+            patch(
+                "factory.bootstrap.bootstrap_stores.AuthStore",
+                return_value=_make_store_mock(),
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.UserStore",
+                return_value=_make_store_mock(),
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.ControlPlaneStore",
+                return_value=_make_store_mock(),
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.IdentityAliasStore",
+                return_value=_make_store_mock(),
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.AgentGrantStore",
+                return_value=_make_store_mock(),
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.AgentStore",
+                return_value=_make_store_mock(),
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.TurnStore",
+                mock_turn_ctor,
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.BotStore",
+                return_value=_make_store_mock(),
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.PrefsStore",
+                return_value=_make_store_mock(),
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.MessageIndexKvStore",
+                return_value=_make_store_mock(),
+            ),
+            patch(
+                "factory.bootstrap.bootstrap_stores.ensure_kv",
+                AsyncMock(),
+            ),
+            patch("factory.bootstrap.bootstrap_stores._ensure_config_db"),
+            patch("factory.bootstrap.bootstrap_stores._ensure_discord_db"),
+            patch("factory.bootstrap.bootstrap_stores._ensure_auth_db_schema"),
+            patch(
+                "factory.bootstrap.bootstrap_stores._ensure_config_db_bot_migrations",
+                AsyncMock(),
+            ),
+        ):
+            async with open_stores(tmp_path, nc=mock_nc) as stores:
+                assert isinstance(stores.turn, TurnQueryClient)
+                mock_turn_ctor.assert_not_called()

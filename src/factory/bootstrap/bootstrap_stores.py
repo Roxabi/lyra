@@ -11,7 +11,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Literal
 
 from nats.aio.client import Client
 
@@ -37,6 +37,7 @@ from factory.infrastructure.stores.registry.bot_store import BotStore
 from factory.infrastructure.stores.registry.prefs_store import PrefsStore
 from factory.infrastructure.stores.session.turn_store import TurnStore
 from factory.paths import factory_turns_db_path
+from factory.transport.turn_query_client import TurnQueryClient
 
 
 @dataclass
@@ -45,11 +46,14 @@ class StoreBundle:
 
     ThreadStore is NOT included — owned by the Discord adapter (#417 / S4).
     Bot tokens read from /run/secrets (Podman secrets) per #1057 — no credential store.
+
+    ``turn`` is SQLite only in unified/dev (``turn_mode="sqlite"``). Production
+    hub uses ``turn_mode="nats"`` (default) → TurnQueryClient, no turns.db FD.
     """
 
     auth: AuthStore
     agent: AgentStore
-    turn: TurnStore
+    turn: Any  # TurnStore | TurnQueryClient — structural TurnStoreProtocol
     prefs: PrefsStore
     message_index: MessageIndexKvStore
     user: UserStore
@@ -60,14 +64,23 @@ class StoreBundle:
 
 
 @asynccontextmanager
-async def open_stores(
-    vault_dir: Path, nc: Client | None = None
+async def open_stores(  # noqa: PLR0915 — store wiring is intentionally linear
+    vault_dir: Path,
+    nc: Client | None = None,
+    *,
+    turn_mode: Literal["nats", "sqlite"] = "nats",
 ) -> AsyncGenerator[StoreBundle, None]:
     """Open every store, yield a *StoreBundle*, and close on exit.
 
     Runs the auth.db → config.db migration guard before opening stores (#417).
     The finally block closes each store that was successfully opened,
     regardless of which later store (if any) failed to connect.
+
+    Args:
+        turn_mode: ``nats`` (default) — hub reads via TurnQueryClient (no
+            turns.db open). ``sqlite`` — open local TurnStore (unified process
+            only; never double-open with a concurrent turn-writer query server
+            on the same path without care).
     """
     _ensure_config_db(vault_dir)
     _ensure_discord_db(vault_dir)
@@ -76,7 +89,7 @@ async def open_stores(
 
     auth_store: AuthStore | None = None
     agent_store: AgentStore | None = None
-    turn_store: TurnStore | None = None
+    turn_reader: Any | None = None
     prefs_store: PrefsStore | None = None
     message_index_store: MessageIndexKvStore | None = None
     user_store: UserStore | None = None
@@ -109,10 +122,21 @@ async def open_stores(
         agent_store = AgentStore(db_path=vault_dir / "config.db")
         await agent_store.connect()
 
-        turns_db_path = factory_turns_db_path()
-        turns_db_path.parent.mkdir(parents=True, exist_ok=True)
-        turn_store = TurnStore(db_path=turns_db_path)
-        await turn_store.connect()
+        if nc is None:
+            raise RuntimeError(
+                "NATS connection (nc) is required for MessageIndexKvStore;"
+                " message_index is no longer SQLite-backed (#1059)."
+            )
+
+        if turn_mode == "sqlite":
+            turns_db_path = factory_turns_db_path()
+            turns_db_path.parent.mkdir(parents=True, exist_ok=True)
+            sqlite_turn = TurnStore(db_path=turns_db_path)
+            await sqlite_turn.connect()
+            turn_reader = sqlite_turn
+        else:
+            # Production hub: no SQLite open — bus client to turn-writer (#2309).
+            turn_reader = TurnQueryClient(nc)
 
         bot_store = BotStore(db_path=vault_dir / "config.db")
         await bot_store.connect()
@@ -120,11 +144,6 @@ async def open_stores(
         prefs_store = PrefsStore(db_path=vault_dir / "config.db")
         await prefs_store.connect()
 
-        if nc is None:
-            raise RuntimeError(
-                "NATS connection (nc) is required for MessageIndexKvStore;"
-                " message_index is no longer SQLite-backed (#1059)."
-            )
         js = nc.jetstream()
         await ensure_kv(js)
         message_index_store = MessageIndexKvStore(js)
@@ -134,7 +153,7 @@ async def open_stores(
         yield StoreBundle(
             auth=auth_store,
             agent=agent_store,
-            turn=turn_store,
+            turn=turn_reader,
             prefs=prefs_store,
             message_index=message_index_store,
             user=user_store,
@@ -147,7 +166,7 @@ async def open_stores(
         all_stores = (
             auth_store,
             agent_store,
-            turn_store,
+            turn_reader,
             bot_store,
             prefs_store,
             message_index_store,

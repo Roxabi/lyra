@@ -8,6 +8,7 @@ on:
     branches: [main, staging]
   pull_request:
     branches: [main, staging]
+    types: [opened, synchronize, reopened, ready_for_review]
   # Merge queue entries run CI on temporary gh-readonly-queue/staging/* refs.
   # The required "ci" context MUST report on merge_group or every queue entry
   # times out (repo-wide merge deadlock).
@@ -37,6 +38,7 @@ jobs:
   # acl_authconf_drift runs `factory-acl genkeys --template-only`, which
   # fabricates placeholder pubkeys without invoking nk.
   gates:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -135,6 +137,7 @@ jobs:
   # Live-infra suites run in the `infra` job. Default-depth checkout: these
   # pytest suites stub git — only check_debt_expiry (gates job) needs full history.
   tests:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -204,6 +207,7 @@ jobs:
   # In-process workspace packages only. roxabi-nats coverage runs in `infra`
   # (full suite needs nats-server for readiness/testing modules). No nats-server/nk/bun.
   package-coverage:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -229,6 +233,7 @@ jobs:
   # Isolated from bulk unit/coverage so timing flakes don't block cov floors.
   # No --reruns — structural fixes, not retry masking.
   infra:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -290,7 +295,7 @@ jobs:
   # deadlocks merges exactly like a missing one.
   ci:
     needs: [gates, tests, infra, package-coverage]
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -316,7 +321,7 @@ jobs:
     # duplicate compute (up to 5 concurrent queue builds).
     # WARNING: drop this `if:` if the job ever becomes a required check — a
     # skipped required check deadlocks the queue.
-    if: github.event_name != 'merge_group'
+    if: (github.event_name != 'merge_group') && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -367,6 +372,7 @@ jobs:
     # docker-build is a REQUIRED check (added post python:3.14 incident, where an
     # advisory red merged and broke staging publish) — it MUST run on merge_group:
     # a skipped required check deadlocks every queue entry (30-min timeout each).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

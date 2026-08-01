@@ -176,7 +176,7 @@ class TestBangPrefixFallthrough:
 
 
 class TestBareUrlDetection:
-    """prepare() rewrites bare URLs to /vault-add; is_command() detects them."""
+    """prepare() rewrites bare URLs to /explain; is_command() detects them."""
 
     def test_https_url_is_detected(self, tmp_path: Path) -> None:
         assert (
@@ -197,7 +197,7 @@ class TestBareUrlDetection:
             make_message(content="https://example.com/page")
         )
         assert prepared.command is not None
-        assert prepared.command.name == "vault-add"
+        assert prepared.command.name == "explain"
         assert prepared.command.prefix == "/"
 
     def test_prepare_sets_url_as_args(self, tmp_path: Path) -> None:
@@ -228,7 +228,7 @@ class TestBareUrlDetection:
     def test_get_command_name_returns_add_for_bare_url(self, tmp_path: Path) -> None:
         router = make_router(tmp_path)
         prepared = router.prepare(make_message(content="https://example.com"))
-        assert router.get_command_name(prepared) == "/vault-add"
+        assert router.get_command_name(prepared) == "/explain"
 
     def test_plain_text_not_detected_as_command(self, tmp_path: Path) -> None:
         assert (
@@ -240,7 +240,7 @@ class TestBareUrlDetection:
     async def test_dispatch_bare_url_routes_to_add_session(
         self, tmp_path: Path
     ) -> None:
-        """dispatch() with a bare URL calls the /vault-add session handler."""
+        """dispatch() with a bare URL calls the /explain session handler."""
         from unittest.mock import AsyncMock
         from unittest.mock import MagicMock as MM
 
@@ -249,7 +249,7 @@ class TestBareUrlDetection:
         router = make_router(tmp_path)
         handler = AsyncMock(return_value=Response(content="added"))
         tools = SessionTools(scraper=MM(), vault=MM())
-        router.register_session_command("vault-add", handler, tools=tools)
+        router.register_session_command("explain", handler, tools=tools)
         router._session_driver = MM()
 
         msg = make_message(content="https://example.com/test")

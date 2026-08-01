@@ -142,7 +142,7 @@ Incoming message
   │
   ├─ CommandParser: detect / or ! prefix → CommandContext
   │
-  ├─ CommandRouter.prepare(): bare URL? → rewrite to /vault-add <url> (patterns.toml)
+  ├─ CommandRouter.prepare(): bare URL? → rewrite to /explain <url> (patterns.toml)
   │
   ├─ CommandRouter.dispatch():
   │    1. /clear, /new   → workspace_commands.cmd_clear()
@@ -189,12 +189,10 @@ Incoming message
 | `/unpair` | Revoke a user's paired session (admin-only) | — (plugin) |
 | `/link` | Link your identity across platforms | — (plugin) |
 | `/unlink` | Remove your cross-platform identity link | — (plugin) |
-| `/vault-add <url>` | Scrape URL → LLM summary → save to vault | `web-intel:scrape`, `vault` |
-| `/add-vault <note>` | Save a direct text note to the vault (no LLM call) | `vault` |
 | `/explain <url>` | Scrape URL → plain-language explanation | `web-intel:scrape` |
 | `/summarize <url>` | Scrape URL → bullet-point summary | `web-intel:scrape` |
-| `/search <query>` | Full-text search over vault | `vault` (plugin) |
-| `<url>` (bare) | Auto-rewritten to `/vault-add <url>` (configured in `src/factory/data/patterns.toml`) | — |
+| `/search <query>` | Full-text search over cortex memory | cortex (`VaultProvider` / NATS) |
+| `<url>` (bare) | Auto-rewritten to `/explain <url>` (configured in `src/factory/data/patterns.toml`) | — |
 | `/workspace <name> [question]` | Switch working directory to named workspace | — (builtin) |
 | `/workspace ls` | List configured workspaces | — (builtin) |
 
@@ -202,17 +200,9 @@ Incoming message
 
 ## Processor Commands
 
-Processor commands (`/vault-add`, `/explain`, `/summarize`) hook into the normal pool flow as pre/post processors. Unlike the old session-command pattern, their responses land in pool conversation history, enabling follow-up questions.
+Processor commands (`/explain`, `/summarize`) hook into the normal pool flow as pre/post processors. Unlike the old session-command pattern, their responses land in pool conversation history, enabling follow-up questions.
 
-### `/vault-add <url>` — Save to vault
-
-```
-/vault-add https://example.com/article
-```
-
-Pipeline: **scrape** (`web-intel:scrape`) → **LLM summary** (title, paragraph summary, 3-5 tags) → **vault write** (`vault add`).
-
-Returns the title + summary. If scraping or vault CLI is unavailable, still returns the summary with a note.
+> **Removed (2026-08-01):** `/vault-add` and `/add-vault` product paths are deleted. Long-term memory writes go through cortex (ADR-087), not a hub vault side-effect. See `docs/architecture/scrape-placement.md`.
 
 ### `/explain <url>` — Plain-language explanation
 
@@ -220,7 +210,7 @@ Returns the title + summary. If scraping or vault CLI is unavailable, still retu
 /explain https://example.com/paper
 ```
 
-Pipeline: **scrape** → **LLM explanation** (plain language, suitable for chat). No vault write.
+Pipeline: **scrape** → **LLM explanation** (plain language, suitable for chat).
 
 ### `/summarize <url>` — Bullet-point summary
 
@@ -228,34 +218,33 @@ Pipeline: **scrape** → **LLM explanation** (plain language, suitable for chat)
 /summarize https://example.com/doc
 ```
 
-Pipeline: **scrape** → **LLM 3-5 bullet points**. No vault write.
+Pipeline: **scrape** → **LLM 3-5 bullet points**.
 
 ### Bare URL auto-rewrite
 
-Sending a bare URL (no slash command prefix) is automatically rewritten to `/vault-add <url>`:
+Sending a bare URL (no slash command prefix) is automatically rewritten to `/explain <url>`:
 
 ```
-https://example.com/article   →   /vault-add https://example.com/article
+https://example.com/article   →   /explain https://example.com/article
 ```
 
 The detection uses `CommandRouter._BARE_URL_RE` (`^https?://\S+$`). The target command is read from `src/factory/data/patterns.toml` `[bare_url].command` — change it there to reroute bare URLs to a different command without touching Python.
 
-### `/search <query>` — Vault full-text search
+### `/search <query>` — Cortex memory search
 
 ```
 /search asyncio event loop
 ```
 
-Runs `vault search <query>` and returns matching results. Stateless — no LLM call.
+Runs cortex search via `VaultProvider.search` and returns matching results. Stateless — no LLM call.
 
 ### CLI dependencies
 
 | Command | Requires | Graceful fallback |
 |---------|----------|------------------|
-| `/vault-add` | `web-intel:scrape`, `vault` | LLM runs on URL string if scrape fails; vault error noted in response |
 | `/explain` | `web-intel:scrape` | Explanation runs on URL string if scrape unavailable |
 | `/summarize` | `web-intel:scrape` | Summary runs on URL string if scrape unavailable |
-| `/search` | `vault` | Returns `"vault CLI not available."` — not fatal |
+| `/search` | cortex memory provider | Non-fatal empty/error string |
 
 ### How it works internally
 
@@ -472,7 +461,7 @@ See also: [ADR-010 — External tool integration](architecture/adr/010-external-
 ```
 Built-in commands              Plugin commands             CLI-backed commands        Session commands (LLM)
 (builtin_commands.py)          ────────────────────        ─────────────────────      ──────────────────────
-/help      → _help()           /echo  → cmd_echo()         /voice → voicecli          /vault-add → cmd_add()
+/help      → _help()           /echo  → cmd_echo()         /voice → voicecli          /explain → ScrapingProcessor
 /stop      → pool.cancel()     /invite → cmd_invite()                                 /explain → cmd_explain()
 /clear     → _cmd_clear()      /join   → cmd_join()                                   /summarize→cmd_summarize()
 /config    → _cmd_config()     /svc    → cmd_svc()                                    /search  → cmd_search()

@@ -115,7 +115,8 @@ asyncio.run(main())
 PY
 ```
 
-Product path: Telegram/Discord bare URL or `/vault-add` → hub `CortexVault` → NATS → this satellite.
+Product path: hub `CortexVault` (SessionTools / assemble / `/search`) → NATS → this satellite.
+`/vault-add` product path removed 2026-08-01 — capture is cortex-owned, not a hub slash command.
 
 ## Fail-open
 

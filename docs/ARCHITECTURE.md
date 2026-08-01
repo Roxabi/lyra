@@ -18,6 +18,7 @@
 | [deployment.md](architecture/deployment.md) | C3 container split, Quadlet ecosystem, autodeploy, hardware specs |
 | [contracts.md](architecture/contracts.md) | roxabi-nats SDK, roxabi-contracts schemas, transport layer, voice routing + lifecycle |
 | [workers-tooling.md](architecture/workers-tooling.md) | Tool taxonomy & runtime vocabulary, CliPool, processor registry, tool integration, importlinter |
+| [scrape-placement.md](architecture/scrape-placement.md) | Web scrape placement — hub subprocess → HTTP service / agent tool; vault-add removed |
 | [job-model.md](architecture/job-model.md) | Job model — `job_id`=run, lifecycle, active-jobs registry, `factory.job.<id>.*` taxonomy, transport tiers, sub-jobs, runtime control |
 | [observability.md](architecture/observability.md) | Observability planes, control-plane dashboard, trace + log engines, operator audit, fleet/pipeline read models, ingress |
 | [engineering-standards.md](architecture/engineering-standards.md) | **Cross-repo doctrine** (all Roxabi repos) — Clean/Hexagonal/Kernel layering, error contract, testing conventions, CI quality gates |

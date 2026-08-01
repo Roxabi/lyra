@@ -4,4 +4,5 @@
 
 [bare_url]
 # Command dispatched when a message is a bare URL and bare_url pattern is enabled.
-command = "vault-add"
+# vault-add product path removed 2026-08-01 — bare URLs route to explain (scrape + LLM).
+command = "explain"

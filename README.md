@@ -67,7 +67,7 @@ chat adapters                factory-hub              workers
 | **LLM** | Claude CLI subprocess (primary) · smart routing (complexity-based model selection) |
 | **Agents** | Stateless singleton · isolated per-scope pools · AgentStore (SQLite) |
 | **Memory** | 5 levels: working (L0 compaction) → session → episodic → semantic (FTS5 + embeddings) → procedural |
-| **Session commands** | `/vault-add`, `/explain`, `/summarize`, `/search` — scrape → LLM → vault |
+| **Session commands** | `/explain`, `/summarize`, `/search` — scrape → LLM; search via cortex memory |
 
 ### Voice & Security
 
@@ -159,11 +159,10 @@ factory --version              # print version
 
 | Command | Description |
 |---------|-------------|
-| `/vault-add <url>` | Scrape URL → LLM summary → save to vault |
 | `/explain <url>` | Scrape URL → plain-language explanation |
 | `/summarize <url>` | Scrape URL → bullet-point summary |
-| `/search <query>` | Full-text search over vault |
-| `<url>` (bare) | Auto-rewritten to `/vault-add <url>` |
+| `/search <query>` | Full-text search over cortex memory |
+| `<url>` (bare) | Auto-rewritten to `/explain <url>` (when agent pattern enabled) |
 | `/clear` / `/new` | Reset conversation history |
 | `/stop` | Cancel current processing |
 | `/voice <text>` | Voice reply via TTS |
@@ -193,7 +192,7 @@ src/factory/
   llm/         — LlmProvider protocol, Claude CLI driver
   stt/         — STT service (faster-whisper via NATS)
   tts/         — TTS pipeline (voicecli)
-  commands/    — plugin commands (/vault-add, /search)
+  commands/    — plugin commands (/search, …)
   monitoring/  — health checks, escalation
   agent_cmd/   — agent CLI commands
 packages/

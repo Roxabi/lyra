@@ -247,8 +247,8 @@ class TestModuleSingletonRegistration:
         # Act
         registered = registry.commands()
 
-        # Assert — all four built-in commands are present
-        expected = {"/vault-add", "/explain", "/summarize", "/search"}
+        # Assert — built-in processor commands are present
+        expected = {"/explain", "/summarize", "/search"}
         assert expected.issubset(registered), (
             f"Missing commands: {expected - registered}"
         )

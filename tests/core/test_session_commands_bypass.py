@@ -133,7 +133,7 @@ class TestNoProcessorForRegularMessage:
                 return msg
 
         # Register on a fresh local registry entry (the real registry is loaded by
-        # reload_processors() in the autouse fixture, so /vault-add is present;
+        # reload_processors() in the autouse fixture, so /explain is present;
         # we add a fresh command to confirm the registry itself is not consulted)
         registry.register("/spy-cmd")(SpyProcessor)
 
@@ -262,7 +262,7 @@ class TestAgentWithoutSessionToolsSkipsProcessors:
             turn_timeout=10.0,
             debounce_ms=0,
         )
-        raw_command = "/vault-add https://example.com"
+        raw_command = "/explain https://example.com"
         msg = _make_command_msg(raw_command)
 
         # Act

@@ -3,7 +3,7 @@
 Pure Pydantic. No NATS imports. No transport logic.
 
 MVP surface (vault migration path):
-  CaptureRequest/Response  — put knowledge entry (ex /vault-add)
+  CaptureRequest/Response  — put knowledge entry (cortex; hub /vault-add gone)
   SearchRequest/Response   — full-text search
   AssembleRequest/Response — long-term memory block for agent context
 """

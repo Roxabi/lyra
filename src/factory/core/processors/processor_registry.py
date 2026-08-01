@@ -83,7 +83,7 @@ class ProcessorRegistry:
     ) -> Callable[[type[BaseProcessor]], type[BaseProcessor]]:
         """Class decorator: register *cls* as the processor for *command*.
 
-        *command* must include the leading slash (e.g. ``"/vault-add"``).
+        *command* must include the leading slash (e.g. ``"/explain"``).
         Raises ``ValueError`` on duplicate registration.
         """
 

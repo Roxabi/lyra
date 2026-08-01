@@ -238,7 +238,7 @@ carries its own auth — bind tier and auth mechanism are chosen **together**:
 | `factory-nats` 4222 | `0.0.0.0` | LAN + Tailnet | NKey (mandatory, per-identity) |
 | `factory-nats` 8222 (monitoring) | `127.0.0.1` | host only | — |
 | `factory-blobstore` 8449 | `${TAILSCALE_IPV4}` | Tailnet only | bearer token (#1330) |
-| `factory-dashboard` 8765 | `${TAILSCALE_IPV4}` | Tailnet only | control-plane session cookie / API key (`require_principal` on protected BFF); Tailnet bind = defense-in-depth (ADR-103, #2129) |
+| `factory-dashboard` 8765 | `${TAILSCALE_IPV4}` | Tailnet only | control-plane session cookie / API key (`require_principal` on protected BFF); Tailnet bind = defense-in-depth → `docs/architecture/security-routing.md` § control-plane (#2129) |
 | `factory-hub` 8443 | `127.0.0.1` | host only | — |
 | `factory-loki` 3100 | `127.0.0.1` | host only (logcli / #1760) | — |
 | `factory-langfuse-web` 3000 | `127.0.0.1` | host only (trace UI / #1760) | Langfuse login |

@@ -14,6 +14,18 @@ def test_turn_write_subject() -> None:
     assert SUBJECTS.turn_write == "factory.turns.write"
 
 
+def test_turn_query_subjects() -> None:
+    """Core NATS request/reply subjects for hub reads (#2309)."""
+    assert SUBJECTS.get_cli_session == "factory.turns.get_cli_session"
+    assert SUBJECTS.get_cli_session_by_pool == "factory.turns.get_cli_session_by_pool"
+    assert SUBJECTS.get_resume_count == "factory.turns.get_resume_count"
+    assert SUBJECTS.get_last_session == "factory.turns.get_last_session"
+    assert SUBJECTS.list_sessions == "factory.turns.list_sessions"
+    assert SUBJECTS.list_recent_sessions == "factory.turns.list_recent_sessions"
+    assert SUBJECTS.get_turns == "factory.turns.get_turns"
+    assert SUBJECTS.get_turns_by_session == "factory.turns.get_turns_by_session"
+
+
 def test_subjects_is_frozen() -> None:
     """_Subjects dataclass is frozen — mutation must raise FrozenInstanceError."""
     import dataclasses

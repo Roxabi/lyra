@@ -1,5 +1,5 @@
 [Unit]
-Description=Factory data bind-mount — Hub (RW: auth.db, config.db, keyring.key) + TurnWriter sole writer turns.db (ADR-075). Hub mounts turns.db ro.
+Description=Factory data bind-mount — Hub (RW: auth.db, config.db, keyring.key). TurnWriter sole writer of turns.db under turn-writer/ (ADR-075); hub reads via NATS (#2309).
 # Bind-mount of %h/.roxabi/factory — used by the Hub container only (#943).
 # Adapters read bot roster from factory-state KV (#1946); per-file inline bind mounts
 # (keyring.key, turns.db, discord.db) minimise blast radius on adapter compromise.

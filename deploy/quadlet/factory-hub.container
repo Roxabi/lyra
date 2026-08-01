@@ -46,10 +46,8 @@ Environment=FACTORY_BLOBSTORE_URL=http://factory-blobstore:8449
 Environment=FACTORY_BLOBSTORE_TOKEN_PATH=/run/secrets/factory_blobstore_token
 Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_blobstore_token
 Volume=factory-data.volume:/home/factory/.roxabi/factory:z
-# T26 (#1331): hub is now a READER — turns.db must be ro; factory-turn-writer owns writes.
-# Directory bind (not file-only): SQLite WAL requires turns.db-wal / turns.db-shm siblings
-# in the same mount namespace. File-only ro overlay caused stale pool_sessions reads.
-Volume=%h/.roxabi/factory/turn-writer/:/home/factory/.roxabi/factory/turn-writer/:ro,z
+# #2309: hub no longer RO-binds turn-writer/ — session reads via NATS request/reply
+# to factory-turn-writer (sole SQLite owner). Hub must not open turns.db (TurnQueryClient).
 # Inline single-file bind mount — Quadlet .volume units wrapping a single file
 # either fail with loop-device errors or are silently downgraded to empty named
 # volumes (IsADirectoryError at read time). Inline Volume= does a direct bind.

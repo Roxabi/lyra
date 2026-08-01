@@ -53,7 +53,9 @@ async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring
         vault_dir = factory_data_dir()
         vault_dir.mkdir(parents=True, exist_ok=True)
 
-        async with open_stores(vault_dir, nc=nc) as stores:
+        # Unified single-process: local SQLite turns (no separate turn-writer).
+        # Prod hub standalone uses turn_mode="nats" (default) — see #2309.
+        async with open_stores(vault_dir, nc=nc, turn_mode="sqlite") as stores:
             await _prune_message_index(stores, raw_config)
 
             blob_store = init_blobstore()

@@ -5,6 +5,7 @@ Authorised by ADR-075. Single cross-platform subscriber consuming
 consumer turn-writer-v1. Writes via TurnStore's private mutators.
 """
 
+from factory.infrastructure.turn_writer.query import TurnQueryServer
 from factory.infrastructure.turn_writer.writer import TurnWriter
 
-__all__ = ["TurnWriter"]
+__all__ = ["TurnQueryServer", "TurnWriter"]

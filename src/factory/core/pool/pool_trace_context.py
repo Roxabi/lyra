@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from factory.core.messaging.message import InboundMessage
 from factory.core.trace import TraceContext
+from roxabi_contracts import new_job_id
 
 
 @contextmanager
@@ -18,16 +19,24 @@ def turn_trace_context(
     pool_id: str | None = None,
     agent_name: str | None = None,
 ) -> Generator[str, None, None]:
-    """Re-hydrate trace correlation vars from a stamped InboundMessage."""
+    """Re-hydrate trace correlation vars from a stamped InboundMessage.
+
+    Always stamps ``root_job_id`` (msg → ambient → mint) so hub drivers
+    pick the same id via ``mint_work_envelope_fields`` (#2147).
+    """
     stamped_trace = msg.trace_id if isinstance(msg.trace_id, str) else None
     trace_id = stamped_trace or TraceContext.get_trace_id() or uuid4().hex
     token_t = TraceContext.set_trace_id(trace_id)
     token_p: Token[str] | None = None
     if pool_id is not None:
         token_p = TraceContext.set_pool_id(pool_id)
-    token_j: Token[str] | None = None
-    if isinstance(msg.root_job_id, str) and msg.root_job_id:
-        token_j = TraceContext.set_root_job_id(msg.root_job_id)
+    stamped_job = (
+        msg.root_job_id
+        if isinstance(msg.root_job_id, str) and msg.root_job_id
+        else None
+    )
+    job_id = stamped_job or TraceContext.get_root_job_id() or new_job_id()
+    token_j = TraceContext.set_root_job_id(job_id)
     token_an: Token[str] | None = None
     if agent_name is not None:
         token_an = TraceContext.set_agent_name(agent_name)
@@ -36,8 +45,7 @@ def turn_trace_context(
     finally:
         if token_an is not None:
             TraceContext.reset_agent_name(token_an)
-        if token_j is not None:
-            TraceContext.reset_root_job_id(token_j)
+        TraceContext.reset_root_job_id(token_j)
         if token_p is not None:
             TraceContext.reset_pool_id(token_p)
         TraceContext.reset_trace_id(token_t)

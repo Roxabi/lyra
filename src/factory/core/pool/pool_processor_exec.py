@@ -20,6 +20,8 @@ from factory.transport.typing_publisher import is_typing_enabled
 from factory.transport.work_scope import WorkScope
 
 from ..messaging.message import GENERIC_ERROR_REPLY, Response
+from ..trace import TraceContext
+from .pool_active_jobs import _close_active_job, _open_active_job
 from .pool_processor_dispatch import (
     is_pool_turn_error,
     process_non_streaming,
@@ -36,10 +38,17 @@ log = logging.getLogger(__name__)
 async def guarded_process_one(  # noqa: PLR0915, C901 — DEBT:complexity-residual
     msg: InboundMessage, agent: AgentBase, pool: Pool
 ) -> None:
-    """Wrap process_one with timeout and error handling."""
+    """Wrap process_one with timeout and error handling.
+
+    Per-turn active-jobs open/close uses TraceContext ``root_job_id`` so the
+    registry id equals the wire envelope job_id drivers mint (#2147).
+    """
     with pool_turn_trace_context(
         msg, pool_id=pool.pool_id, agent_name=pool.agent_name
     ) as trace_id:
+        # Same id drivers will stamp via mint_work_envelope_fields.
+        wire_job_id = TraceContext.get_root_job_id()
+        reg_job_id = await _open_active_job(pool, job_id=wire_job_id)
         _start = time.monotonic()
         _cancelled = False
         log.info(
@@ -117,6 +126,7 @@ async def guarded_process_one(  # noqa: PLR0915, C901 — DEBT:complexity-residu
                 str(exc)[:200],
             )
         finally:
+            await _close_active_job(pool, reg_job_id)
             if not _cancelled:
                 log.info(
                     "agent idle: agent=%s pool=%s",

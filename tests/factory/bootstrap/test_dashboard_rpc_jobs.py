@@ -245,6 +245,7 @@ class TestJobsAuthzDeny:
         hub._control_plane = _cp_with_job_meta("rx:user:b", "org:1")
         result = await handle_jobs_steer(hub, nc, {"job_id": "j1", "text": "peer"})
         assert result["accepted"] is True
+        nc.publish.assert_awaited_once_with(jobs_steer("j1"), b"peer")
 
     @pytest.mark.asyncio
     async def test_cancel_outsider_forbidden(

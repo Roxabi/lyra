@@ -368,6 +368,37 @@ class TestDashboardBffRealPath:
                 res = tc.post(path, json=body)
             assert res.status_code == 401, f"{method} {path} → {res.status_code}"
 
+    def test_jobs_stream_disconnect_revokes_only_own_token(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """R1 route wiring: SSE finally must not revoke peer tokens (#2316)."""
+        from collections.abc import AsyncIterator
+
+        from factory.dashboard.jobs_stream import JOBS_STREAM_ID
+
+        async def _one_frame(*_a: object, **_k: object) -> AsyncIterator[str]:
+            yield 'data: {"type":"ping"}\n\n'
+
+        # Finite generator so the StreamingResponse finally always runs.
+        monkeypatch.setattr(
+            "factory.dashboard.routes.bff_jobs.jobs_sse_events",
+            _one_frame,
+        )
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, _nc = wired_client
+        a = tc.post("/api/bff/jobs/stream-token").json()["stream_token"]
+        b = tc.post("/api/bff/jobs/stream-token").json()["stream_token"]
+        reg = tc.app.state.stream_tokens
+        assert reg.verify(JOBS_STREAM_ID, a)
+        assert reg.verify(JOBS_STREAM_ID, b)
+
+        res = tc.get(f"/api/bff/jobs/stream?token={a}")
+        assert res.status_code == 200
+        assert not reg.verify(JOBS_STREAM_ID, a)
+        assert reg.verify(JOBS_STREAM_ID, b), "peer token must survive A disconnect"
+
     def test_list_agents_config_calls_hub_rpc(
         self,
         wired_client: tuple[TestClient, WebAdapter, AsyncMock],

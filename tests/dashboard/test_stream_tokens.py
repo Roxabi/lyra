@@ -46,5 +46,7 @@ def test_revoke_stream_clears_all_slots() -> None:
 
 def test_revoke_token_noop_on_unknown() -> None:
     reg = StreamTokenRegistry()
+    kept = reg.mint("jobs")
     reg.revoke_token(None)
     reg.revoke_token("not-a-token")
+    assert reg.verify("jobs", kept)

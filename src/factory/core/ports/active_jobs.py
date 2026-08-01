@@ -10,6 +10,21 @@ import datetime
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+# Backends with a live ``factory.job.<id>.steer`` bridge today (#2130).
+_STEER_BACKENDS = frozenset({"omp-rpc", "omp"})
+
+
+def concurrency_mode_for_backend(backend: str | None) -> str:
+    """Derive registry ``concurrency_mode`` from driver backend (#2130, #2142).
+
+    OMP steers in-flight; CLI/other backends use ``queue`` until Shape-D.
+    """
+    if backend is None:
+        return "queue"
+    if backend.strip().lower() in _STEER_BACKENDS:
+        return "steer"
+    return "queue"
+
 
 class RegistryConflictError(Exception):
     """Raised when ``open()`` finds a non-expired job already mapped to *pool_id*.

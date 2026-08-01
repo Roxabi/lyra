@@ -29,15 +29,29 @@ class _Recorder:
         self.closed.append(job_id)
 
 
-def _pool_with(recorder: object | None) -> Any:
-    ctx = SimpleNamespace(active_jobs_recorder=lambda: recorder)
-    return SimpleNamespace(pool_id="web:smoke:agent:lyra", _ctx=ctx)
+def _pool_with(
+    recorder: object | None,
+    *,
+    backend: str | None = None,
+) -> Any:
+    agent = None
+    if backend is not None:
+        agent = SimpleNamespace(llm_config=SimpleNamespace(backend=backend))
+    ctx = SimpleNamespace(
+        active_jobs_recorder=lambda: recorder,
+        get_agent=lambda _name: agent,
+    )
+    return SimpleNamespace(
+        pool_id="web:smoke:agent:lyra",
+        agent_name="lyra",
+        _ctx=ctx,
+    )
 
 
 @pytest.mark.asyncio
 async def test_open_registers_entry_and_returns_job_id() -> None:
     rec = _Recorder()
-    pool = _pool_with(rec)
+    pool = _pool_with(rec, backend="omp-rpc")
 
     job_id = await _open_active_job(pool)
 
@@ -49,6 +63,17 @@ async def test_open_registers_entry_and_returns_job_id() -> None:
     assert entry.status == "open"
     assert entry.concurrency_mode == "steer"
     assert entry.steer_subject == f"factory.job.{job_id}.steer"
+
+
+@pytest.mark.asyncio
+async def test_open_uses_queue_mode_for_cli_backend() -> None:
+    rec = _Recorder()
+    pool = _pool_with(rec, backend="claude-cli")
+
+    job_id = await _open_active_job(pool)
+
+    assert job_id is not None
+    assert rec.opened[0].concurrency_mode == "queue"
 
 
 @pytest.mark.asyncio

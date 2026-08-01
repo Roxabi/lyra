@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from factory.core.auth.control_plane_authz import (
@@ -13,6 +15,11 @@ from factory.core.auth.control_plane_wire import get_request_principal
 from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.job_catalog import list_active_jobs
 from factory.core.messaging.message import Platform
+from factory.core.ports.active_jobs import (
+    ActiveJobEntry,
+    RegistryConflictError,
+    concurrency_mode_for_backend,
+)
 from factory.core.prompt_resolution import resolve_agent_runtime_defaults
 from factory.core.trace import TraceContext
 from factory.nats.envelope_fields import mint_work_envelope_fields
@@ -33,6 +40,8 @@ from roxabi_contracts.jobs.subjects import (
     jobs_steer,
     jobs_submit,
 )
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -153,11 +162,18 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
     ):
         await nc.publish(dispatch_subject, wire)
 
+    # Registry open at dispatch so Jobs view sees the run (#2142).
+    # Key = envelope job_id (wire id) so ResultCloseListener can close it (#1795).
+    await _open_dashboard_active_job(
+        hub,
+        job_id=job_id,
+        pool_id=pool_id,
+        backend=model_cfg.get("backend"),
+    )
+
     cp = _control_plane(hub)
     if cp is not None:
-        await cp.record_job_launch(
-            job_id, launched_by=principal.user_id, org_id=org_id
-        )
+        await cp.record_job_launch(job_id, launched_by=principal.user_id, org_id=org_id)
 
     return DashboardJobsLaunchResponse(
         accepted=True,
@@ -165,6 +181,43 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
         message=f"dispatched {req.job_name}",
         dispatch_subject=dispatch_subject,
     ).model_dump()
+
+
+async def _open_dashboard_active_job(
+    hub: "Hub",
+    *,
+    job_id: str,
+    pool_id: str,
+    backend: str | None,
+) -> None:
+    """Best-effort registry open for a dashboard-dispatched job (#2142)."""
+    coord = getattr(hub, "_active_jobs_coord", None)
+    if coord is None or not hasattr(coord, "open"):
+        return
+    mode = concurrency_mode_for_backend(backend)
+    entry = ActiveJobEntry(
+        job_id=job_id,
+        pool_id=pool_id,
+        status="open",
+        started_at=datetime.now(UTC),
+        steer_subject=jobs_steer(job_id),
+        concurrency_mode=mode,
+    )
+    try:
+        await coord.open(entry)
+    except RegistryConflictError:
+        log.info(
+            "dashboard jobs: pool %r already has an open job — "
+            "launch %r not registered (TTL will heal)",
+            pool_id,
+            job_id,
+        )
+    except Exception:  # noqa: BLE001 — side-channel: never fail launch
+        log.warning(
+            "dashboard jobs: active-jobs open failed for %r",
+            job_id,
+            exc_info=True,
+        )
 
 
 async def _authorize_job_action(

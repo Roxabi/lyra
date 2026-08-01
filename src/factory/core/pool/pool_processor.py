@@ -22,7 +22,11 @@ if TYPE_CHECKING:
 from roxabi_contracts.jobs.subjects import jobs_steer
 
 from ..messaging.message import Response
-from ..ports.active_jobs import ActiveJobEntry, RegistryConflictError
+from ..ports.active_jobs import (
+    ActiveJobEntry,
+    RegistryConflictError,
+    concurrency_mode_for_backend,
+)
 from .pool_observer import _TURN_PERSIST_ERRORS
 from .pool_processor_dispatch import safe_dispatch
 from .pool_processor_exec import guarded_process_one
@@ -40,6 +44,18 @@ def _active_jobs_recorder(pool: Pool) -> ActiveJobsRecorder | None:
     return pool._ctx.active_jobs_recorder()
 
 
+def _pool_backend(pool: Pool) -> str | None:
+    """Best-effort agent backend for concurrency_mode (#2130)."""
+    try:
+        agent = pool._ctx.get_agent(pool.agent_name)
+    except Exception:  # noqa: BLE001 — side-channel
+        return None
+    if agent is None:
+        return None
+    cfg = getattr(agent, "llm_config", None) or getattr(agent, "config", None)
+    return getattr(cfg, "backend", None) if cfg is not None else None
+
+
 async def _open_active_job(pool: Pool) -> str | None:
     """Register this run in the active-jobs registry; return its job_id.
 
@@ -47,19 +63,24 @@ async def _open_active_job(pool: Pool) -> str | None:
     never on the turn's critical path.  The ENTIRE body — recorder resolution,
     entry construction and ``open()`` — is guarded so no registry or context
     failure can ever propagate into message processing.
+
+    Note: the registry ``job_id`` is still a local uuid4 on the chat/pool path
+    (#2147 tracks aligning it with the wire envelope job_id).  Dashboard
+    launch (#2142) keys by envelope id so ResultCloseListener can close it.
     """
     try:
         recorder = _active_jobs_recorder(pool)
         if recorder is None:
             return None
         job_id = uuid.uuid4().hex
+        mode = concurrency_mode_for_backend(_pool_backend(pool))
         entry = ActiveJobEntry(
             job_id=job_id,
             pool_id=pool.pool_id,
             status="open",
             started_at=datetime.now(UTC),
             steer_subject=jobs_steer(job_id),
-            concurrency_mode="steer",
+            concurrency_mode=mode,
         )
         await recorder.open(entry)
     except RegistryConflictError:

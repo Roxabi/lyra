@@ -291,14 +291,14 @@ Prior to #1368, `[ -n "   " ]` was TRUE in POSIX sh — a whitespace-only value 
 guard and Podman's downstream parse error provided fail-closed behaviour by accident, not
 by design. The guard is now the authoritative rejection point.
 
-### factory-dashboard auth boundary (ADR-103 — supersedes “no auth” wording)
+### factory-dashboard auth boundary (supersedes “no auth” wording)
 
 `factory-dashboard.container` binds PublishPort to `${TAILSCALE_IPV4}:8765:8765` (same pattern +
 fail-closed `ExecStartPre` guard as blobstore above). **Application auth is live:** protected
 BFF routes (including `/api/bff/jobs*`, sessions, agents, admin, pipeline) require
 `require_principal` (session cookie and/or Bearer API key / shared operator token). Hub RPC
 rehydrates principal from proof fields (session_token / api_key) — wire roles alone are not
-enough. Jobs list/steer/cancel are further scoped by ownership/org (ADR-103 Blocks 4–7; #2129).
+enough. Jobs list/steer/cancel are further scoped by ownership/org (#2129).
 
 Tailnet-only bind remains **defense-in-depth** (never `0.0.0.0`) — not the sole boundary.
 SSE stream tokens (`stream_token` query param) are an additional gate for EventSource; mint
@@ -306,7 +306,7 @@ endpoints sit behind principal auth; multi-slot registry avoids peer clobber (#2
 
 **Session list API (`/api/bff/sessions*`)** — hub-backed (no `turns.db` mount on the dashboard
 container); same principal gate as other protected BFF routes.
-→ `docs/runbooks/dashboard-auth-bootstrap.md` · `docs/architecture/security-routing.md`
+→ `docs/runbooks/dashboard-auth-bootstrap.md` · `docs/architecture/security-routing.md` § control-plane
 Legacy `FACTORY_DASHBOARD_AUTH_REQUIRED` stub was removed. Remaining #1992 items (if any) are
 phase-2 GA hardening beyond this baseline, not “auth absent”.
 

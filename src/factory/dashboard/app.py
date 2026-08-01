@@ -32,6 +32,7 @@ def create_dashboard_app(
     hub = DashboardHubClient(adapter)
     app.state.control_plane = control_plane
     app.state.hub_client = hub
+    app.state.stream_tokens = tokens  # multi-slot registry (#2316); tests + diagnostics
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

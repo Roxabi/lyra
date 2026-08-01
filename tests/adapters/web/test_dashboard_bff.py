@@ -336,6 +336,70 @@ class TestDashboardBffRealPath:
         assert res.status_code == 200
         assert res.json()["accepted"] is True
 
+    def test_jobs_surface_requires_auth(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Unauth matrix on /jobs* (#2316 R3) — principal gate fail-closed."""
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        monkeypatch.delenv("FACTORY_DASHBOARD_OPERATOR_TOKEN", raising=False)
+        tc, _adapter, _nc = wired_client
+        # Drop wired_client default Authorization header.
+        tc.headers.pop("Authorization", None)
+
+        matrix: list[tuple[str, str, dict | None]] = [
+            ("GET", "/api/bff/jobs", None),
+            (
+                "POST",
+                "/api/bff/jobs/launch",
+                {"agent": "alpha", "prompt": "x", "job_name": "omp"},
+            ),
+            ("POST", "/api/bff/jobs/steer", {"job_id": "j1", "text": "x"}),
+            ("POST", "/api/bff/jobs/cancel", {"job_id": "j1"}),
+            ("POST", "/api/bff/jobs/stream-token", None),
+            ("GET", "/api/bff/jobs/stream", None),
+            ("GET", "/api/bff/jobs/stream?token=bogus", None),
+        ]
+        for method, path, body in matrix:
+            if method == "GET":
+                res = tc.get(path)
+            else:
+                res = tc.post(path, json=body)
+            assert res.status_code == 401, f"{method} {path} → {res.status_code}"
+
+    def test_jobs_stream_disconnect_revokes_only_own_token(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """R1 route wiring: SSE finally must not revoke peer tokens (#2316)."""
+        from collections.abc import AsyncIterator
+
+        from factory.dashboard.jobs_stream import JOBS_STREAM_ID
+
+        async def _one_frame(*_a: object, **_k: object) -> AsyncIterator[str]:
+            yield 'data: {"type":"ping"}\n\n'
+
+        # Finite generator so the StreamingResponse finally always runs.
+        monkeypatch.setattr(
+            "factory.dashboard.routes.bff_jobs.jobs_sse_events",
+            _one_frame,
+        )
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, _nc = wired_client
+        a = tc.post("/api/bff/jobs/stream-token").json()["stream_token"]
+        b = tc.post("/api/bff/jobs/stream-token").json()["stream_token"]
+        # TestClient.app is typed loosely; state set in create_dashboard_app.
+        reg = tc.app.state.stream_tokens  # type: ignore[union-attr]
+        assert reg.verify(JOBS_STREAM_ID, a)
+        assert reg.verify(JOBS_STREAM_ID, b)
+
+        res = tc.get(f"/api/bff/jobs/stream?token={a}")
+        assert res.status_code == 200
+        assert not reg.verify(JOBS_STREAM_ID, a)
+        assert reg.verify(JOBS_STREAM_ID, b), "peer token must survive A disconnect"
+
     def test_list_agents_config_calls_hub_rpc(
         self,
         wired_client: tuple[TestClient, WebAdapter, AsyncMock],

@@ -176,3 +176,84 @@ class TestJobsCancel:
             jobs_steer("abc123"),
             JOB_CANCEL_STEER_TOKEN.encode(),
         )
+
+
+def _member(
+    *,
+    user_id: str = "rx:user:a",
+    orgs: frozenset[str] | None = None,
+) -> ControlPlanePrincipal:
+    return ControlPlanePrincipal(
+        user_id=user_id,
+        roles=frozenset({GlobalRole.MEMBER.value}),
+        org_ids=orgs or frozenset(),
+        active_org_id=None,
+        via="session",
+    )
+
+
+def _cp_with_job_meta(launched_by: str | None, org_id: str | None) -> MagicMock:
+    cp = MagicMock()
+    cp.get_job_meta = AsyncMock(return_value=(launched_by, org_id))
+    return cp
+
+
+class TestJobsAuthzDeny:
+    """Non-admin ownership/org checks (#2316 R2)."""
+
+    @pytest.mark.asyncio
+    async def test_steer_without_principal_unauthorized(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        clear_request_principal()
+        result = await handle_jobs_steer(hub, nc, {"job_id": "j1", "text": "x"})
+        assert result["error"] == "unauthorized"
+        nc.publish.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_steer_outsider_forbidden(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        set_request_principal(_member(user_id="rx:user:a"))
+        hub._control_plane = _cp_with_job_meta("rx:user:other", None)
+        result = await handle_jobs_steer(hub, nc, {"job_id": "j1", "text": "hijack"})
+        assert result.get("error") == "forbidden"
+        assert result["accepted"] is False
+        nc.publish.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_steer_no_meta_forbidden_for_member(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        set_request_principal(_member())
+        hub._control_plane = _cp_with_job_meta(None, None)
+        result = await handle_jobs_steer(hub, nc, {"job_id": "orphan", "text": "x"})
+        assert result.get("error") == "forbidden"
+        nc.publish.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_steer_owner_allowed(self, hub: MagicMock, nc: AsyncMock) -> None:
+        set_request_principal(_member(user_id="rx:user:a"))
+        hub._control_plane = _cp_with_job_meta("rx:user:a", None)
+        result = await handle_jobs_steer(hub, nc, {"job_id": "j1", "text": "nudge"})
+        assert result["accepted"] is True
+        nc.publish.assert_awaited_once_with(jobs_steer("j1"), b"nudge")
+
+    @pytest.mark.asyncio
+    async def test_steer_org_peer_allowed(self, hub: MagicMock, nc: AsyncMock) -> None:
+        set_request_principal(_member(user_id="rx:user:a", orgs=frozenset({"org:1"})))
+        hub._control_plane = _cp_with_job_meta("rx:user:b", "org:1")
+        result = await handle_jobs_steer(hub, nc, {"job_id": "j1", "text": "peer"})
+        assert result["accepted"] is True
+        nc.publish.assert_awaited_once_with(jobs_steer("j1"), b"peer")
+
+    @pytest.mark.asyncio
+    async def test_cancel_outsider_forbidden(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        set_request_principal(_member(user_id="rx:user:a"))
+        hub._control_plane = _cp_with_job_meta("rx:user:other", None)
+        result = await handle_jobs_cancel(hub, nc, {"job_id": "j1"})
+        assert result.get("error") == "forbidden"
+        assert result["accepted"] is False
+        nc.publish.assert_not_awaited()

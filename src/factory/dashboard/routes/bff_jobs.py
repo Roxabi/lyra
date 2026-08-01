@@ -102,6 +102,8 @@ def register_jobs_routes(  # noqa: C901, PLR0915
     ) -> StreamingResponse:
         if not tokens.verify(JOBS_STREAM_ID, token):
             raise HTTPException(status_code=403, detail="invalid stream token")
+        # Capture for multi-slot revoke — do not clear peer operators (#2316).
+        stream_token = token
 
         async def _client_connected() -> bool:
             return not await request.is_disconnected()
@@ -116,7 +118,7 @@ def register_jobs_routes(  # noqa: C901, PLR0915
             except asyncio.CancelledError:
                 return
             finally:
-                tokens.revoke(JOBS_STREAM_ID)
+                tokens.revoke_token(stream_token)
 
         return StreamingResponse(event_gen(), media_type="text/event-stream")
 

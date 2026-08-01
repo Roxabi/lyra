@@ -238,7 +238,7 @@ carries its own auth — bind tier and auth mechanism are chosen **together**:
 | `factory-nats` 4222 | `0.0.0.0` | LAN + Tailnet | NKey (mandatory, per-identity) |
 | `factory-nats` 8222 (monitoring) | `127.0.0.1` | host only | — |
 | `factory-blobstore` 8449 | `${TAILSCALE_IPV4}` | Tailnet only | bearer token (#1330) |
-| `factory-dashboard` 8765 | `${TAILSCALE_IPV4}` | Tailnet only | **none** — Tailnet membership is the boundary (#1992) |
+| `factory-dashboard` 8765 | `${TAILSCALE_IPV4}` | Tailnet only | control-plane session cookie / API key (`require_principal` on protected BFF); Tailnet bind = defense-in-depth (ADR-103, #2129) |
 | `factory-hub` 8443 | `127.0.0.1` | host only | — |
 | `factory-loki` 3100 | `127.0.0.1` | host only (logcli / #1760) | — |
 | `factory-langfuse-web` 3000 | `127.0.0.1` | host only (trace UI / #1760) | Langfuse login |
@@ -291,22 +291,24 @@ Prior to #1368, `[ -n "   " ]` was TRUE in POSIX sh — a whitespace-only value 
 guard and Podman's downstream parse error provided fail-closed behaviour by accident, not
 by design. The guard is now the authoritative rejection point.
 
-### Known residual risk — factory-dashboard has NO auth on the Tailnet (#1992)
+### factory-dashboard auth boundary (ADR-103 — supersedes “no auth” wording)
 
 `factory-dashboard.container` binds PublishPort to `${TAILSCALE_IPV4}:8765:8765` (same pattern +
-fail-closed `ExecStartPre` guard as blobstore above). Unlike blobstore, the web smoke adapter
-has **no application auth** — any Tailnet member who reaches `http://roxabituwer:8765` can pick
-an agent and chat (LLM token spend; session_id is client-supplied → cross-session read, see
-#1992). Tailnet membership is the **sole** access boundary; this is why it is bound to the
-Tailscale IP and never `0.0.0.0` (no LAN exposure). Per-session tokens / real auth are tracked
-in #1992 before any wider exposure.
+fail-closed `ExecStartPre` guard as blobstore above). **Application auth is live:** protected
+BFF routes (including `/api/bff/jobs*`, sessions, agents, admin, pipeline) require
+`require_principal` (session cookie and/or Bearer API key / shared operator token). Hub RPC
+rehydrates principal from proof fields (session_token / api_key) — wire roles alone are not
+enough. Jobs list/steer/cancel are further scoped by ownership/org (ADR-103 Blocks 4–7; #2129).
 
-**Session list API (`/api/bff/sessions*`)** — same Tailnet boundary applies: cross-platform
-`cli_session_id` resume/list is hub-backed (no `turns.db` mount on the dashboard container).
-Dashboard auth is control-plane session/API-key.
+Tailnet-only bind remains **defense-in-depth** (never `0.0.0.0`) — not the sole boundary.
+SSE stream tokens (`stream_token` query param) are an additional gate for EventSource; mint
+endpoints sit behind principal auth; multi-slot registry avoids peer clobber (#2316).
+
+**Session list API (`/api/bff/sessions*`)** — hub-backed (no `turns.db` mount on the dashboard
+container); same principal gate as other protected BFF routes.
 → `docs/runbooks/dashboard-auth-bootstrap.md` · `docs/architecture/security-routing.md`
-Legacy `FACTORY_DASHBOARD_AUTH_REQUIRED` stub was removed.
-lands; `stream_token` on SSE is separate (#1992 phase 1).
+Legacy `FACTORY_DASHBOARD_AUTH_REQUIRED` stub was removed. Remaining #1992 items (if any) are
+phase-2 GA hardening beyond this baseline, not “auth absent”.
 
 ### Known residual risk — clipool `core.hooksPath` override (tracked #1245)
 

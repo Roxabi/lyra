@@ -336,6 +336,38 @@ class TestDashboardBffRealPath:
         assert res.status_code == 200
         assert res.json()["accepted"] is True
 
+    def test_jobs_surface_requires_auth(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Unauth matrix on /jobs* (#2316 R3) — principal gate fail-closed."""
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        monkeypatch.delenv("FACTORY_DASHBOARD_OPERATOR_TOKEN", raising=False)
+        tc, _adapter, _nc = wired_client
+        # Drop wired_client default Authorization header.
+        tc.headers.pop("Authorization", None)
+
+        matrix: list[tuple[str, str, dict | None]] = [
+            ("GET", "/api/bff/jobs", None),
+            (
+                "POST",
+                "/api/bff/jobs/launch",
+                {"agent": "alpha", "prompt": "x", "job_name": "omp"},
+            ),
+            ("POST", "/api/bff/jobs/steer", {"job_id": "j1", "text": "x"}),
+            ("POST", "/api/bff/jobs/cancel", {"job_id": "j1"}),
+            ("POST", "/api/bff/jobs/stream-token", None),
+            ("GET", "/api/bff/jobs/stream", None),
+            ("GET", "/api/bff/jobs/stream?token=bogus", None),
+        ]
+        for method, path, body in matrix:
+            if method == "GET":
+                res = tc.get(path)
+            else:
+                res = tc.post(path, json=body)
+            assert res.status_code == 401, f"{method} {path} → {res.status_code}"
+
     def test_list_agents_config_calls_hub_rpc(
         self,
         wired_client: tuple[TestClient, WebAdapter, AsyncMock],

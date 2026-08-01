@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from factory.core.pool.pool_processor import _close_active_job, _open_active_job
+from factory.core.pool.pool_active_jobs import _close_active_job, _open_active_job
 from factory.core.ports.active_jobs import RegistryConflictError
 
 
@@ -63,6 +63,20 @@ async def test_open_registers_entry_and_returns_job_id() -> None:
     assert entry.status == "open"
     assert entry.concurrency_mode == "steer"
     assert entry.steer_subject == f"factory.job.{job_id}.steer"
+
+
+@pytest.mark.asyncio
+async def test_open_uses_explicit_wire_job_id() -> None:
+    """Registry key must be the envelope/wire id (#2147)."""
+    rec = _Recorder()
+    pool = _pool_with(rec, backend="omp-rpc")
+    wire = "wire-job-id-abc123"
+
+    job_id = await _open_active_job(pool, job_id=wire)
+
+    assert job_id == wire
+    assert rec.opened[0].job_id == wire
+    assert rec.opened[0].steer_subject == f"factory.job.{wire}.steer"
 
 
 @pytest.mark.asyncio

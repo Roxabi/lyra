@@ -7,11 +7,10 @@ the payload is never deserialized, so a malformed ``JobResult`` still closes
 the entry.
 
 This is the authoritative close of ``docs/architecture/job-model.md``.
-Dashboard-launched jobs (#2142) register under the envelope job_id, so a
-terminal ``.result`` closes them here.  Pool/chat runs still key the
-registry with a local uuid4 (``pool_processor._open_active_job``) that does
-not match the wire id — ``close(wire_id)`` no-ops for those until #2147;
-the pool-loop ``finally`` close stays load-bearing for that path.
+Dashboard launches (#2142) and pool turns (#2147) register under the
+envelope / TraceContext ``root_job_id``, so a terminal ``.result`` closes
+the matching entry.  Pool still closes in ``guarded_process_one`` finally
+as a safety net (cancel / no result path).
 
 Trust boundary: the publish ACL on ``factory.job.*.result`` (clipool/omp
 workers) is the only authorization — any grant holder can name any job_id

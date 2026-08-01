@@ -66,27 +66,8 @@ def make_mock_tools() -> tuple[SessionTools, MagicMock, MagicMock]:
     return tools, scraper, vault
 
 
-async def _stub_vault_add(msg, driver, tools, args, timeout):  # noqa: ARG001
-    """Minimal stub replacing cmd_add for router-contract tests."""
-    if not args:
-        return Response(content="Usage: /vault-add <url>")
-    url = args[0]
-    content = await tools.scraper.scrape(url, timeout=timeout / 3)
-    from factory.core.agent.agent_config import ModelConfig
-
-    model_cfg = ModelConfig(backend="claude-cli", model="claude-haiku-4-5-20251001")
-    result = await driver.complete(
-        "session:vault-add",
-        "",
-        model_cfg,
-        "You are a helper.",
-        messages=[{"role": "user", "content": content}],
-    )
-    return Response(content=f"Saved: {url}\n\n{result.result}")
-
-
 async def _stub_explain(msg, driver, tools, args, timeout):  # noqa: ARG001
-    """Minimal stub replacing cmd_explain for router-contract tests."""
+    """Minimal stub for /explain router-contract tests."""
     if not args:
         return Response(content="Usage: /explain <url>")
     url = args[0]
@@ -149,9 +130,6 @@ def make_router_with_session(
         )
     )
     router.register_session_command(
-        "vault-add", _stub_vault_add, tools=_tools, description="Save URL", timeout=60.0
-    )
-    router.register_session_command(
         "explain", _stub_explain, tools=_tools, description="Explain URL", timeout=60.0
     )
     router.register_session_command(
@@ -171,12 +149,12 @@ def make_pool() -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# AC-1: Bare URL → /vault-add dispatch
+# AC-1: Bare URL → /explain dispatch
 # ---------------------------------------------------------------------------
 
 
 class TestBareUrlToAdd:
-    """AC-1: A bare URL message is dispatched to /vault-add."""
+    """AC-1: A bare URL message is dispatched to /explain."""
 
     @pytest.mark.asyncio
     async def test_bare_url_dispatched_to_add(self, tmp_path: Path) -> None:
@@ -186,10 +164,10 @@ class TestBareUrlToAdd:
         pool = make_pool()
 
         msg = make_message("https://example.com/article")
-        # prepare() rewrites the bare URL to /vault-add
+        # prepare() rewrites the bare URL to /explain
         msg = router.prepare(msg)
         assert msg.command is not None
-        assert msg.command.name == "vault-add"
+        assert msg.command.name == "explain"
 
         response = await router.dispatch(msg, pool=pool)
 
@@ -282,7 +260,7 @@ class TestPoolHistoryUnchanged:
         pool = make_pool()
         pool.history = ["earlier msg"]
 
-        msg = make_message("/vault-add https://example.com")
+        msg = make_message("/explain https://example.com")
         await router.dispatch(msg, pool=pool)
 
         # Pool history must be identical to before the command
@@ -302,7 +280,7 @@ class TestSessionDriverNone:
         router = make_router_with_session(tmp_path, driver=None)
         pool = make_pool()
 
-        msg = make_message("/vault-add https://example.com")
+        msg = make_message("/explain https://example.com")
         response = await router.dispatch(msg, pool=pool)
 
         assert response is not None

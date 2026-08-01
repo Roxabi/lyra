@@ -6,7 +6,7 @@ are added by creating a new module here and importing it below — no other file
 changes needed.
 """
 
-from . import _scraping, explain, search, summarize, vault_add
+from . import _scraping, explain, search, summarize
 from .processor_registry import BaseProcessor, ProcessorRegistry, registry
 from .stream_close import StreamCloseHandler
 from .stream_processor import StreamProcessor
@@ -18,7 +18,6 @@ __all__ = [
     "explain",
     "search",
     "summarize",
-    "vault_add",
     "BaseProcessor",
     "ProcessorRegistry",
     "StreamCloseHandler",

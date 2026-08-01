@@ -24,7 +24,7 @@ BUNDLED_PATTERNS_CONFIG = (
 BARE_URL_RE: re.Pattern[str] = re.compile(r"^https?://\S+$")
 
 # Default command for bare URL rewriting
-DEFAULT_BARE_URL_COMMAND = "vault-add"
+DEFAULT_BARE_URL_COMMAND = "explain"
 
 
 def load_pattern_configs(path: Path | None = None) -> dict[str, dict]:

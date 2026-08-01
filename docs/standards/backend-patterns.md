@@ -296,7 +296,7 @@ All keys are resolved via the injected `get_msg` callable with a hardcoded fallb
 | Store protocols | in `core/stores/`; ends with `_protocol.py` | `agent_store_protocol.py` |
 | Infrastructure implementations | in `factory.infrastructure.stores` | `agent_store.py` |
 | Test files | `test_{module_under_test}.py` | `test_config.py` |
-| Commands (slash) | lowercase alphanumeric + hyphens | `/search`, `/add-vault` |
+| Commands (slash) | lowercase alphanumeric + hyphens | `/search`, `/explain` |
 
 ---
 

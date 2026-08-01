@@ -221,16 +221,6 @@ class SimpleAgent(AgentBase):
         for cmd in registry.commands():
             self.command_router.register_passthrough(cmd.lstrip("/"))
 
-        # /add-vault — direct vault save, no LLM needed (#372).
-        from factory.commands.add_vault.handlers import cmd_add_vault
-
-        self.command_router.register_session_command(
-            "add-vault",
-            cmd_add_vault,
-            tools=self._session_tools,
-            description="Save a note to the vault: /add-vault <note content>",
-        )
-
     def _maybe_register_reset(self, pool: Pool) -> None:
         """Register session reset/switch callbacks on the pool."""
         _session = self._session_backend

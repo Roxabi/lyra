@@ -21,14 +21,12 @@ def reload_processors() -> None:
     import factory.core.processors.explain
     import factory.core.processors.search
     import factory.core.processors.summarize
-    import factory.core.processors.vault_add
     from factory.core.processors.processor_registry import registry
 
     registry.clear()
     importlib.reload(factory.core.processors.explain)
     importlib.reload(factory.core.processors.search)
     importlib.reload(factory.core.processors.summarize)
-    importlib.reload(factory.core.processors.vault_add)
     importlib.reload(factory.core.processors)
 
 

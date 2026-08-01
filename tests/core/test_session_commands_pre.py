@@ -99,7 +99,7 @@ class TestProcessorPreCalledBeforeLLM:
     """pre() runs before agent.process(); the LLM receives enriched text."""
 
     async def test_llm_receives_enriched_content_not_raw_command(self) -> None:
-        """Submit /vault-add → LLM must see scraped content, NOT the raw URL command."""
+        """Submit /explain → LLM must see scraped content, NOT the raw URL command."""
         # Arrange
         scraped_body = "This is the scraped article content."
         tools = _make_tools(scrape_return=scraped_body)
@@ -129,7 +129,7 @@ class TestProcessorPreCalledBeforeLLM:
             turn_timeout=10.0,
             debounce_ms=0,
         )
-        msg = _make_command_msg("/vault-add https://example.com")
+        msg = _make_command_msg("/explain https://example.com")
 
         # Act
         pool.submit(msg)
@@ -141,7 +141,7 @@ class TestProcessorPreCalledBeforeLLM:
         assert scraped_body in enriched, (
             f"Expected scraped content in enriched text, got: {enriched!r}"
         )
-        assert "/vault-add https://example.com" not in enriched, (
+        assert "/explain https://example.com" not in enriched, (
             "LLM should NOT see the raw command string — pre() must have replaced it"
         )
 
@@ -170,7 +170,7 @@ class TestProcessorPreCalledBeforeLLM:
             turn_timeout=10.0,
             debounce_ms=0,
         )
-        msg = _make_command_msg("/vault-add https://example.com")
+        msg = _make_command_msg("/explain https://example.com")
 
         # Act
         pool.submit(msg)
@@ -180,8 +180,8 @@ class TestProcessorPreCalledBeforeLLM:
         enriched = received_texts[0]
         assert "https://example.com" in enriched
         assert "article body" in enriched
-        # Instruction prompt should be present
-        assert "Title:" in enriched or "summary" in enriched.lower()
+        # Explain instruction prompt should be present
+        assert "explain" in enriched.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +219,7 @@ class TestPreExceptionDispatchesErrorResponse:
             turn_timeout=10.0,
             debounce_ms=0,
         )
-        msg = _make_command_msg("/vault-add https://example.com")
+        msg = _make_command_msg("/explain https://example.com")
 
         # Act
         pool.submit(msg)
@@ -251,7 +251,7 @@ class TestPreExceptionDispatchesErrorResponse:
             turn_timeout=10.0,
             debounce_ms=0,
         )
-        msg = _make_command_msg("/vault-add https://example.com")
+        msg = _make_command_msg("/explain https://example.com")
 
         # Act
         pool.submit(msg)
@@ -264,7 +264,7 @@ class TestPreExceptionDispatchesErrorResponse:
         assert isinstance(dispatched, Response)
         # The error message should mention the failing command
         assert (
-            "/vault-add" in dispatched.content or "failed" in dispatched.content.lower()
+            "/explain" in dispatched.content or "failed" in dispatched.content.lower()
         )
 
     async def test_unexpected_pre_exception_does_not_call_vault(self) -> None:
@@ -290,7 +290,7 @@ class TestPreExceptionDispatchesErrorResponse:
             turn_timeout=10.0,
             debounce_ms=0,
         )
-        msg = _make_command_msg("/vault-add https://example.com")
+        msg = _make_command_msg("/explain https://example.com")
 
         # Act
         pool.submit(msg)

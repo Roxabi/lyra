@@ -6,12 +6,12 @@ a job's terminal result arrives.  The subject itself is the close signal —
 the payload is never deserialized, so a malformed ``JobResult`` still closes
 the entry.
 
-This is the authoritative close of ``docs/architecture/job-model.md``, but
-it is mostly dormant today: every pool run's registry entry is keyed by a
-locally-minted uuid4 (``pool_processor._open_active_job``) that never equals
-the wire job_id, so ``close(wire_id)`` no-ops until #2142/#2147 key entries
-by the envelope job_id.  The pool-loop ``finally`` close stays load-bearing
-until then.
+This is the authoritative close of ``docs/architecture/job-model.md``.
+Dashboard-launched jobs (#2142) register under the envelope job_id, so a
+terminal ``.result`` closes them here.  Pool/chat runs still key the
+registry with a local uuid4 (``pool_processor._open_active_job``) that does
+not match the wire id — ``close(wire_id)`` no-ops for those until #2147;
+the pool-loop ``finally`` close stays load-bearing for that path.
 
 Trust boundary: the publish ACL on ``factory.job.*.result`` (clipool/omp
 workers) is the only authorization — any grant holder can name any job_id

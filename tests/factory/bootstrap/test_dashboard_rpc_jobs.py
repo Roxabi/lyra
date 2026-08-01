@@ -76,6 +76,57 @@ class TestJobsLaunch:
         assert subject == "factory.jobs.omp"
         assert b"hello operator" in payload
 
+    @pytest.mark.asyncio
+    async def test_launch_opens_registry_with_envelope_job_id(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        """Dashboard dispatch registers so Jobs view + ResultClose see it (#2142)."""
+        coord = AsyncMock()
+        hub._active_jobs_coord = coord
+        result = await handle_jobs_launch(
+            hub,
+            nc,
+            {"agent": "lyra", "prompt": "track me", "job_name": "omp"},
+        )
+        assert result["accepted"] is True
+        job_id = result["job_id"]
+        coord.open.assert_awaited_once()
+        entry = coord.open.await_args.args[0]
+        assert entry.job_id == job_id
+        assert entry.concurrency_mode == "steer"  # omp-rpc backend
+        assert entry.steer_subject == jobs_steer(job_id)
+        assert entry.pool_id  # synthetic web:smoke:agent:lyra
+
+    @pytest.mark.asyncio
+    async def test_launch_registry_open_failure_still_accepts(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        coord = AsyncMock()
+        coord.open = AsyncMock(side_effect=RuntimeError("kv down"))
+        hub._active_jobs_coord = coord
+        result = await handle_jobs_launch(
+            hub,
+            nc,
+            {"agent": "lyra", "prompt": "still ok", "job_name": "omp"},
+        )
+        assert result["accepted"] is True
+        nc.publish.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_launch_claude_registers_queue_mode(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        coord = AsyncMock()
+        hub._active_jobs_coord = coord
+        result = await handle_jobs_launch(
+            hub,
+            nc,
+            {"agent": "lyra", "prompt": "cli job", "job_name": "claude"},
+        )
+        assert result["accepted"] is True
+        entry = coord.open.await_args.args[0]
+        assert entry.concurrency_mode == "queue"
+
     @pytest.mark.no_default_trace
     @pytest.mark.asyncio
     async def test_launch_mints_trace_without_ambient_context(

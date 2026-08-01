@@ -6,8 +6,8 @@ description: Living current-truth document for the observability planes, engines
 # Observability & Control Plane — factory
 
 > Status: LIVING — current truth for observability + control-plane decisions.
-> Last updated: 2026-07-02.
-> Source ADRs: 091, 092, 093, 094, 096, 097, 098.
+> Last updated: 2026-08-01.
+> Source ADRs: 091, 092, 093, 094, 096, 097, 098, 104.
 
 ## Scope
 
@@ -52,6 +52,23 @@ The Sentinelle consumer itself (hub module that subscribes events, enriches,
 and alerts on Discord) is ratified design — it is not yet implemented in
 `src/factory`. Current live consumers of plane ① are the hub read-model
 projectors (below).
+
+### Host presence (edge → plane ①)
+
+Workstation attention / presence is **not** owned as a second collector stack
+inside the factory monorepo. Capture lives in **roxabi-sense** (local SQLite +
+CLI/MCP). Factory owns the **NATS contract** and **consumption** (ADR-104).
+
+| Role | Owner |
+|------|--------|
+| Subjects | `factory.event.host.<machine>.activity` \| `.stale` (via `publish_host_event`) |
+| Payload SSOT | ADR-104 (coarse: presence, sources, confidence, degraded — **no titles**) |
+| Publish client (opt-in) | roxabi-sense surface (issue [Roxabi/roxabi-sense#7](https://github.com/Roxabi/roxabi-sense/issues/7)) |
+| Subscribe + policy | factory hub Sentinelle (or interim log consumer) |
+| Parallel `factory-host-sensor` binary | **Rejected** — role = sense (re-scopes #2007) |
+
+Sequence: **factory contract + consumer first** → sense thin publisher second.
+Helper already exists: `src/factory/ops/host_event.py`.
 
 **Standalone log monitor (`factory-log-monitor`, #2245) — plane ③, V1-pull.**
 A dedicated Quadlet container (`deploy/quadlet/factory-log-monitor.container`)
@@ -312,6 +329,7 @@ Labeled target to prevent doc-drift-by-optimism:
 | ADR | Title | Status |
 |-----|-------|--------|
 | 091 | Sentinelle — four observability planes | Accepted — 2026-06-25; design-only (consumer module not yet built); plane ① grammar amended by ADR-096 |
+| 104 | Host presence from roxabi-sense | Accepted — 2026-08-01; factory owns contract/consumer; sense thin publisher; supersedes parallel host-sensor binary |
 | 092 | Observability architecture — control-plane + headless engines | Accepted — amended 2026-07-04 (engines deployed); 2026-06-25 absorbs ADR-097 (trace plane v1 = otel-raw) |
 | 093 | Operator audit — three-channel deploy logging | Accepted — 2026-06-26 |
 | 094 | Control-plane dashboard consolidation | Accepted — 2026-06-27; BFF read path amended by ADR-097 |

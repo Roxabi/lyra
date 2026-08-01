@@ -1,0 +1,192 @@
+---
+title: "ADR-104: Host presence events — factory owns contract; sense publishes"
+description: "Plane ① host activity/stale from roxabi-sense; factory owns NATS contract + consumer; edge sensor is thin client only"
+status: accepted
+date: 2026-08-01
+deciders: [Mickael]
+related: [091, 096, 076, 2006, 2007, 2320]
+---
+
+> **Living domain page:** [`observability.md`](../observability.md) § Host presence (edge).
+> **Edge product:** [`roxabi-sense`](https://github.com/Roxabi/roxabi-sense) · issue [Roxabi/roxabi-sense#7](https://github.com/Roxabi/roxabi-sense/issues/7).
+> **Epic:** Sentinelle #2006 · re-scopes #2007 (factory-host-sensor role → sense).
+
+## Status
+
+**Accepted** — 2026-08-01.
+
+Design ratification before any new NATS client in `roxabi-sense` and before
+Sentinelle host-presence handlers. Implementation tracks child issues (below).
+
+## Context
+
+### Problem
+
+1. **roxabi-sense** is the workstation attention sensor (collectors → SQLite →
+   CLI/MCP). Product docs list optional NATS as phase 4 (`activity` / `stale`).
+2. **ADR-091** already places host sensors on plane ① as
+   `factory.event.host.*` publishers and forbids sensors from policy
+   (Discord, jobs).
+3. Issue **#2007** still describes a dedicated `factory-host-sensor` systemd
+   timer that reads `~/.grok` / `~/.claude` and publishes host events — but that
+   **role has moved** to **roxabi-sense** (public AGPL, ADR-091 mapping in
+   sense `ARCHITECTURE.md`). Duplicating a second edge publisher would fork
+   capture and drift presence semantics.
+4. If sense implements NATS **first** without a factory-owned contract, it will
+   invent subjects/payloads and force rework when Sentinelle lands.
+
+### Constraints inherited
+
+| Source | Constraint |
+|--------|------------|
+| ADR-091 | Sensors publish facts; hub decides. Plane ① = `factory.event.<service>.<kind>` (non-ingress 3-segment). |
+| ADR-096 | Ingress stays 4-segment; **host presence is not ingress** — stays `factory.event.host.<kind>` with kind namespaced as `<machine>.activity` / `<machine>.stale` via existing `publish_host_event` / `per_service_event("host", …)`. |
+| ADR-076 / messaging.md | No new NATS plane; reuse `factory-events` JetStream. |
+| sense ADR-001 / ADR-002 | Presence = pure function over store; surfaces format only; NATS coarse only, no title firehose. |
+| sense PURPOSE | Factory may be down; local CLI/MCP work without NATS. |
+
+### Existing code (do not reinvent)
+
+| Piece | Location |
+|-------|----------|
+| Publish helper | `src/factory/ops/host_event.py` → `publish_host_event` → `factory.event.host.<machine>.<kind>` + `LyraEvent` |
+| Subject helper | `roxabi_contracts.event.per_service_event("host", kind)` |
+| Stream | `factory-events` / `factory.event.>` (`stream_setup.py`) |
+| Edge capture | `roxabi-sense` collectors + `report.presence.derive_presence` |
+
+## Decision
+
+### Ownership split (normative)
+
+| Concern | Owner | Not |
+|---------|--------|-----|
+| NATS server, ACLs, JetStream | **factory / M₁ ops** | sense does not run NATS |
+| Event grammar + payload schema for host presence | **factory** (this ADR + contracts if typed) | sense-local invent |
+| Subscribe + policy (log, Discord, jobs) | **factory hub Sentinelle** (or interim log consumer) | sense |
+| Capture focus/idle/agents + local SQLite | **roxabi-sense** | factory monorepo collectors |
+| Optional thin **publish client** | **roxabi-sense** surface (opt-in) | sense-owned bus semantics |
+| Parallel `factory-host-sensor` package | **Rejected** as durable path | superseded by sense |
+
+### Subjects (plane ①)
+
+Reuse existing host service grammar (already implemented by `publish_host_event`):
+
+```
+factory.event.host.<machine>.activity
+factory.event.host.<machine>.stale
+```
+
+Where `<machine>` is a stable host id (sense `nats.machine` / `FACTORY_MACHINE` /
+hostname), and `kind` passed to `publish_host_event` is `activity` or `stale`
+(helper expands to `<machine>.activity`).
+
+**Not** used for this product:
+
+- Per-window title streams
+- Full day timeline / focus history on the bus
+- Job-plane or Discord subjects from the sensor
+
+### Payload (normative minimum)
+
+`LyraEvent` envelope via `build_lyra_event` / contracts. **Payload object**
+(coarse only):
+
+| Field | Type | Required | Notes |
+|-------|------|----------|--------|
+| `presence` | `"active" \| "idle" \| "offline"` | yes | From sense `derive_presence` (or factory-equivalent pure map) |
+| `sources` | `string[]` | yes | e.g. `["idle:wayland-idle","focus:atspi"]` — evidence tags, not titles |
+| `confidence` | `"high" \| "medium" \| "low"` | yes | |
+| `degraded` | `bool` | yes | true if fallbacks (logind-only idle, focus noop, etc.) |
+| `sensor` | `"roxabi-sense"` | yes | distinguishes future producers if any |
+| `sensor_version` | string | no | package version |
+| `ts` | ISO-Z | yes | evidence time (may equal envelope time) |
+
+**Forbidden in payload (default):** window titles, title_raw, media metadata,
+full paths beyond optional basename-only if ever needed, agent chat bodies.
+
+### Producer rules (edge)
+
+1. **Opt-in** — sense NATS publish off by default; factory down ⇒ no failure of local capture.
+2. **Hysteresis** — publish on **transitions** (active↔idle/offline), not every poll tick.
+3. **Media/process alone** must not yield high-confidence `activity` (sense ADR-002).
+4. **No policy** — no Discord, no `factory.jobs.*`, no Sentinelle decisions in sense.
+5. Prefer **reusing** factory publish path semantics (`LyraEvent` + subject helpers);
+   do not invent a second envelope. Implementation may copy the minimal encode
+   client or share `roxabi-contracts` only — **not** import factory monorepo
+   application code into sense.
+
+### Consumer rules (factory)
+
+1. **V1 consumer** may be a hub module or a minimal JetStream subscriber that
+   logs / metrics only — enough to prove the path.
+2. **Sentinelle** later: hot handle on `activity` / `stale`; cold scan optional.
+3. Treat missing host events as **unknown**, not as alert spam, until SLO defined.
+4. ACL: dedicated NKey/user for edge sensors — publish
+   `factory.event.host.>` only (as #2007 intended).
+
+### Relationship to #2007
+
+| #2007 (original) | This ADR |
+|------------------|----------|
+| systemd timer `factory-host-sensor` | **Role** = **roxabi-sense** daemon (user unit), not a new factory binary |
+| Read grok/claude only | Sense already collects agents + idle + focus; presence is multi-source |
+| Publish activity/stale | **Same subjects** — payload frozen here |
+| Consumed by Sentinelle | Unchanged |
+
+**#2007 should be re-scoped or closed** in favor of: (a) factory contract +
+consumer issues under this ADR; (b) sense #7 thin publisher.
+
+## Options considered
+
+### A — Sense invents NATS first
+
+- Pros: fast demo on laptop
+- Cons: contract drift; factory rework
+- **Rejected**
+
+### B — Factory owns contract + consumer first; sense thin client second (**chosen**)
+
+- Pros: single SSOT; aligns ADR-091; reuses `publish_host_event` grammar
+- Cons: sense #7 waits on factory slices
+- **Accepted**
+
+### C — No NATS; factory pulls sense via MCP/HTTP only
+
+- Pros: no edge publish credentials
+- Cons: factory cannot see host when laptop MCP not polled; breaks plane ① push model in ADR-091
+- Deferred as alternative if ACL/publish proves too hard — not default
+
+### D — Keep parallel factory-host-sensor timer
+
+- Pros: matches old #2007 text
+- Cons: duplicates sense; two presence brains
+- **Rejected**
+
+## Consequences
+
+### Positive
+
+- Clear ownership: factory = bus + contract + policy; sense = capture + optional publish
+- No second sensor binary
+- Sentinelle can be built against a frozen payload without waiting for full Discord policy
+
+### Negative / debt
+
+- #2007 wording is stale until re-scoped
+- Edge needs NATS credentials story (ops)
+- Until consumer exists, sense publish has no in-repo factory verification beyond stream visibility
+
+### Implementation slices (suggested issues)
+
+1. **factory:** document + tests for host presence payload (contracts or factory fixture golden JSON)
+2. **factory:** JetStream consumer stub / hub handler log-only for `*.activity` / `*.stale`
+3. **ops:** NKey `host-sensor` ACL publish `factory.event.host.>`
+4. **sense #7:** opt-in publisher mapping `derive_presence` → payload + hysteresis
+
+## References
+
+- ADR-091 four planes
+- ADR-096 ingress grammar (host ≠ ingress)
+- `src/factory/ops/host_event.py`
+- roxabi-sense `docs/ARCHITECTURE.md` § NATS
+- roxabi-sense issues #7 (publish), #37 epic

@@ -299,11 +299,12 @@ class CommandRouter:
         if handler is None:
             if msg.command.prefix == "!" or command_name in self._passthroughs:
                 return None
-            reply = (
-                self._msg_manager.get("unknown_command", command_name=command_name)
-                if self._msg_manager
-                else format_unknown_command(command_name)
-            )
+            # Retired product cmds always use migration copy (skip i18n generic).
+            reply = format_unknown_command(command_name)
+            if reply.startswith("Unknown command:") and self._msg_manager:
+                reply = self._msg_manager.get(
+                    "unknown_command", command_name=command_name
+                )
             return Response(content=reply)
         if pool is None:
             raise TypeError(

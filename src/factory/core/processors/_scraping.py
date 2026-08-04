@@ -95,15 +95,27 @@ async def _scrape_with_fallback(scraper, url: str, timeout: float) -> str:
     """Scrape *url* via scraper; return fallback string on any ScrapeFailed.
 
     B7: single shared implementation — no more copy-paste across 3 files.
+    Fallback text is user-facing (may still pass through the LLM turn).
     """
     try:
         return await scraper.scrape(url, timeout=timeout)
     except ScrapeFailed as exc:
         if exc.reason == "not_available":
-            return f"[scraping unavailable] {url}"
+            return (
+                f"Web scraping is not available in this deployment for {url}. "
+                "The scrape plugin/service is missing (common in production "
+                "containers). Paste the page text instead, or try again after "
+                "scrape is restored. See docs/architecture/scrape-placement.md."
+            )
         if exc.reason == "timeout":
-            return f"[scrape timed out] {url}"
-        return f"[scrape failed] {url}"
+            return (
+                f"Web scrape timed out for {url}. "
+                "Try again later or paste the page text."
+            )
+        return (
+            f"Web scrape failed for {url}. "
+            "The page may be blocked or unreachable; paste the text instead."
+        )
 
 
 class ScrapingProcessor(BaseProcessor):

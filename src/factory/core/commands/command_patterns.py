@@ -21,10 +21,24 @@ BUNDLED_PATTERNS_CONFIG = (
     Path(__file__).resolve().parent.parent.parent / "data" / "patterns.toml"
 )
 
-BARE_URL_RE: re.Pattern[str] = re.compile(r"^https?://\S+$")
+# HTTPS only — scrape processors reject http://; keep rewrite aligned.
+BARE_URL_RE: re.Pattern[str] = re.compile(r"^https://\S+$")
 
 # Default command for bare URL rewriting
 DEFAULT_BARE_URL_COMMAND = "explain"
+
+# Retired product commands → migration copy (no LLM, no side effect).
+_RETIRED_COMMAND_MESSAGES: dict[str, str] = {
+    "vault-add": (
+        "Command /vault-add was removed. URL capture is no longer a hub slash "
+        "command (cortex owns long-term memory). Use /explain or /summarize "
+        "to read a page, or /search to query memory. Type /help for commands."
+    ),
+    "add-vault": (
+        "Command /add-vault was removed. Notes are no longer saved via this "
+        "hub command. Use /search for memory search. Type /help for commands."
+    ),
+}
 
 
 def load_pattern_configs(path: Path | None = None) -> dict[str, dict]:
@@ -85,5 +99,13 @@ def check_command_conflicts(
 
 
 def format_unknown_command(command_name: str) -> str:
-    """Format a standardized unknown command error message."""
+    """Format a standardized unknown command error message.
+
+    Retired product commands get an explicit migration string instead of a
+    generic unknown-command line.
+    """
+    bare = command_name.lstrip("/!")
+    retired = _RETIRED_COMMAND_MESSAGES.get(bare)
+    if retired is not None:
+        return retired
     return f"Unknown command: {command_name}. Type /help for available commands."

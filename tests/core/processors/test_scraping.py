@@ -208,8 +208,9 @@ class TestScrapeWithFallback:
             scraper, "https://example.com", timeout=30.0
         )
 
-        # Assert
-        assert "[scraping unavailable]" in result
+        # Assert — actionable copy (prod hub often hits not_available)
+        assert "not available" in result.lower()
+        assert "https://example.com" in result
 
     async def test_timeout_returns_timeout_fallback(self) -> None:
         # Arrange
@@ -222,7 +223,8 @@ class TestScrapeWithFallback:
         )
 
         # Assert
-        assert "[scrape timed out]" in result
+        assert "timed out" in result.lower()
+        assert "https://example.com" in result
 
     async def test_subprocess_error_returns_generic_fallback(self) -> None:
         # Arrange
@@ -235,7 +237,8 @@ class TestScrapeWithFallback:
         )
 
         # Assert
-        assert "[scrape failed]" in result
+        assert "scrape failed" in result.lower()
+        assert "https://example.com" in result
 
     async def test_url_included_in_fallback_message(self) -> None:
         # Arrange

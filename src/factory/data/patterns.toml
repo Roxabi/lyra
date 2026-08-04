@@ -1,8 +1,12 @@
 # Pattern rules — defines what each rewrite pattern does.
 # Agents activate patterns via [patterns] in their TOML (bare_url = true/false).
 # This file controls the behaviour of each pattern.
+#
+# bare_url defaults OFF (CommandRouter: patterns.get("bare_url", False)).
+# Leave OFF in production until HTTP scrape is deployed — otherwise paste-URL
+# hits a broken hub WebIntel subprocess. See scrape-placement.md.
 
 [bare_url]
-# Command dispatched when a message is a bare URL and bare_url pattern is enabled.
-# vault-add product path removed 2026-08-01 — bare URLs route to explain (scrape + LLM).
+# Command when bare_url pattern is enabled (HTTPS URLs only).
+# vault-add product path removed 2026-08-01 — bare URLs route to explain.
 command = "explain"

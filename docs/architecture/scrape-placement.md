@@ -65,7 +65,7 @@ agent tool / MCP           ──POST /scrape──▶  (same)
 |---|---|
 | Transport | HTTPS (or localhost HTTP on pod network) |
 | Health | `GET /ready` — process up **and** scraper importable; hub/client circuit-breaker on call failures |
-| SSRF | Keep HTTPS-only + private-IP reject (move from hub `_scraping` into service **or** dual-check) |
+| SSRF | **Dual-check required**: hub cheap pre-check **and** service enforces HTTPS-only + non-global IP + redirect revalidation |
 | Deploy | Quadlet unit on M₁ (or M₂ if browser-heavy); image embeds web-intel/playwright |
 | Hub change | HTTP-backed `ScrapeProvider` impl; drop subprocess from hub image |
 | Agent | Skill/CLI optional wrapper calling same HTTP API — **one** scrape engine |

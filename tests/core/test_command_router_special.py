@@ -186,13 +186,14 @@ class TestBareUrlDetection:
             is True
         )  # noqa: E501
 
-    def test_http_url_is_detected(self, tmp_path: Path) -> None:
+    def test_http_url_is_not_detected(self, tmp_path: Path) -> None:
+        """http:// is rejected — scrape is HTTPS-only; bare rewrite stays aligned."""
         assert (
             make_router(tmp_path).is_command(make_message(content="http://example.com"))
-            is True
-        )  # noqa: E501
+            is False
+        )
 
-    def test_prepare_returns_add_command(self, tmp_path: Path) -> None:
+    def test_prepare_returns_explain_command(self, tmp_path: Path) -> None:
         prepared = make_router(tmp_path).prepare(
             make_message(content="https://example.com/page")
         )
@@ -225,7 +226,9 @@ class TestBareUrlDetection:
         assert prepared.command is not None
         assert prepared.command.name == "help"
 
-    def test_get_command_name_returns_add_for_bare_url(self, tmp_path: Path) -> None:
+    def test_get_command_name_returns_explain_for_bare_url(
+        self, tmp_path: Path
+    ) -> None:
         router = make_router(tmp_path)
         prepared = router.prepare(make_message(content="https://example.com"))
         assert router.get_command_name(prepared) == "/explain"
@@ -237,7 +240,7 @@ class TestBareUrlDetection:
         )  # noqa: E501
 
     @pytest.mark.asyncio
-    async def test_dispatch_bare_url_routes_to_add_session(
+    async def test_dispatch_bare_url_routes_to_explain_session(
         self, tmp_path: Path
     ) -> None:
         """dispatch() with a bare URL calls the /explain session handler."""
@@ -247,7 +250,7 @@ class TestBareUrlDetection:
         from factory.integrations.base import SessionTools
 
         router = make_router(tmp_path)
-        handler = AsyncMock(return_value=Response(content="added"))
+        handler = AsyncMock(return_value=Response(content="explained"))
         tools = SessionTools(scraper=MM(), vault=MM())
         router.register_session_command("explain", handler, tools=tools)
         router._session_driver = MM()
@@ -256,8 +259,22 @@ class TestBareUrlDetection:
         pool = MagicMock(spec=Pool)
         response = await router.dispatch(msg, pool=pool)
         assert response is not None
-        assert response.content == "added"
+        assert response.content == "explained"
         handler.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_retired_vault_add_returns_migration_message(
+        self, tmp_path: Path
+    ) -> None:
+        router = make_router(tmp_path)
+        pool = MagicMock(spec=Pool)
+        response = await router.dispatch(
+            make_message_with_command("/vault-add https://example.com"),
+            pool=pool,
+        )
+        assert response is not None
+        assert "removed" in response.content.lower()
+        assert "vault-add" in response.content
 
 
 # ---------------------------------------------------------------------------

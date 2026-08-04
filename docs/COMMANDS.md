@@ -222,13 +222,15 @@ Pipeline: **scrape** → **LLM 3-5 bullet points**.
 
 ### Bare URL auto-rewrite
 
-Sending a bare URL (no slash command prefix) is automatically rewritten to `/explain <url>`:
+Sending a bare HTTPS URL (no slash command prefix) is rewritten to `/explain <url>` **when** the agent has `patterns.bare_url = true` (default **off**):
 
 ```
 https://example.com/article   →   /explain https://example.com/article
 ```
 
-The detection uses `CommandRouter._BARE_URL_RE` (`^https?://\S+$`). The target command is read from `src/factory/data/patterns.toml` `[bare_url].command` — change it there to reroute bare URLs to a different command without touching Python.
+- Detection: `command_patterns.BARE_URL_RE` — **HTTPS only** (`http://` is not rewritten).
+- Target command: `src/factory/data/patterns.toml` `[bare_url].command`.
+- Leave `bare_url` off in production until HTTP scrape is deployed (`scrape-placement.md`).
 
 ### `/search <query>` — Cortex memory search
 

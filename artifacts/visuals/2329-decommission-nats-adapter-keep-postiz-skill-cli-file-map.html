@@ -1,0 +1,13 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>#2329 file map</title>
+<style>body{font-family:system-ui;background:#0d1117;color:#e6edf3;padding:2rem}table{border-collapse:collapse;width:100%}td,th{border:1px solid #30363d;padding:.5rem;text-align:left}th{background:#161b22}.del{color:#f85149}.doc{color:#58a6ff}.ops{color:#d29922}</style></head><body>
+<h1>#2329 — files to remove / edit</h1>
+<table><tr><th>Area</th><th>Paths</th><th>Action</th></tr>
+<tr><td class="del">Adapter</td><td>src/factory/adapters/socialmedia/**</td><td>delete</td></tr>
+<tr><td class="del">Hub client</td><td>src/factory/nats/socialmedia/**</td><td>delete</td></tr>
+<tr><td class="del">Port</td><td>core/ports/socialmedia.py, hub_registration</td><td>delete/unwire</td></tr>
+<tr><td class="del">Bootstrap</td><td>voice_overlay, hub_*, wiring_helpers, unified, types</td><td>unwire</td></tr>
+<tr><td class="del">CLI</td><td>cli/main.py socialmedia-adapter</td><td>remove cmd</td></tr>
+<tr><td class="del">Packages</td><td>roxabi_contracts.socialmedia, roxabi_satellite.socialmedia</td><td>delete if sole</td></tr>
+<tr><td class="ops">Deploy</td><td>quadlet, acl-matrix, secrets-policy, fixtures</td><td>strip identity/grants</td></tr>
+<tr><td class="doc">Docs</td><td>workers-tooling, deployment, AGENTS, README</td><td>removed + skill/CLI</td></tr>
+</table></body></html>

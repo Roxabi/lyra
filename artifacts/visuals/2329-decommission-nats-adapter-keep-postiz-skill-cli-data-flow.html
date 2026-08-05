@@ -1,0 +1,12 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>#2329 decommission data flow</title>
+<style>body{font-family:system-ui;background:#0d1117;color:#e6edf3;padding:2rem}h1{font-size:1.2rem}.box{border:1px solid #30363d;border-radius:8px;padding:1rem;margin:.5rem 0}.gone{opacity:.45;text-decoration:line-through}.keep{border-color:#3fb950}.arrow{color:#8b949e;margin:.25rem 0}</style></head><body>
+<h1>#2329 — socialmedia plane (before → after)</h1>
+<div class="box gone"><b>Hub</b> NatsSocialMediaClient → factory.tool.socialmedia.*</div>
+<div class="arrow">↓ NATS RR</div>
+<div class="box gone"><b>socialmedia-adapter</b> satellite + heartbeat</div>
+<div class="arrow">↓ HTTP</div>
+<div class="box keep"><b>Postiz</b> Public API /public/v1 — KEEP</div>
+<div class="arrow">↑ skill/CLI</div>
+<div class="box keep"><b>Agents</b> ~/.roxabi/postiz/bin/postiz — KEEP</div>
+<p>After: only keep path remains. No NATS tool plane.</p>
+</body></html>

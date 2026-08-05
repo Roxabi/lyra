@@ -62,10 +62,10 @@ Wire domains split by **nature**:
 
 | | Domains |
 |---|---|
-| **tool** (capability surface) | voice · image · socialmedia · +future (xcli, vault, scrape, camoufox) |
+| **tool** (capability surface) | voice · image · +future (xcli, vault, scrape, camoufox) |
 | **plomberie** (substrate / infra) | cli/clipool · llm · jobs · gh · turns · outbound · event · audit · dashboard · state · telemetry · verify · fleet |
 
-The canonical tool-nature subject shape carries a `tool.` infix — live for the socialmedia domain: `factory.tool.socialmedia.>` (hub ↔ socialmedia satellite, per `deploy/nats/acl-matrix.json`), e.g. `factory.tool.socialmedia.publish` and `factory.tool.socialmedia.heartbeat`. The voice and image domains predate the infix and keep their original prefixes on the wire (`factory.voice.tts.request`, `factory.image.generate.request`). Plomberie domains keep plain `factory.<domain>.*` shapes. Wire schemas live per-domain in `packages/roxabi-contracts/` (e.g. `roxabi_contracts.socialmedia`, `roxabi_contracts.voice`); a shared tool *protocol* layer (in-process vs remote tool wrappers, tool manifest) is designed but not yet built.
+The canonical tool-nature subject shape carries a `tool.` infix (reserved for new tool domains). The voice and image domains predate the infix and keep their original prefixes on the wire (`factory.voice.tts.request`, `factory.image.generate.request`). Plomberie domains keep plain `factory.<domain>.*` shapes. Wire schemas live per-domain in `packages/roxabi-contracts/` (e.g. `roxabi_contracts.voice`); a shared tool *protocol* layer (in-process vs remote tool wrappers, tool manifest) is designed but not yet built. The former `factory.tool.socialmedia.>` NATS plane was **removed** (#2329) — agents reach Postiz via skill/CLI → Public API.
 
 #### The two discriminators (the sharp rules)
 
@@ -75,11 +75,11 @@ The canonical tool-nature subject shape carries a `tool.` infix — live for the
 
 | Backing | Provider shape | Health model |
 |---|---|---|
-| self-hosted process we run (imageCLI, voiceCLI, Postiz-via-adapter) | NATS satellite adapter | heartbeat + registry |
-| **self-hosted HTTP we run** (target scrape service; socialmedia→Postiz direct) | HTTP provider (in-proc client or thin side-car) | **`GET /ready` + client circuit-breaker** |
+| self-hosted process we run (imageCLI, voiceCLI) | NATS satellite adapter | heartbeat + registry |
+| **self-hosted HTTP we run** (target scrape service; Postiz Public API) | HTTP provider (in-proc client, thin side-car, or **agent skill/CLI**) | **`GET /ready` + client circuit-breaker** (or ops monitoring of the app) |
 | cloud API we don't host (X, GitHub) · one-shot stdio CLI | in-proc HTTP / stdio | CB on call failures (no fleet heartbeat) |
 
-Corollary — **three layers, do not conflate**: a **backing service** (e.g. the self-hosted Postiz fork: web+DB+Redis, HTTP) is infra like Postgres. **A running container ≠ a heartbeat** — the heartbeat comes from *our* NATS adapter (the provider), not the HTTP app. backing service ≠ provider ≠ tool. Shipped instance of the pattern (#1713): `src/factory/adapters/socialmedia/` is the satellite adapter bridging `factory.tool.socialmedia.>` to the Postiz Public API.
+Corollary — **three layers, do not conflate**: a **backing service** (e.g. the self-hosted Postiz fork: web+DB+Redis, HTTP) is infra like Postgres. **A running container ≠ a heartbeat** — the heartbeat comes from *our* NATS adapter (the provider), not the HTTP app. backing service ≠ provider ≠ tool. Postiz is backing only (#2329): no factory NATS satellite; agents use skill/CLI against the Public API.
 
 HTTPS self-hosted is a **first-class provider shape**, not “cloud only”. Prefer it when there is no GPU multi-worker routing need (see admission checklist below).
 
@@ -89,7 +89,7 @@ Do not call every NATS process a “satellite”. Classify first:
 
 | Family | Role | Examples |
 |---|---|---|
-| **A — Capability satellite** | Self-hosted **tool/provider** on NATS + heartbeat; one (or few) clear verbs | `voice-stt`, `voice-tts`, `image-worker`, `llm-worker` (fleet façade), `socialmedia-adapter` (bridge), `cortex-memory` |
+| **A — Capability satellite** | Self-hosted **tool/provider** on NATS + heartbeat; one (or few) clear verbs | `voice-stt`, `voice-tts`, `image-worker`, `llm-worker` (fleet façade), `cortex-memory` |
 | **B — Runtime worker** | Runs a **workerEngine** / agent or job runner (not a single tool) | `clipool-worker`, `omp-worker`; projected `code-worker` (Shape B jobs — if built) |
 | **C — Plomberie** | Bus, storage, edge, write-side; not tool-nature | hub, channel adapters, `blobstore` (HTTP), `turn-writer`, ingress |
 | **D — Client / ops** | Publishes requests or reads telemetry; not a provider | `voice-client`, `llm-operator`, dashboard-reader |
@@ -122,7 +122,7 @@ Before adding a process, container, or NATS identity, answer **yes/no**:
 | voice-stt / voice-tts | A | NATS satellite | keep |
 | image-worker | A | NATS satellite | keep |
 | llm-worker | A | NATS façade (HTTP backends behind) | keep; HTTP transport optional later |
-| socialmedia-adapter | A bridge | NATS → Postiz HTTP | keep while isolation/ACL value; target **HTTPS provider** if thin proxy only |
+| socialmedia-adapter | — | — | **removed** (#2329): thin unused NATS bridge; agents → Postiz skill/CLI; Postiz stays as backing |
 | cortex-memory | A | NATS today → **API (MCP optional)** | migrate; not hub vault slash |
 | clipool / omp | B | NATS runtime worker | keep |
 | code-worker (#1044) | B (if built) | job runner, not tool satellite | do **not** use for scrape-only |
@@ -229,7 +229,7 @@ Three observation layers: (1) in-process self-monitoring (circuit breakers, erro
 - Hub still runs `WebIntelScraper` subprocess — admitted as debt; target HTTP provider ([scrape-placement.md](scrape-placement.md)).
 - worker→provider rename incomplete: the heartbeat-consuming registry is still `WorkerRegistry` (`src/factory/nats/worker_registry.py`); satellite-flavored naming exists only in newer code and docs.
 - Uniform 5-layer dispatcher: design locked, rollout incremental; the shared tool protocol layer (in-process/remote wrappers, manifest) is not yet built in `packages/roxabi-contracts/`.
-- Voice and image subjects still use pre-infix prefixes (`factory.voice.tts.request`, `factory.image.generate.request`); only socialmedia carries the tool infix on the wire (`factory.tool.socialmedia.>`).
+- Voice and image subjects still use pre-infix prefixes (`factory.voice.tts.request`, `factory.image.generate.request`); the `tool.` infix is reserved for future tool domains (socialmedia NATS plane removed #2329).
 - ADR-007: the non-streaming path (`cli_pool_send.py`) still warns-and-ignores model-config mismatch; migration gated on model-selector work.
 - ADR-005 / #112: CliPool subprocess isolation (one subprocess per scope) and memory-namespace isolation per scope are not implemented; only hub-layer pool isolation is complete.
 - ADR-031: `register_session_command` (legacy) and `@register` (processor registry) coexist without a migration deadline; new commands should use `@register`.

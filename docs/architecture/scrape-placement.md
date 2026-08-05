@@ -92,7 +92,7 @@ agent tool / MCP           ──POST /scrape──▶  (same)
 
 ## Health without NATS heartbeat
 
-Same problem as socialmedia→HTTPS: **liveness ≠ “last request succeeded”.**
+Same problem as other HTTP providers (e.g. Postiz): **liveness ≠ “last request succeeded”.**
 
 | Signal | Mechanism |
 |---|---|

@@ -427,7 +427,6 @@ class TestOwnerFactoryFilter:
             "factory-nats-blobstore",
             "factory-nats-gh-helper",
             "factory-nats-omp",
-            "factory-nats-socialmedia",
             "factory-nats-ingress",
         }
         assert factory_container_secrets == expected, (
@@ -624,7 +623,7 @@ class TestOptionalSecretSkip:
             assert "SKIP" in result.stdout
 
     def test_policy_toml_optional_count(self) -> None:
-        """Policy file must declare exactly 8 optional secrets."""
+        """Policy file must declare exactly 7 optional secrets."""
         with POLICY_TOML.open("rb") as f:
             policy = tomllib.load(f)
         optionals = [
@@ -636,7 +635,6 @@ class TestOptionalSecretSkip:
             "factory-gh-pem",
             "factory-claude-oauth",
             "factory-litellm-key",
-            "factory-socialmedia-api-key",
             "factory-ingress-github-webhook",
             "factory-ingress-cloudflare-webhook",
             "factory-telegram-monitor-token",

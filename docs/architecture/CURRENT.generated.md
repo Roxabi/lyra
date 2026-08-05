@@ -44,7 +44,7 @@
 ### Per-part stage helpers/entrypoints isolation (HELPERS per part): locals (_*, router etc) not bypassed or crossed; adapters/shared use public surfaces only (ADR-073 + AGENTS.md)
 
 - **Type:** forbidden
-- **Source modules:** factory.adapters.shared, factory.adapters.shared.inbound, factory.adapters.telegram, factory.adapters.discord, factory.adapters.web, factory.adapters.socialmedia, factory.adapters.omp, factory.adapters.clipool, factory.adapters.nats, factory.adapters, factory.core, factory.nats, factory.llm, factory.infrastructure, factory.bootstrap, factory.dashboard, factory.agents, factory.commands, factory.monitoring, factory.obs, factory.integrations
+- **Source modules:** factory.adapters.shared, factory.adapters.shared.inbound, factory.adapters.telegram, factory.adapters.discord, factory.adapters.web, factory.adapters.omp, factory.adapters.clipool, factory.adapters.nats, factory.adapters, factory.core, factory.nats, factory.llm, factory.infrastructure, factory.bootstrap, factory.dashboard, factory.agents, factory.commands, factory.monitoring, factory.obs, factory.integrations
 - **Forbidden modules:** factory.inbound.router, factory.inbound.session_builder, factory.inbound.dispatcher, factory.outbound._emitter_run, factory.outbound._placeholder_lifecycle, factory.outbound._reasoning_accum, factory.outbound._streaming_state, factory.outbound._tool_recap, factory.streaming.event_emitter, factory.streaming.state_machine, factory.streaming.parser, factory.adapters.shared._shared_streaming_emitter, factory.adapters.shared._shared_streaming, factory.transport._result
 - **Ignore imports:** factory.adapters.shared.inbound.pipeline -> factory.inbound.dispatcher, factory.adapters.shared.inbound.pipeline -> factory.inbound.router, factory.adapters.shared.inbound.pipeline -> factory.inbound.session_builder, factory.adapters.discord.discord_formatter -> factory.outbound._reasoning_accum, factory.adapters.telegram.telegram_formatter -> factory.outbound._reasoning_accum, factory.core.cli.cli_streaming_parser -> factory.streaming.event_emitter, factory.core.cli.cli_streaming_parser -> factory.streaming.state_machine, factory.core.processors.stream_processor -> factory.streaming.event_emitter, factory.core.processors.stream_processor -> factory.streaming.state_machine, factory.core.processors.stream_close -> factory.streaming.state_machine, factory.core.processors.stream_text -> factory.streaming.state_machine, factory.core.processors.stream_tool -> factory.streaming.state_machine, factory.transport.nats_request_response -> factory.transport._result, factory.transport.http_transport -> factory.transport._result, factory.transport.worker_pool_client -> factory.transport._result
 - **Allow indirect imports:** True
@@ -138,8 +138,8 @@
 - **Publish:** factory.gh.mint_failure.>, factory.metric.host.container_report
 
 ### hub
-- **Publish:** $JS.ACK.FACTORY_OUTBOUND_AUDIO.>, $JS.API.>, $KV.factory-active-jobs.>, $KV.factory-msg-index.>, $KV.factory-state.>, $KV.factory_outbound_audio_sent.>, factory.audit.>, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.job.*.steer, factory.jobs.>, factory.jobs.claude, factory.llm.generate.request, factory.metric.>, factory.metric.host.container_report, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.outbound.web.>, factory.tool.socialmedia.>, factory.turns.get_cli_session, factory.turns.get_cli_session_by_pool, factory.turns.get_last_session, factory.turns.get_resume_count, factory.turns.get_turns, factory.turns.get_turns_by_session, factory.turns.list_recent_sessions, factory.turns.list_sessions, factory.turns.write, factory.typing.>, factory.voice.stt.lifecycle.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.lifecycle.>, factory.voice.tts.request, factory.voice.tts.request.>, roxabi.memory.>
-- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.dashboard.>, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.inbound.web.>, factory.job.*.progress, factory.job.*.result, factory.llm.heartbeat, factory.metric.host.container_report, factory.omp.heartbeat, factory.system.ready, factory.tool.socialmedia.heartbeat, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat, roxabi.memory.heartbeat
+- **Publish:** $JS.ACK.FACTORY_OUTBOUND_AUDIO.>, $JS.API.>, $KV.factory-active-jobs.>, $KV.factory-msg-index.>, $KV.factory-state.>, $KV.factory_outbound_audio_sent.>, factory.audit.>, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.job.*.steer, factory.jobs.>, factory.jobs.claude, factory.llm.generate.request, factory.metric.>, factory.metric.host.container_report, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.outbound.web.>, factory.turns.get_cli_session, factory.turns.get_cli_session_by_pool, factory.turns.get_last_session, factory.turns.get_resume_count, factory.turns.get_turns, factory.turns.get_turns_by_session, factory.turns.list_recent_sessions, factory.turns.list_sessions, factory.turns.write, factory.typing.>, factory.voice.stt.lifecycle.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.lifecycle.>, factory.voice.tts.request, factory.voice.tts.request.>, roxabi.memory.>
+- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.dashboard.>, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.inbound.web.>, factory.job.*.progress, factory.job.*.result, factory.llm.heartbeat, factory.metric.host.container_report, factory.omp.heartbeat, factory.system.ready, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat, roxabi.memory.heartbeat
 
 ### image-worker
 - **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.image.heartbeat
@@ -163,10 +163,6 @@
 ### omp-worker
 - **Publish:** $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.job.*.progress, factory.job.*.result, factory.metric.host.container_report, factory.omp.heartbeat, factory.system.ready
 - **Subscribe:** $KV.factory-state.>, _inbox.omp-worker.>, factory.job.*.steer, factory.jobs.omp
-
-### socialmedia-adapter
-- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.metric.host.container_report, factory.tool.socialmedia.heartbeat
-- **Subscribe:** $KV.factory-state.>, _inbox.socialmedia-adapter.>, factory.tool.socialmedia.>
 
 ### telegram-adapter
 - **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.CONSUMER.INFO.KV_factory-state.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, $JS.API.STREAM.NAMES, factory.event.>, factory.inbound.telegram.>, factory.metric.>, factory.metric.host.container_report, factory.system.ready
@@ -295,11 +291,6 @@
 
 ### promtail
 - **Container:** factory-promtail.container
-- **Host roles:** factory-hub
-
-### socialmedia-adapter
-- **Container:** factory-socialmedia-adapter.container
-- **Required secrets:** factory-nats-socialmedia, factory-socialmedia-api-key, factory_blobstore_token
 - **Host roles:** factory-hub
 
 ### telegram

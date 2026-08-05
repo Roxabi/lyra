@@ -69,7 +69,7 @@ Satellites import the same models the hub publishes against — publisher/subscr
 a type error, not a silent wire mismatch.
 
 Domain submodules include `voice`, `image`, `cli`, `llm`, `jobs`, `gh`, `audit`, `state`,
-`fleet`, `dashboard`, `socialmedia`, `turns`, `memory` (roxabi-cortex satellite, ADR-087 —
+`fleet`, `dashboard`, `turns`, `memory` (roxabi-cortex satellite, ADR-087 —
 subjects under `roxabi.memory.*`), and siblings — the package tree is the inventory.
 Notable recent moves:
 
@@ -99,12 +99,11 @@ its rationale are in the Pin doctrine section below.
 was re-implementing: `HttpBlobStore` singleton wiring (`roxabi_satellite.blobs`, ADR-068 env
 config), `coerce_envelope_fields` for hub payloads, `validate_nats_token` (public token
 validation with no private SDK imports), `resolve_worker_error` registries, and per-domain
-ingress validation + wire-safe error reply builders (`voice`, `image`, `llm`, `socialmedia`
+ingress validation + wire-safe error reply builders (`voice`, `image`, `llm`
 submodules). It is **not** a home for domain engines — Whisper/TTS/diffusion/LiteLLM logic stays
 in each CLI; adapters and runners stay in the satellite repos. It pulls `roxabi-contracts`,
-`roxabi-nats`, and `roxabi-blobs` transitively, and factory's own adapters (e.g.
-`factory.adapters.socialmedia`) consume it too, so hub and satellites validate ingress with the
-same code.
+`roxabi-nats`, and `roxabi-blobs` transitively so hub and satellites validate ingress with the
+same code. (Socialmedia NATS satellite removed #2329.)
 
 ### Transport layer
 

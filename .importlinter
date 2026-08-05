@@ -225,7 +225,6 @@ source_modules =
     factory.adapters.telegram
     factory.adapters.discord
     factory.adapters.web
-    factory.adapters.socialmedia
     factory.adapters.omp
     factory.adapters.clipool
     factory.adapters.nats

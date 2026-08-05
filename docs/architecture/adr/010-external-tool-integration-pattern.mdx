@@ -19,7 +19,7 @@ Amended 2026-07-01 (consolidation v2): Layer 3's "Phase 1 Bash allowlist / Phase
 The fork-vs-install rationale (Context, "Why forking doesn't work here", "When to fork instead") remains valid and load-bearing for stdio CLIs. What changed:
 
 - **Layer 3 is superseded.** Agent tool access is no longer framed as a Bash-allowlist-then-MCP roadmap. The canonical tool model is [`workers-tooling.md`](../workers-tooling.md) (2026-06-03): 5-layer taxonomy, uniform tool dispatcher (#1670 cutover shipped), `provider ⊋ satellite` runtime vocabulary.
-- **Tool surfaces moved to NATS.** New tool capabilities ship as NATS provider/satellite surfaces, not bash CLIs — e.g. `roxabi-contracts` ships `factory.tool.socialmedia.*` (`socialmedia/subjects.py`); voice/image are becoming NATS satellite providers (#1713).
+- **Tool surfaces moved to NATS when admission says so.** New tool capabilities that need multi-caller fleet routing ship as NATS provider/satellite surfaces (e.g. voice/image), not bash CLIs — see [`workers-tooling.md`](../workers-tooling.md) Rule 2 + admission checklist. The former `factory.tool.socialmedia.>` plane was **removed** (#2329): Postiz stays as HTTP backing; agents use skill/CLI (no NATS satellite).
 - **Wrappers live in code, not only skills.** Concrete integration wrappers exist at `src/factory/integrations/` (`web_intel.py`, `vault_cli.py`) — the "no code, just prompt engineering" claim in Layer 2 describes the roxabi-plugins skill layer only.
 - `Lyra` naming throughout is historical (project renamed to factory).
 

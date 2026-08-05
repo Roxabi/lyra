@@ -192,14 +192,6 @@ def _log_monitor() -> None:
     _boot(_bootstrap_log_monitor_standalone)
 
 
-@factory_app.command("socialmedia-adapter")
-def _socialmedia_adapter() -> None:
-    """Run the social media NATS satellite (tool.socialmedia → Postiz v1)."""
-    from factory.adapters.socialmedia.daemon import main as _socialmedia_main
-
-    _socialmedia_main()
-
-
 # ---------------------------------------------------------------------------
 # factory (root)
 # ---------------------------------------------------------------------------

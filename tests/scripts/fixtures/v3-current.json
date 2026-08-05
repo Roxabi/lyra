@@ -37,11 +37,6 @@
       "subject": "factory.voice.tts.request"
     },
     {
-      "requester": "hub",
-      "responder": "socialmedia-adapter",
-      "subject": "factory.tool.socialmedia.>"
-    },
-    {
       "requester": "web-adapter",
       "responder": "hub",
       "subject": "factory.dashboard.>"
@@ -78,7 +73,6 @@
         "factory.voice.stt.lifecycle.>",
         "factory.llm.generate.request",
         "factory.image.generate.request",
-        "factory.tool.socialmedia.>",
         "factory.jobs.claude",
         "factory.clipool.control",
         "factory.audit.>",
@@ -115,7 +109,6 @@
         "factory.llm.heartbeat",
         "factory.system.ready",
         "factory.image.heartbeat",
-        "factory.tool.socialmedia.heartbeat",
         "factory.clipool.heartbeat",
         "factory.omp.heartbeat",
         "factory.dashboard.>",
@@ -503,30 +496,6 @@
       "deploy": {
         "type": "container",
         "secret": "factory-nats-gh-helper"
-      }
-    },
-    "socialmedia-adapter": {
-      "status": "active",
-      "created_at": "2026-06-26",
-      "owner": "factory",
-      "description": "Social media tool satellite \u2014 factory.tool.socialmedia.* \u2192 Postiz Public API v1 (#1713).",
-      "notes": "Dual-network Quadlet (roxabi.network + postiz.network). wait_ready=False worker semantics. Inbox grant derived from request_reply_flows.",
-      "allow_responses": true,
-      "publish": [
-        "factory.metric.host.container_report",
-        "factory.tool.socialmedia.heartbeat",
-        "$JS.API.STREAM.INFO.KV_factory-state",
-        "$JS.API.STREAM.MSG.GET.KV_factory-state",
-        "_inbox.hub.>"
-      ],
-      "subscribe": [
-        "factory.tool.socialmedia.>",
-        "_inbox.socialmedia-adapter.>",
-        "$KV.factory-state.>"
-      ],
-      "deploy": {
-        "type": "container",
-        "secret": "factory-nats-socialmedia"
       }
     },
     "ingress": {

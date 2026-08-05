@@ -35,7 +35,6 @@ if TYPE_CHECKING:
     from factory.llm.llm_client import LlmClient
     from factory.nats.nats_bus import NatsBus
     from factory.nats.nats_channel_proxy import NatsChannelProxy
-    from factory.nats.socialmedia.nats_socialmedia_client import NatsSocialMediaClient
     from factory.typing import TypingListener
 
 
@@ -79,7 +78,6 @@ class VoiceBundle:
     stt_service: STTProtocol | None
     tts_service: TtsProtocol | None
     nats_llm_client: "LlmClient | None"
-    socialmedia_client: "NatsSocialMediaClient | None" = None
 
 
 @dataclass

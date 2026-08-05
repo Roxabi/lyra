@@ -29,7 +29,7 @@ EXPECTED_CONTAINERS = [
     "factory-turn-writer",
     "factory-blobstore",
     "factory-omp",
-    # factory-socialmedia-adapter — disabled in quadlet.toml until #1713 ready.
+    # factory-socialmedia-adapter removed (#2329) — Postiz via skill/CLI.
     "factory-ingress",
     "factory-cloudflared",
     "factory-loki",

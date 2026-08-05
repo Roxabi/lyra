@@ -1,7 +1,7 @@
 [project]
 name = "roxabi-satellite"
 version = "0.1.0"
-description = "Shared NATS satellite plumbing for Roxabi NATS workers (voice, image, llm, socialmedia)"
+description = "Shared NATS satellite plumbing for Roxabi NATS workers (voice, image, llm)"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12"

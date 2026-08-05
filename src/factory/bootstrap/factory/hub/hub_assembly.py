@@ -13,7 +13,6 @@ from factory.bootstrap.factory.hub.hub_llm_client import build_llm_client
 from factory.bootstrap.factory.llm_overlay import init_nats_llm
 from factory.bootstrap.factory.voice_overlay import (
     init_blobstore,
-    init_nats_socialmedia,
     init_nats_stt,
     init_nats_tts,
 )
@@ -74,8 +73,6 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
     await stt_service.start()
     tts_service = init_nats_tts(nc)
     await tts_service.start()
-    socialmedia_client = init_nats_socialmedia(nc)
-    await socialmedia_client.start()
     nats_llm_client = await init_nats_llm(nc)
 
     first_agent_config = agent_configs[next(iter(sorted(agent_configs)))]
@@ -93,7 +90,6 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
         stt_service=stt_service,
         tts_service=tts_service,
         nats_llm_client=nats_llm_client,
-        socialmedia_client=socialmedia_client,
     )
 
     hub = _build_hub(

@@ -95,7 +95,7 @@ set of deployed processes is the enabled `[component.*]` sections in
 `deploy/quadlet.toml`; enumerate the CLI surface with `factory --help` or
 `git grep -nE '@(adapter_app|hub_app)\.command|add_typer' src/factory/cli/main.py`
 (hub, `adapter {telegram,discord,web,clipool,omp}`, `turn-writer`, `ingress serve`,
-`blobstore serve`, socialmedia-adapter — invariants, not a hand-maintained count).
+`blobstore serve` — invariants, not a hand-maintained count).
 
 Topics: `factory.inbound.<platform>.<bot_id>` | `factory.outbound.<platform>.<bot_id>`
 

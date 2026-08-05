@@ -140,8 +140,6 @@ async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring
 
     finally:
         if voice is not None:
-            if voice.socialmedia_client is not None:
-                await voice.socialmedia_client.stop()
             if voice.nats_llm_client is not None:
                 await voice.nats_llm_client.stop()
         if clipool is not None and clipool.cli_nats_driver is not None:

@@ -14,7 +14,6 @@ This is **not** a replacement for domain engines (Whisper, Qwen-TTS, FLUX, LiteL
 | `roxabi_satellite.errors` | `WorkerError` registries + `resolve_worker_error` |
 | `roxabi_satellite.voice.validation` | STT/TTS ingress validation against `roxabi_contracts.voice` |
 | `roxabi_satellite.voice.replies` | Wire-safe STT/TTS error reply bytes |
-| `roxabi_satellite.socialmedia.*` | Postiz satellite validation, provider errors, reply builders |
 
 ## Install (external CLIs)
 
@@ -53,11 +52,8 @@ nats = ["roxabi-satellite", "nats-py>=2.6,<3", "nkeys>=0.1"]
 
 Adapters (`TtsNatsAdapter`, `SttNatsAdapter`) and runners (`run_synthesis`, `run_transcription`) **stay in voiceCLI**.
 
-## socialmedia (Postiz / Posties)
-
-Factory's `SocialMediaNatsAdapter` imports `roxabi_satellite.socialmedia` for ingress
-validation, `WorkerError` mapping (`provider.auth`, `provider.rate_limit`), and error replies.
-Postiz HTTP client logic stays in `factory.adapters.socialmedia.postiz_client`.
+Social media publishing is out of band (#2329): agents use the Postiz skill/CLI against
+the Postiz Public API — no factory NATS satellite / `roxabi_satellite.socialmedia` module.
 
 ## image / llm
 
@@ -74,7 +70,7 @@ Domain validation for image (LoRA paths, bounds) and LLM lifecycle stay in each 
 
 | Consumer | Config source | Env vars |
 |---|---|---|
-| voiceCLI, Factory Posties daemon | `roxabi_satellite.blobs` | `BLOBSTORE_*` (ADR-068); Factory quadlet may set `FACTORY_BLOBSTORE_*` (aliased at startup) |
+| voiceCLI | `roxabi_satellite.blobs` | `BLOBSTORE_*` (ADR-068); Factory quadlet may set `FACTORY_BLOBSTORE_*` (aliased at startup) |
 | imageCLI | `imagecli.nats.blobs` (local singleton) | `IMAGECLI_BLOBSTORE_*` / `imagecli.toml [blobstore]` — **not** ADR-068 names |
 
 imageCLI keeps its own blobstore loader because operators already mount `imagecli-blobstore-token` and configure `IMAGECLI_BLOBSTORE_URL`. Use `roxabi_satellite.image.delivery` for httpx-safe errors; migrate to `roxabi_satellite.blobs` only if imageCLI adopts ADR-068 env names.

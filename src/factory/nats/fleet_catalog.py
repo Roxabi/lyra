@@ -22,7 +22,6 @@ _INSTRUMENTED_COMPONENTS = frozenset(
         "gh-helper",
         "turn-writer",
         "blobstore",
-        "socialmedia-adapter",
         "ingress",
     }
 )

@@ -11,7 +11,7 @@ every declared component; the active-vs-disabled split comes from the `disabled 
 disabled). Derive any count from those two files rather than hand-maintaining it here. The core
 message path is the hub, the telegram/discord adapters
 and the clipool worker (diagram + table below); the full active set also includes
-`factory-dashboard`, `factory-socialmedia-adapter`, `factory-ingress`, `factory-cloudflared`,
+`factory-dashboard`, `factory-ingress`, `factory-cloudflared`,
 the `factory-loki` / `factory-promtail` / `factory-otel` observability units, and the llmCLI
 cloud gateway. The cloud gateway — `factory-litellm` (LiteLLM proxy) plus the
 `llmcli-xai-forwarder` / `llmcli-fw-forwarder` relays — is vendored from Roxabi/llmCLI:

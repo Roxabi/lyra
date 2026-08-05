@@ -23,103 +23,100 @@ Drift is gated by `scripts/check-acl-specs-drift.sh` (CI + pre-push).
 The row will grant `subscribe: factory.typing.>` to `code-worker` (it consumes typing events to throttle its own typing emission). Provisioning: `make nats-add-identity NAME=code-worker` when T3 worker fleet integration starts; the `_inbox.code-worker.>` grant is derived automatically from `request_reply_flows` per the renderer convention.
 
 <!-- acl-matrix:begin -->
-| Subject | hub | telegram-adapter | discord-adapter | web-adapter | voice-tts | voice-stt | llm-worker | llm-operator | image-worker | clipool-worker | dashboard-reader | voice-client | turn-writer | blobstore | gh-helper | socialmedia-adapter | ingress | omp-worker | cortex-memory |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| `$JS.API.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.CONSUMER.CREATE.*` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.CONSUMER.CREATE.FACTORY_OUTBOUND_AUDIO.>` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.CONSUMER.CREATE.FACTORY_TURNS.turn-writer-v1.>` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — |
-| `$JS.API.CONSUMER.INFO.FACTORY_OUTBOUND_AUDIO.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.CONSUMER.INFO.FACTORY_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — |
-| `$JS.API.CONSUMER.INFO.KV_factory-state.*` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.CONSUMER.MSG.NEXT.FACTORY_OUTBOUND_AUDIO.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.CONSUMER.MSG.NEXT.FACTORY_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — |
-| `$JS.API.DIRECT.GET.KV_factory-state.hub.ready` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
-| `$JS.API.INFO` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | PUB | — | — | — | PUB | — |
-| `$JS.API.STREAM.CREATE.FACTORY_TURNS` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — |
-| `$JS.API.STREAM.CREATE.KV_factory-state` | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — |
-| `$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.STREAM.INFO.FACTORY_TURNS` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — |
-| `$JS.API.STREAM.INFO.KV_factory-state` | — | PUB | PUB | PUB | PUB | PUB | PUB | — | PUB | PUB | — | — | — | PUB | — | PUB | — | PUB | — |
-| `$JS.API.STREAM.INFO.KV_factory_outbound_audio_sent` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.STREAM.MSG.GET.KV_factory-state` | — | PUB | PUB | PUB | PUB | PUB | PUB | — | PUB | PUB | — | — | — | — | — | PUB | — | PUB | — |
-| `$JS.API.STREAM.MSG.GET.KV_factory_outbound_audio_sent` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.STREAM.NAMES` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.STREAM.UPDATE.FACTORY_TURNS` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — |
-| `$KV.factory-active-jobs.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$KV.factory-msg-index.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `$KV.factory-state.>` | PUB | SUB | SUB | SUB | SUB | SUB | SUB | — | SUB | SUB | — | — | — | PUB | — | SUB | — | SUB | — |
-| `$KV.factory_outbound_audio_sent.>` | PUB | PUB+SUB | PUB+SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `_inbox.blobstore.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — |
-| `_inbox.clipool-worker.>` | — | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — |
-| `_inbox.cortex-memory.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB |
-| `_inbox.discord-adapter.>` | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `_inbox.hub.>` | SUB | — | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — | PUB | — | — | PUB | — | — | PUB |
-| `_inbox.image-worker.>` | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — |
-| `_inbox.llm-operator.>` | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — |
-| `_inbox.llmcli-llm.>` | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — |
-| `_inbox.omp-worker.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — |
-| `_inbox.socialmedia-adapter.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — | — | — |
-| `_inbox.telegram-adapter.>` | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `_inbox.turn-writer.>` | — | — | — | — | — | — | — | — | — | — | — | — | PUB+SUB | — | — | — | — | — | — |
-| `_inbox.voice-client.>` | — | — | — | — | PUB | PUB | — | — | — | — | — | SUB | — | — | — | — | — | — | — |
-| `_inbox.voice-stt.>` | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `_inbox.voice-tts.>` | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `_inbox.web-adapter.>` | PUB | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.audit.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — |
-| `factory.clipool.control` | PUB | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — |
-| `factory.clipool.heartbeat` | SUB | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | — | — | — |
-| `factory.dashboard.>` | SUB | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.event.>` | PUB | PUB | PUB | PUB | — | — | — | — | — | PUB | SUB | — | — | — | — | — | — | — | — |
-| `factory.event.cloudflare.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — |
-| `factory.event.github.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — |
-| `factory.gh.mint_failure.>` | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — |
-| `factory.image.generate.request` | PUB | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — |
-| `factory.image.heartbeat` | SUB | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | — | — | — | — |
-| `factory.inbound.discord.>` | SUB | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.inbound.telegram.>` | SUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.inbound.web.>` | SUB | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.job.*.progress` | SUB | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | — | PUB | — |
-| `factory.job.*.result` | SUB | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | — | PUB | — |
-| `factory.job.*.steer` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — |
-| `factory.jobs.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.jobs.claude` | PUB | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — |
-| `factory.jobs.omp` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — |
-| `factory.llm.generate.request` | PUB | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.llm.heartbeat` | SUB | — | — | — | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.llm.lifecycle.>` | — | — | — | — | — | — | SUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.metric.>` | PUB | PUB | PUB | PUB | — | — | — | — | — | PUB | SUB | — | — | — | — | — | — | — | — |
-| `factory.metric.host.container_report` | PUB+SUB | PUB | PUB | PUB | PUB | PUB | — | — | — | PUB | — | — | PUB | PUB | PUB | PUB | PUB | PUB | PUB |
-| `factory.omp.heartbeat` | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
-| `factory.outbound.audio.>` | PUB | SUB | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.outbound.discord.>` | PUB | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.outbound.telegram.>` | PUB | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.outbound.web.>` | PUB | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.system.ready` | SUB | PUB | PUB | PUB | PUB | PUB | — | — | — | PUB | — | — | — | — | — | — | — | PUB | — |
-| `factory.tool.socialmedia.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — | — | — |
-| `factory.tool.socialmedia.heartbeat` | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — |
-| `factory.turns.>` | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — |
-| `factory.turns.get_cli_session` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.turns.get_cli_session_by_pool` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.turns.get_last_session` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.turns.get_resume_count` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.turns.get_turns` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.turns.get_turns_by_session` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.turns.list_recent_sessions` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.turns.list_sessions` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.turns.write` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.typing.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.typing.discord.>` | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.typing.telegram.>` | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.typing.web.>` | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.voice.stt.heartbeat` | SUB | — | — | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.voice.stt.lifecycle.>` | PUB | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.voice.stt.request` | PUB | — | — | — | — | SUB | — | — | — | — | — | PUB | — | — | — | — | — | — | — |
-| `factory.voice.stt.request.>` | PUB | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.voice.tts.heartbeat` | SUB | — | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.voice.tts.lifecycle.>` | PUB | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.voice.tts.request` | PUB | — | — | — | SUB | — | — | — | — | — | — | PUB | — | — | — | — | — | — | — |
-| `factory.voice.tts.request.>` | PUB | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| Subject | hub | telegram-adapter | discord-adapter | web-adapter | voice-tts | voice-stt | llm-worker | llm-operator | image-worker | clipool-worker | dashboard-reader | voice-client | turn-writer | blobstore | gh-helper | ingress | omp-worker | cortex-memory |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `$JS.API.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.CONSUMER.CREATE.*` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.CONSUMER.CREATE.FACTORY_OUTBOUND_AUDIO.>` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.CONSUMER.CREATE.FACTORY_TURNS.turn-writer-v1.>` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — |
+| `$JS.API.CONSUMER.INFO.FACTORY_OUTBOUND_AUDIO.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.CONSUMER.INFO.FACTORY_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — |
+| `$JS.API.CONSUMER.INFO.KV_factory-state.*` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.CONSUMER.MSG.NEXT.FACTORY_OUTBOUND_AUDIO.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.CONSUMER.MSG.NEXT.FACTORY_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — |
+| `$JS.API.DIRECT.GET.KV_factory-state.hub.ready` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
+| `$JS.API.INFO` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | PUB | — | — | PUB | — |
+| `$JS.API.STREAM.CREATE.FACTORY_TURNS` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — |
+| `$JS.API.STREAM.CREATE.KV_factory-state` | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — |
+| `$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.STREAM.INFO.FACTORY_TURNS` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — |
+| `$JS.API.STREAM.INFO.KV_factory-state` | — | PUB | PUB | PUB | PUB | PUB | PUB | — | PUB | PUB | — | — | — | PUB | — | — | PUB | — |
+| `$JS.API.STREAM.INFO.KV_factory_outbound_audio_sent` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.STREAM.MSG.GET.KV_factory-state` | — | PUB | PUB | PUB | PUB | PUB | PUB | — | PUB | PUB | — | — | — | — | — | — | PUB | — |
+| `$JS.API.STREAM.MSG.GET.KV_factory_outbound_audio_sent` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.STREAM.NAMES` | — | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.STREAM.UPDATE.FACTORY_TURNS` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — |
+| `$KV.factory-active-jobs.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$KV.factory-msg-index.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `$KV.factory-state.>` | PUB | SUB | SUB | SUB | SUB | SUB | SUB | — | SUB | SUB | — | — | — | PUB | — | — | SUB | — |
+| `$KV.factory_outbound_audio_sent.>` | PUB | PUB+SUB | PUB+SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `_inbox.blobstore.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — | — | — | — |
+| `_inbox.clipool-worker.>` | — | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — |
+| `_inbox.cortex-memory.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB |
+| `_inbox.discord-adapter.>` | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `_inbox.hub.>` | SUB | — | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — | PUB | — | — | — | — | PUB |
+| `_inbox.image-worker.>` | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — |
+| `_inbox.llm-operator.>` | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — |
+| `_inbox.llmcli-llm.>` | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — |
+| `_inbox.omp-worker.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — |
+| `_inbox.telegram-adapter.>` | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `_inbox.turn-writer.>` | — | — | — | — | — | — | — | — | — | — | — | — | PUB+SUB | — | — | — | — | — |
+| `_inbox.voice-client.>` | — | — | — | — | PUB | PUB | — | — | — | — | — | SUB | — | — | — | — | — | — |
+| `_inbox.voice-stt.>` | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — |
+| `_inbox.voice-tts.>` | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `_inbox.web-adapter.>` | PUB | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.audit.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — | — |
+| `factory.clipool.control` | PUB | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — |
+| `factory.clipool.heartbeat` | SUB | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | — | — |
+| `factory.dashboard.>` | SUB | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.event.>` | PUB | PUB | PUB | PUB | — | — | — | — | — | PUB | SUB | — | — | — | — | — | — | — |
+| `factory.event.cloudflare.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — |
+| `factory.event.github.>` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — |
+| `factory.gh.mint_failure.>` | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — |
+| `factory.image.generate.request` | PUB | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — |
+| `factory.image.heartbeat` | SUB | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | — | — | — |
+| `factory.inbound.discord.>` | SUB | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.inbound.telegram.>` | SUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.inbound.web.>` | SUB | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.job.*.progress` | SUB | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | PUB | — |
+| `factory.job.*.result` | SUB | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | PUB | — |
+| `factory.job.*.steer` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — |
+| `factory.jobs.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.jobs.claude` | PUB | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — |
+| `factory.jobs.omp` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — |
+| `factory.llm.generate.request` | PUB | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.llm.heartbeat` | SUB | — | — | — | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.llm.lifecycle.>` | — | — | — | — | — | — | SUB | PUB | — | — | — | — | — | — | — | — | — | — |
+| `factory.metric.>` | PUB | PUB | PUB | PUB | — | — | — | — | — | PUB | SUB | — | — | — | — | — | — | — |
+| `factory.metric.host.container_report` | PUB+SUB | PUB | PUB | PUB | PUB | PUB | — | — | — | PUB | — | — | PUB | PUB | PUB | PUB | PUB | PUB |
+| `factory.omp.heartbeat` | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
+| `factory.outbound.audio.>` | PUB | SUB | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.outbound.discord.>` | PUB | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.outbound.telegram.>` | PUB | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.outbound.web.>` | PUB | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.system.ready` | SUB | PUB | PUB | PUB | PUB | PUB | — | — | — | PUB | — | — | — | — | — | — | PUB | — |
+| `factory.turns.>` | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — |
+| `factory.turns.get_cli_session` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_cli_session_by_pool` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_last_session` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_resume_count` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_turns` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.get_turns_by_session` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.list_recent_sessions` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.list_sessions` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.turns.write` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.typing.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.typing.discord.>` | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.typing.telegram.>` | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.typing.web.>` | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.voice.stt.heartbeat` | SUB | — | — | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.voice.stt.lifecycle.>` | PUB | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.voice.stt.request` | PUB | — | — | — | — | SUB | — | — | — | — | — | PUB | — | — | — | — | — | — |
+| `factory.voice.stt.request.>` | PUB | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.voice.tts.heartbeat` | SUB | — | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.voice.tts.lifecycle.>` | PUB | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.voice.tts.request` | PUB | — | — | — | SUB | — | — | — | — | — | — | PUB | — | — | — | — | — | — |
+| `factory.voice.tts.request.>` | PUB | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
 <!-- acl-matrix:end -->
 
 [^ready]: `factory.system.ready` — adapters and workers publish once on startup; hub subscribes to track liveness.

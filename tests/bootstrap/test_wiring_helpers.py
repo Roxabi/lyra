@@ -187,8 +187,6 @@ class TestInitVoiceServices:
         fake_tts = MagicMock()
         fake_tts.start = AsyncMock()
         fake_llm = MagicMock()
-        fake_socialmedia = MagicMock()
-        fake_socialmedia.start = AsyncMock()
 
         monkeypatch.setattr(
             "factory.bootstrap.factory.voice_overlay.init_nats_stt",
@@ -197,10 +195,6 @@ class TestInitVoiceServices:
         monkeypatch.setattr(
             "factory.bootstrap.factory.voice_overlay.init_nats_tts",
             lambda nc: fake_tts,
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.factory.voice_overlay.init_nats_socialmedia",
-            lambda nc: fake_socialmedia,
         )
         monkeypatch.setattr(
             "factory.bootstrap.factory.llm_overlay.init_nats_llm",
@@ -216,10 +210,8 @@ class TestInitVoiceServices:
         assert result.stt_service is fake_stt
         assert result.tts_service is fake_tts
         assert result.nats_llm_client is fake_llm
-        assert result.socialmedia_client is fake_socialmedia
         fake_stt.start.assert_awaited_once()
         fake_tts.start.assert_awaited_once()
-        fake_socialmedia.start.assert_awaited_once()
 
 
 class TestRunClipoolWorkerTask:

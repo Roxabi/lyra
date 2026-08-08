@@ -75,40 +75,54 @@ def _check(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
+async def _rpc(
+    hub: DashboardHubClient, subject: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Identity RPC with authz errors mapped to :class:`HubAuthError`.
+
+    ``DashboardHubClient._request`` raises ``HubUnauthorizedError`` /
+    ``HubForbiddenError`` on hub ``error`` envelopes (intended for protected
+    BFF routes). Public auth RPCs reuse the same error codes for login deny /
+    bad session — convert so handlers can return 401/403 instead of 500.
+    """
+    # Lazy import: hub_client imports nothing from hub_auth (avoid cycle).
+    from factory.dashboard.hub_client import HubForbiddenError, HubUnauthorizedError
+
+    try:
+        raw = await hub._request(subject, payload)  # noqa: SLF001
+    except HubUnauthorizedError as exc:
+        raise HubAuthError("unauthorized", str(exc)) from exc
+    except HubForbiddenError as exc:
+        raise HubAuthError("forbidden", str(exc)) from exc
+    return _check(raw)
+
+
 async def auth_login(
     hub: DashboardHubClient, *, email: str, password: str
 ) -> dict[str, Any]:
     req = DashboardAuthLoginRequest(email=email, password=password)
-    raw = await hub._request(SUBJECTS.auth_login, req.model_dump())  # noqa: SLF001
-    return _check(raw)
+    return await _rpc(hub, SUBJECTS.auth_login, req.model_dump())
 
 
 async def auth_session_resolve(
     hub: DashboardHubClient, *, session_token: str
 ) -> dict[str, Any]:
     req = DashboardAuthSessionResolveRequest(session_token=session_token)
-    raw = await hub._request(  # noqa: SLF001
-        SUBJECTS.auth_session_resolve, req.model_dump()
-    )
-    return _check(raw)
+    return await _rpc(hub, SUBJECTS.auth_session_resolve, req.model_dump())
 
 
 async def auth_api_key_resolve(
     hub: DashboardHubClient, *, api_key: str
 ) -> dict[str, Any]:
     req = DashboardAuthApiKeyResolveRequest(api_key=api_key)
-    raw = await hub._request(  # noqa: SLF001
-        SUBJECTS.auth_api_key_resolve, req.model_dump()
-    )
-    return _check(raw)
+    return await _rpc(hub, SUBJECTS.auth_api_key_resolve, req.model_dump())
 
 
 async def auth_logout(
     hub: DashboardHubClient, *, session_token: str | None
 ) -> dict[str, Any]:
     req = DashboardAuthLogoutRequest(session_token=session_token)
-    raw = await hub._request(SUBJECTS.auth_logout, req.model_dump())  # noqa: SLF001
-    return _check(raw)
+    return await _rpc(hub, SUBJECTS.auth_logout, req.model_dump())
 
 
 async def auth_invite_create(
@@ -121,10 +135,7 @@ async def auth_invite_create(
     req = DashboardAuthInviteCreateRequest(
         email=email, ttl_hours=ttl_hours, session_token=session_token
     )
-    raw = await hub._request(  # noqa: SLF001
-        SUBJECTS.auth_invite_create, req.model_dump()
-    )
-    return _check(raw)
+    return await _rpc(hub, SUBJECTS.auth_invite_create, req.model_dump())
 
 
 async def auth_invite_accept(
@@ -137,10 +148,7 @@ async def auth_invite_accept(
     req = DashboardAuthInviteAcceptRequest(
         token=token, password=password, display_name=display_name
     )
-    raw = await hub._request(  # noqa: SLF001
-        SUBJECTS.auth_invite_accept, req.model_dump()
-    )
-    return _check(raw)
+    return await _rpc(hub, SUBJECTS.auth_invite_accept, req.model_dump())
 
 
 async def auth_password_change(
@@ -154,18 +162,13 @@ async def auth_password_change(
         current_password=current_password,
         new_password=new_password,
     )
-    raw = await hub._request(  # noqa: SLF001
-        SUBJECTS.auth_password_change, req.model_dump()
-    )
-    return _check(raw)
+    return await _rpc(hub, SUBJECTS.auth_password_change, req.model_dump())
 
 
 async def org_list(hub: DashboardHubClient) -> dict[str, Any]:
-    raw = await hub._request(SUBJECTS.org_list, {})  # noqa: SLF001
-    return _check(raw)
+    return await _rpc(hub, SUBJECTS.org_list, {})
 
 
 async def org_create(hub: DashboardHubClient, *, name: str) -> dict[str, Any]:
     req = DashboardOrgCreateRequest(name=name)
-    raw = await hub._request(SUBJECTS.org_create, req.model_dump())  # noqa: SLF001
-    return _check(raw)
+    return await _rpc(hub, SUBJECTS.org_create, req.model_dump())

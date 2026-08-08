@@ -93,6 +93,31 @@ def test_login_deny_via_hub(client: TestClient) -> None:
     assert res.status_code == 401
 
 
+def test_login_deny_maps_hub_unauthorized_error(client: TestClient) -> None:
+    """Prod path: hub_client raises HubUnauthorizedError on login_deny (#auth 500)."""
+    from factory.dashboard.hub_client import HubUnauthorizedError
+
+    mock_hub = MagicMock()
+    mock_hub._request = AsyncMock(
+        side_effect=HubUnauthorizedError("invalid email or password")
+    )
+
+    def _hub_from_app(request):  # noqa: ANN001
+        del request
+        return mock_hub
+
+    with patch(
+        "factory.dashboard.routes.auth_routes.hub_client_from_app",
+        side_effect=_hub_from_app,
+    ):
+        res = client.post(
+            "/api/bff/auth/login",
+            json={"email": "admin@test.local", "password": "wrong"},
+        )
+    assert res.status_code == 401, res.text
+    assert "invalid email or password" in res.text
+
+
 def test_me_via_hub_session_resolve(client: TestClient) -> None:
     resolve_raw = {
         "ok": True,

@@ -1,6 +1,6 @@
 # CLAUDE.md / AGENTS.md Registry
 
-Instruction content lives in `AGENTS.md`. Each `CLAUDE.md` is a thin shim (`@AGENTS.md`; root also `@.claude/stack.yml`). Update here on add/rename/delete.
+Instruction content lives in `AGENTS.md`. Each `CLAUDE.md` is a thin shim (`@AGENTS.md`; root also `@.claude/stack.yml` + `@.claude/semctx.md`). Update here on add/rename/delete.
 
 | P (shim) | AGENTS.md | Scope |
 |---|---|---|

@@ -1,0 +1,17 @@
+# TruffleHog verified-result allowlist.
+#
+# Policy:
+# - tests/ and all paths remain scanned (do NOT --exclude-paths tests/).
+# - Only matching findings are ignored after verification.
+# - Never allowlist a live/prod credential — rotate it instead.
+#
+# Line kinds:
+#   # comment
+#   @rule detector=<Name> raw_regex=<python_re>   # structural false-positive class
+#   <exact Raw string>                           # one-off exact match
+#
+# tools/trufflehog_with_allowlist.sh applies this file.
+
+# Lob detector false-positives: pytest-style names (test_<snake>) that Lob's
+# "test key" verifier accepts. Real Lob live keys use live_* and still fail.
+@rule detector=Lob raw_regex=^test_[a-z0-9_]+$

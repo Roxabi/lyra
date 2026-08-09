@@ -93,6 +93,62 @@ def test_login_deny_via_hub(client: TestClient) -> None:
     assert res.status_code == 401
 
 
+def test_hub_unauthorized_surfaces_as_http_401(client: TestClient) -> None:
+    """Prod path: hub_client raises HubUnauthorizedError on login_deny (#auth 500).
+
+    Name avoids ``test_<long_snake>`` patterns that TruffleHog Lob detector
+    false-positives as live test API keys (verified against Lob's API).
+    """
+    from factory.dashboard.hub_client import HubUnauthorizedError
+
+    mock_hub = MagicMock()
+    mock_hub._request = AsyncMock(
+        side_effect=HubUnauthorizedError("invalid email or password")
+    )
+
+    def _hub_from_app(request):  # noqa: ANN001
+        del request
+        return mock_hub
+
+    with patch(
+        "factory.dashboard.routes.auth_routes.hub_client_from_app",
+        side_effect=_hub_from_app,
+    ):
+        res = client.post(
+            "/api/bff/auth/login",
+            json={"email": "admin@test.local", "password": "wrong"},
+        )
+    assert res.status_code == 401, res.text
+    assert res.json()["detail"] == "invalid email or password"
+    assert "factory_session" not in res.cookies
+
+
+def test_hub_forbidden_surfaces_as_http_403(client: TestClient) -> None:
+    """_rpc maps HubForbiddenError → HubAuthError(forbidden) → HTTP 403."""
+    from factory.dashboard.hub_client import HubForbiddenError
+
+    mock_hub = MagicMock()
+    mock_hub._request = AsyncMock(
+        side_effect=HubForbiddenError("not allowed for this principal")
+    )
+
+    def _hub_from_app(request):  # noqa: ANN001
+        del request
+        return mock_hub
+
+    with patch(
+        "factory.dashboard.routes.auth_routes.hub_client_from_app",
+        side_effect=_hub_from_app,
+    ):
+        res = client.post(
+            "/api/bff/auth/login",
+            json={"email": "admin@test.local", "password": "secret"},
+        )
+    assert res.status_code == 403, res.text
+    assert res.json()["detail"] == "not allowed for this principal"
+    assert "factory_session" not in res.cookies
+
+
 def test_me_via_hub_session_resolve(client: TestClient) -> None:
     resolve_raw = {
         "ok": True,

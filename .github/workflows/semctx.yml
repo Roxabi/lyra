@@ -1,23 +1,61 @@
 # semctx PR gate: BLOCK fails the check, WARN does not. Read-only, no secrets.
-# Uses the semctx GitHub Action from hoklims/semctx, pinned at v0.1.0.
+#
+# Does NOT use hoklims/semctx/packages/github-action: that action runs
+# `bun install --frozen-lockfile` and then executes the CLI from TS sources
+# (`apps/cli/src/index.ts`) — true at v0.1.0 as well as at v0.1.16. We fetch the
+# **bundled** CLI instead (`plugins/claude-code/dist/semctx.js`, self-contained,
+# `#!/usr/bin/env bun`) — the same artifact the local Claude Code plugin ships.
+# `--format github` emits the same annotations the action's adapter produced.
+#
+# Version: v0.1.16. The previous pin, v0.1.0, dates from 2026-07-04 and predates the
+# bundle entirely: CI was judging with an engine a month older than the dev machine.
+#
+# The bundle is downloaded into RUNNER_TEMP, outside the workspace — otherwise `index`
+# would swallow it (the default `exclude` does not cover a directory added at the root).
 name: Semctx
+
+permissions:
+  contents: read
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-permissions:
-  contents: read
+env:
+  # Pinned by commit SHA (immutable content) + verified checksum.
+  SEMCTX_REF: 6716f3db2d3f5959370d93bd4278d90c1ad9e23d # v0.1.16
+  SEMCTX_SHA256: 03d4ad5ca8bbab04d26d8cbe59574da9e4f1fd2f508d8139c5b0804888b3be3c
 
 jobs:
   semctx:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      # Full SHAs match ci.yml fleet pin (mutable @vN tags retarget without a workflow diff).
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          # Full history: the verdict needs the real merge-base.
           fetch-depth: 0
-      - uses: hoklims/semctx/packages/github-action@v0.1.0
+
+      # Runtime for the bundle only — unrelated to this repo's package manager.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          base: ${{ github.event.pull_request.base.sha }}
-          head: ${{ github.sha }}
-          fail-on: block
+          bun-version: "1.3.14"
+
+      - name: Fetch semctx CLI (self-contained bundle, no install)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/semctx.js" \
+            "https://raw.githubusercontent.com/hoklims/semctx/$SEMCTX_REF/plugins/claude-code/dist/semctx.js"
+          echo "$SEMCTX_SHA256  $RUNNER_TEMP/semctx.js" | sha256sum -c -
+
+      - name: Verify change impact
+        env:
+          SEMCTX_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          bun "$RUNNER_TEMP/semctx.js" init  --root .
+          bun "$RUNNER_TEMP/semctx.js" index --root .
+          bun "$RUNNER_TEMP/semctx.js" verify diff --root . \
+            --base "$SEMCTX_BASE" --head "$GITHUB_SHA" \
+            --format github --fail-on block

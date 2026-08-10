@@ -39,6 +39,7 @@ from roxabi_contracts.dashboard import (
     DashboardSessionsResumeResponse,
     DashboardSessionsTurnsRequest,
     DashboardSessionsTurnsResponse,
+    DashboardVoiceCapabilitiesResponse,
 )
 
 if TYPE_CHECKING:
@@ -316,3 +317,8 @@ class DashboardHubClient:
     async def rewarm_identity_cache(self) -> dict[str, Any]:
         """Ask hub to reload UserStore platform_identities after BFF link/unlink."""
         return await self._request(SUBJECTS.identity_cache_rewarm, {})
+
+    async def voice_capabilities(self) -> DashboardVoiceCapabilitiesResponse:
+        """TTS/STT catalogue from voice workers (engines, Grok voices, samples)."""
+        raw = await self._request(SUBJECTS.voice_capabilities, {})
+        return DashboardVoiceCapabilitiesResponse.model_validate(raw)

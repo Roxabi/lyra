@@ -185,9 +185,20 @@ class VoiceSampleInfo(BaseModel):
     cached: bool = False
 
 
+class VoiceIdInfo(BaseModel):
+    """Built-in (or account) TTS voice from engine catalogue (e.g. GET /v1/tts/voices)."""
+
+    voice_id: str
+    name: str = ""
+    language: str | None = None
+    gender: str | None = None
+    engine: str | None = None
+
+
 class VoiceTtsCapabilities(BaseModel):
     engines: list[VoiceEngineInfo] = []
     samples: list[VoiceSampleInfo] = []
+    voices: list[VoiceIdInfo] = []
     max_cached_engines: int = 1
     default_engine: str | None = None
     catalog_revision: str | None = None

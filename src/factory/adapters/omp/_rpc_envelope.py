@@ -72,6 +72,6 @@ async def publish_job_error(
     payload = make_result(job_id, trace_id=trace_id, status="error", error=worker_error)
     await nc.publish(jobs_result(job_id), payload)
     try:
-        await nc.flush(timeout=2.0)
+        await nc.flush(timeout=2)
     except Exception:  # noqa: BLE001 — best-effort; publish already queued
         pass

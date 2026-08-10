@@ -61,9 +61,7 @@ export function VoicePicker({
 
   const voiceOptions = useMemo(() => {
     if (!voices.length) {
-      return voice
-        ? [{ value: voice, label: voice, hint: t("voiceUnknown") }]
-        : [];
+      return voice ? [{ value: voice, label: voice, hint: t("voiceUnknown") }] : [];
     }
     const opts = voices.map((v) => {
       const bits = [v.gender, v.language].filter(Boolean);
@@ -99,9 +97,7 @@ export function VoicePicker({
           value={voice || voiceOptions[0]?.value || "eve"}
           disabled={offline || error || voiceOptions.length === 0}
           options={
-            voiceOptions.length
-              ? voiceOptions
-              : [{ value: voice || "eve", label: voice || "eve" }]
+            voiceOptions.length ? voiceOptions : [{ value: voice || "eve", label: voice || "eve" }]
           }
           onChange={onVoiceChange}
         />

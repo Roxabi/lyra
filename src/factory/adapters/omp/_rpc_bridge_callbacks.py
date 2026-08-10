@@ -63,7 +63,7 @@ class RpcBridgeCallbacksMixin:
         # Core NATS is fire-and-forget until flush; without it a fast worker exit
         # or connection churn can drop the terminal result before it hits the wire.
         try:
-            await nc.flush(timeout=2.0)
+            await nc.flush(timeout=2)
         except Exception as exc:  # noqa: BLE001 — best-effort; publish already queued
             log.warning(
                 "rpc_bridge: flush after JobResult failed job=%s: %s",

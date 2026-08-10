@@ -29,10 +29,7 @@ import { SOUL_SECTIONS } from "@/shared/lib/agents-constants";
 import type { HarnessKind } from "@/shared/lib/chats-storage";
 import { formatSoulSecretWarning, scanSoulMarkdownForSecrets } from "@/shared/lib/soul-secret-lint";
 
-function readTtsField(
-  voiceJson: Record<string, unknown> | null | undefined,
-  key: string,
-): string {
+function readTtsField(voiceJson: Record<string, unknown> | null | undefined, key: string): string {
   const tts = voiceJson?.tts;
   if (!tts || typeof tts !== "object") return "";
   const val = (tts as Record<string, unknown>)[key];

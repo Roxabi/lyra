@@ -93,7 +93,7 @@ RUN useradd -u 1500 -m factory \
 # sha256 of /opt/omp/omp at startup, so a carrier bump must land together with
 # the _PINNED_SHA256 update. Placed before the builder COPY so code-only builds
 # keep this pinned layer cached.
-COPY --from=ghcr.io/roxabi/factory-omp-base:17.2.12 /opt/omp/omp /opt/omp/omp
+COPY --from=ghcr.io/roxabi/factory-omp-base:16.2.12 /opt/omp/omp /opt/omp/omp
 
 COPY --from=builder --chown=factory:factory /app /app
 
@@ -135,7 +135,7 @@ ENV FACTORY_GH_BIN=/opt/factory-gh/gh
 # ── omp_rpc Python package (#1871) ─────────────────────────────────────────────
 # omp_rpc is deliberately kept OUT of uv.lock (alpha lib, pin-by-SHA pattern —
 # #1807/#1810). Install at image build time from the pinned commit that matches
-# OMP_VERSION=v17.2.12 / factory-omp-base:17.2.12. The commit SHA is locked here;
+# OMP_VERSION=v17.2.12 / factory-omp-base:16.2.12. The commit SHA is locked here;
 # a version bump must update deploy/omp-base/Containerfile OMP_VERSION+OMP_SHA256,
 # src/factory/adapters/omp/_rpc_digest.py _PINNED_SHA256, AND this pin — in lockstep.
 # uv is not present in agent-runtime (only in builder); bring the static binary from
@@ -143,7 +143,7 @@ ENV FACTORY_GH_BIN=/opt/factory-gh/gh
 # the project lockfile.
 COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
 RUN uv pip install --python /app/.venv/bin/python \
-      "git+https://github.com/can1357/oh-my-pi@45e12e5bb758198a920c6070e7e64cb33b21beac#subdirectory=python/omp-rpc"
+      "git+https://github.com/can1357/oh-my-pi@f70e4f1570872dc973a3f70f02dd8961969abe57#subdirectory=python/omp-rpc"
 # Build-time import smoke — fails the image build if omp_rpc is mis-installed or
 # the subdirectory path changes upstream. Closes the "declared but never importable" gap.
 RUN /app/.venv/bin/python -c "import omp_rpc"

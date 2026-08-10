@@ -148,7 +148,7 @@ Credentials (token, webhook_secret) are read from Podman secrets at bootstrap â€
 ```toml
 [[discord.bots]]
 bot_id = "lyra"
-auto_thread = true             # create thread per conversation (default: true)
+auto_thread = true             # create thread per conversation (default: false; opt-in via BotStore)
 agent = "lyra_default"         # fallback if DB has no botâ†’agent mapping
 thread_hot_hours = 36          # hours before thread is considered cold (default: 36)
 ```

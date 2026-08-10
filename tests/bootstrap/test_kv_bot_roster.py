@@ -11,11 +11,11 @@ from nats.js.errors import BucketNotFoundError, KeyNotFoundError
 
 from factory.bootstrap.wiring.kv_bot_roster import seed_bot_roster
 from factory.config import (
-    DISCORD_DEFAULT_AUTO_THREAD,
     DISCORD_DEFAULT_THREAD_HOT_HOURS,
     DiscordMultiConfig,
     TelegramMultiConfig,
 )
+from factory.core.agent.bot_models import DEFAULT_AUTO_THREAD
 from factory.infrastructure.kv.bot_roster import publish_bot_roster
 from roxabi_contracts.state.bot_roster import (
     PlatformRosterDocument,
@@ -178,7 +178,8 @@ async def test_seed_bot_roster_discord_applies_defaults() -> None:
 
     assert isinstance(result, DiscordMultiConfig)
     assert result.bots[0].bot_id == "aryl"
-    assert result.bots[0].auto_thread is DISCORD_DEFAULT_AUTO_THREAD
+    assert result.bots[0].auto_thread is DEFAULT_AUTO_THREAD
+    assert result.bots[0].auto_thread is False
     assert result.bots[0].thread_hot_hours == DISCORD_DEFAULT_THREAD_HOT_HOURS
 
 

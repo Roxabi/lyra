@@ -47,8 +47,10 @@ class DiscordFormatter(BaseFormatter):
       cast to ``_PartialMessageable``).
     - ``send_fallback``: delegates to ``discord_outbound.send`` so the full
       non-streaming send path (reply-to, metadata, typing) is reused.
-    - ``edit_tool_recap``: uses ``discord.Embed`` with green/blue colour logic
-      instead of plain text (Telegram uses plain MarkdownV2 text).
+    - **Single message**: tool recap + answer share one Discord message.
+      ``send_trace_placeholder`` reuses the answer placeholder; recap sits in
+      an embed (title on top), answer in the embed description below it.
+      Overflow answer chunks still go as follow-up messages via ``send_message``.
     """
 
     def __init__(  # noqa: PLR0913 — send-mechanics absorb added reply context args
@@ -69,6 +71,12 @@ class DiscordFormatter(BaseFormatter):
         self._should_reply = should_reply
         self._original_msg = original_msg
         self._reasoning = ReasoningAccumulator()
+        # Single-message composition state (recap + answer on one bubble).
+        self._placeholder_msg: Any | None = None
+        self._answer_text: str = ""
+        self._recap_lines: list[str] = []
+        self._recap_done: bool = False
+        self._reasoning_display: str | None = None
 
     # ── Pure-formatting axis implementations ──────────────────────────────────
 
@@ -97,6 +105,7 @@ class DiscordFormatter(BaseFormatter):
 
         Reply-vs-thread: skip reply in threads (thread context makes it redundant).
         Cast to _PartialMessageable is required for get_partial_message().
+        Cached for ``send_trace_placeholder`` reuse (single-message recap).
         """
         messageable = await self._adapter._resolve_channel(self._send_to_id)
         if self._should_reply and self._reply_msg_id is not None:
@@ -105,21 +114,30 @@ class DiscordFormatter(BaseFormatter):
             placeholder = await msg_obj.reply(self._placeholder_text)
         else:
             placeholder = await messageable.send(self._placeholder_text)
+        self._placeholder_msg = placeholder
+        self._answer_text = self._placeholder_text
         return placeholder, placeholder.id
 
     async def edit_placeholder_text(
         self, ph: Any, text: str, *, finalize: bool = False
     ) -> None:
         del finalize
-        display = text[-DISCORD_MAX_LENGTH:]
-        await send_with_retry(
-            lambda d=display: ph.edit(content=d, embed=None),
-            label="Intermediate text edit",
-        )
+        self._answer_text = text
+        await self._render_combined(ph)
 
     async def send_trace_placeholder(self) -> tuple[Any, int | None]:
+        """Reuse the answer placeholder — one Discord message for recap + reply.
+
+        Emitter always sends the answer placeholder first; tools arrive later.
+        Returning the same message object makes ``edit_tool_recap`` and
+        ``edit_placeholder_text`` compose into a single bubble.
+        """
+        if self._placeholder_msg is not None:
+            return self._placeholder_msg, self._placeholder_msg.id
+        # Fallback (should not happen in normal streaming order).
         messageable = await self._adapter._resolve_channel(self._send_to_id)
-        msg = await messageable.send("🔧 …")
+        msg = await messageable.send(self._placeholder_text)
+        self._placeholder_msg = msg
         return msg, msg.id
 
     async def send_message(self, text: str) -> int | None:
@@ -169,7 +187,7 @@ class DiscordFormatter(BaseFormatter):
         | ReasoningDeltaRenderEvent
         | ReasoningEndRenderEvent,
     ) -> None:
-        """Render reasoning events as dim italic text in the trace placeholder.
+        """Fold reasoning into the single combined message (dim italic).
 
         trace_obj=None means placeholder send failed — bail silently.
         Delta edits are throttled by ReasoningAccumulator.
@@ -178,11 +196,8 @@ class DiscordFormatter(BaseFormatter):
             return
         text, should_edit = self._reasoning.process(event)
         if should_edit and text is not None:
-            display = self.dim_italic(text)[-DISCORD_MAX_LENGTH:]
-            await send_with_retry(
-                lambda d=display: trace_obj.edit(content=d, embed=None),
-                label="Reasoning trace edit",
-            )
+            self._reasoning_display = self.dim_italic(text)
+            await self._render_combined(trace_obj)
 
     async def edit_tool_recap(
         self,
@@ -190,21 +205,62 @@ class DiscordFormatter(BaseFormatter):
         lines: list[str],
         done: bool,
     ) -> None:
-        """Render tool recap card lines into the trace placeholder embed.
+        """Render tool recap at the top of the single combined message.
 
-        Uses discord.Embed with green (done) or blue (in-progress) colour.
-        Telegram uses plain MarkdownV2 text; Discord-specific divergence kept here.
+        Recap is the embed title + leading description lines (green when done,
+        blue while working). Answer text (if any) follows in the same embed.
         """
         if not lines:
             return
-        # Discord embed limits: title ≤256, description ≤4096 (per discord API).
-        title = lines[0][:256]
-        description = ("\n".join(lines[1:]) or "​")[
-            :4096
-        ]  # zero-width space placeholder
-        color = discord.Color.green() if done else discord.Color.blue()
+        self._recap_lines = lines
+        self._recap_done = done
+        await self._render_combined(trace_obj)
+
+    async def _render_combined(self, msg: Any) -> None:
+        """Edit *msg* with recap (top) + optional reasoning + answer (bottom).
+
+        Layout when tools ran:
+          embed.title = recap header (🔧 Working… / Done ✅)
+          embed.description = tool lines, then reasoning, then answer
+          content cleared so the bubble is one visual card (recap first).
+
+        Layout without tools: plain content = answer (or reasoning).
+        """
+        answer = self._answer_text
+        # Hide the bare "…" placeholder once we have real body content.
+        show_answer = bool(answer) and answer != self._placeholder_text
+
+        if not self._recap_lines:
+            body_parts: list[str] = []
+            if self._reasoning_display:
+                body_parts.append(self._reasoning_display)
+            if show_answer:
+                body_parts.append(answer)
+            display = ("\n\n".join(body_parts) if body_parts else self._placeholder_text)[
+                -DISCORD_MAX_LENGTH:
+            ]
+            await send_with_retry(
+                lambda d=display: msg.edit(content=d, embed=None),
+                label="Combined text edit",
+            )
+            return
+
+        # Discord embed limits: title ≤256, description ≤4096.
+        title = self._recap_lines[0][:256]
+        desc_parts: list[str] = []
+        recap_body = "\n".join(self._recap_lines[1:])
+        if recap_body:
+            desc_parts.append(recap_body)
+        if self._reasoning_display:
+            desc_parts.append(self._reasoning_display)
+        if show_answer:
+            desc_parts.append(answer)
+        # Zero-width space keeps an empty embed description valid mid-flight.
+        description = ("\n\n".join(desc_parts) or "​")[:4096]
+        color = discord.Color.green() if self._recap_done else discord.Color.blue()
         embed = discord.Embed(title=title, description=description, color=color)
         try:
-            await trace_obj.edit(embed=embed)
+            # content="" drops the old "…" so only the embed card shows.
+            await msg.edit(content="", embed=embed)
         except discord.DiscordException as exc:
-            log.debug("Tool recap edit skipped: type=%s", type(exc).__name__)
+            log.debug("Combined recap edit skipped: type=%s", type(exc).__name__)

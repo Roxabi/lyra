@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from factory.config import (
-    DISCORD_DEFAULT_AUTO_THREAD,
     DISCORD_DEFAULT_THREAD_HOT_HOURS,
     DiscordBotConfig,
     DiscordMultiConfig,
@@ -31,7 +30,7 @@ def telegram_roster(bot_ids: list[str], **bot_kwargs: object) -> TelegramMultiCo
 def discord_roster(
     bot_ids: list[str],
     *,
-    auto_thread: bool = DISCORD_DEFAULT_AUTO_THREAD,
+    auto_thread: bool = False,
     thread_hot_hours: int = DISCORD_DEFAULT_THREAD_HOT_HOURS,
 ) -> DiscordMultiConfig:
     return DiscordMultiConfig(

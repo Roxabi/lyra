@@ -29,6 +29,14 @@ def _map_failure_body(data: dict[str, Any], status_code: int) -> ScrapeFailed:
     return ScrapeFailed("subprocess_error")
 
 
+def _parse_json_dict(resp: httpx.Response) -> dict[str, Any]:
+    try:
+        data = resp.json()
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 class HttpScrapeProvider:
     """Async scraper backed by the factory-scrape HTTP service."""
 
@@ -37,12 +45,20 @@ class HttpScrapeProvider:
         base_url: str | None = None,
         *,
         client: httpx.AsyncClient | None = None,
+        token: str | None = None,
     ) -> None:
         resolved = base_url if base_url is not None else _scrape_base_url()
         if not resolved:
             raise ValueError("FACTORY_SCRAPE_URL is not set")
         self._base = resolved.rstrip("/")
         self._client = client
+        tok = token if token is not None else os.environ.get("FACTORY_SCRAPE_TOKEN", "")
+        self._token = tok.strip()
+
+    def _auth_headers(self) -> dict[str, str]:
+        if not self._token:
+            return {}
+        return {"Authorization": f"Bearer {self._token}"}
 
     async def scrape(self, url: str, timeout: float = 30.0) -> str:
         """POST /scrape; map transport/API failures to ScrapeFailed."""
@@ -55,6 +71,7 @@ class HttpScrapeProvider:
                 resp = await client.post(
                     f"{self._base}/scrape",
                     json={"url": url, "timeout_s": timeout},
+                    headers=self._auth_headers(),
                 )
             except httpx.TimeoutException as exc:
                 raise ScrapeFailed("timeout") from exc
@@ -65,23 +82,9 @@ class HttpScrapeProvider:
                 )
                 raise ScrapeFailed("not_available") from exc
 
-            if resp.status_code in {400, 504, 503} or resp.status_code >= 500:
-                try:
-                    data = resp.json()
-                except ValueError:
-                    data = {}
-                if not isinstance(data, dict):
-                    data = {}
+            data = _parse_json_dict(resp)
+            if resp.status_code >= 400 or not data.get("success"):
                 raise _map_failure_body(data, resp.status_code)
-
-            try:
-                data = resp.json()
-            except ValueError as exc:
-                raise ScrapeFailed("subprocess_error") from exc
-            if not isinstance(data, dict) or not data.get("success"):
-                raise _map_failure_body(
-                    data if isinstance(data, dict) else {}, resp.status_code
-                )
             text = data.get("text") or ""
             if not text:
                 raise ScrapeFailed("subprocess_error")
@@ -92,9 +95,18 @@ class HttpScrapeProvider:
 
 
 def build_scrape_provider() -> Any:
-    """Return HttpScrapeProvider if FACTORY_SCRAPE_URL set, else WebIntelScraper."""
+    """Return HttpScrapeProvider if FACTORY_SCRAPE_URL set, else WebIntelScraper.
+
+    Container deploys (CONTAINER_NAME set) **require** FACTORY_SCRAPE_URL —
+    fail closed rather than falling back to host WebIntel (missing in images).
+    """
     if _scrape_base_url():
         return HttpScrapeProvider()
+    if os.environ.get("CONTAINER_NAME", "").strip():
+        raise RuntimeError(
+            "FACTORY_SCRAPE_URL is required in container deploys "
+            "(CONTAINER_NAME is set). Point hub at factory-scrape HTTP service."
+        )
     from factory.integrations.web_intel import WebIntelScraper
 
     return WebIntelScraper()

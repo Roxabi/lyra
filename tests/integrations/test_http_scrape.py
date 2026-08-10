@@ -64,3 +64,12 @@ def test_build_scrape_provider_http(monkeypatch: pytest.MonkeyPatch) -> None:
 
     p = build_scrape_provider()
     assert isinstance(p, HttpScrapeProvider)
+
+
+def test_container_fail_closed_without_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FACTORY_SCRAPE_URL", raising=False)
+    monkeypatch.setenv("CONTAINER_NAME", "factory-hub")
+    from factory.integrations.http_scrape import build_scrape_provider
+
+    with pytest.raises(RuntimeError, match="FACTORY_SCRAPE_URL"):
+        build_scrape_provider()

@@ -34,13 +34,45 @@ def require_https_url(url: str) -> str:
     return raw
 
 
+def _effective_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> (
+    ipaddress.IPv4Address | ipaddress.IPv6Address
+):
+    """Unwrap IPv4-mapped IPv6 so policy applies to the embedded v4."""
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    return ip
+
+
+def ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True if *ip* (after mapped unwrap) is non-global or Tailscale CGNAT."""
+    eff = _effective_ip(ip)
+    if (
+        eff.is_private
+        or eff.is_loopback
+        or eff.is_link_local
+        or eff.is_multicast
+        or eff.is_reserved
+        or eff.is_unspecified
+        or not eff.is_global
+    ):
+        return True
+    if isinstance(eff, ipaddress.IPv4Address) and eff in _TAILSCALE_NET:
+        return True
+    return False
+
+
 async def hostname_is_blocked(hostname: str) -> bool:
-    """True if *hostname* resolves to any non-global / Tailscale CGNAT address."""
+    """True if *hostname* resolves to any non-global / Tailscale CGNAT address.
+
+    Fail-closed on DNS errors (reject unresolvable).
+    """
     try:
         results = await asyncio.to_thread(socket.getaddrinfo, hostname, None)
-    except socket.gaierror:
-        # Unresolvable — allow through; fetch will fail cleanly.
-        return False
+    except socket.gaierror as exc:
+        raise SsrfRejected("unresolvable") from exc
+
+    if not results:
+        raise SsrfRejected("unresolvable")
 
     for _family, _type, _proto, _canon, sockaddr in results:
         addr_str = sockaddr[0]
@@ -48,18 +80,7 @@ async def hostname_is_blocked(hostname: str) -> bool:
             ip = ipaddress.ip_address(addr_str)
         except ValueError:
             continue
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-            or ip in _TAILSCALE_NET
-        ):
-            return True
-        # Explicit CGNAT check for IPv4 mapped edge cases
-        if isinstance(ip, ipaddress.IPv4Address) and ip in _TAILSCALE_NET:
+        if ip_is_blocked(ip):
             return True
     return False
 
@@ -68,6 +89,14 @@ async def assert_url_safe(url: str) -> str:
     """Validate *url* for scrape; return stripped https URL or raise SsrfRejected."""
     raw = require_https_url(url)
     host = urlparse(raw).hostname or ""
+    # Literal IP in hostname — check without DNS
+    try:
+        lit = ipaddress.ip_address(host)
+        if ip_is_blocked(lit):
+            raise SsrfRejected("private_ip")
+        return raw
+    except ValueError:
+        pass
     if await hostname_is_blocked(host):
         raise SsrfRejected("private_ip")
     return raw

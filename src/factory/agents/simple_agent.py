@@ -201,13 +201,13 @@ class SimpleAgent(AgentBase):
         from factory.core.processors.processor_registry import registry
 
         if self._session_tools is None:
-            # Transitional fallback: construct locally until all callers inject.
+            # Transitional fallback: same provider selection as agent_factory (#2327).
             from factory.integrations.cortex_vault import CortexVault
-            from factory.integrations.web_intel import WebIntelScraper
+            from factory.integrations.http_scrape import build_scrape_provider
 
             try:
                 self._session_tools = SessionTools(
-                    scraper=WebIntelScraper(), vault=CortexVault()
+                    scraper=build_scrape_provider(), vault=CortexVault()
                 )
             except (ImportError, OSError, RuntimeError, ValueError):
                 log.warning(

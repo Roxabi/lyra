@@ -238,3 +238,29 @@ def resolve_startup_model() -> str:
 
 def first_registry_model() -> str | None:
     return resolve_fallback_model(requested=None)
+
+
+# OMP 17+: CLI `--provider` is legacy and rejects models.yml custom providers
+# ("Unknown provider litellm"). Prefer `--model provider/id` selector at process
+# start. Mid-turn `set_model(provider, model_id)` still uses split args.
+DEFAULT_OMP_PROVIDER = "litellm"
+
+
+def compose_omp_cli_model(
+    model_id: str,
+    *,
+    provider: str = DEFAULT_OMP_PROVIDER,
+) -> str:
+    """Compose the OMP CLI ``--model`` selector (``provider/id``).
+
+    Bare catalogue ids (from LiteLLM ``GET /models``) are prefixed with
+    *provider*. Values that already contain ``/`` are returned unchanged so
+    callers can pass a full selector.
+    """
+    bare = (model_id or "").strip()
+    if not bare:
+        return bare
+    if "/" in bare:
+        return bare
+    prov = (provider or DEFAULT_OMP_PROVIDER).strip() or DEFAULT_OMP_PROVIDER
+    return f"{prov}/{bare}"

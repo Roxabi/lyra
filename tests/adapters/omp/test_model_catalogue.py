@@ -89,6 +89,20 @@ def mock_gateway(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         catalogue._load_litellm_provider.cache_clear()
 
 
+def test_compose_omp_cli_model_prefixes_bare_id() -> None:
+    assert catalogue.compose_omp_cli_model("grok-4.5") == "litellm/grok-4.5"
+    assert (
+        catalogue.compose_omp_cli_model("grok-4.5", provider="factory-litellm")
+        == "factory-litellm/grok-4.5"
+    )
+
+
+def test_compose_omp_cli_model_keeps_existing_selector() -> None:
+    assert (
+        catalogue.compose_omp_cli_model("litellm/grok-4.5") == "litellm/grok-4.5"
+    )
+
+
 def test_resolve_boot_model_uses_first_catalogue_id(mock_gateway: None) -> None:
     assert catalogue.resolve_boot_model() == "deepseek-v4-pro"
 

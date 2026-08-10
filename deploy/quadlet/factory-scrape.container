@@ -1,0 +1,37 @@
+[Unit]
+Description=Factory scrape HTTP service — URL → text (#2327)
+After=factory-nats.service
+Wants=factory-nats.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+StopTimeout=60
+# Same svc image as hub for now — extractor is httpx + stdlib HTML (no browser
+# download required). Playwright-heavy path can move to a dedicated image later.
+Image=ghcr.io/roxabi/factory:staging-svc
+Label=io.containers.autoupdate=registry
+ContainerName=factory-scrape
+Environment=CONTAINER_NAME=factory-scrape
+Environment=IMAGE_REF=ghcr.io/roxabi/factory:staging-svc
+Network=roxabi.network
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+UserNS=keep-id:uid=1500,gid=1500
+# No secrets required for public HTTPS scrape; SSRF enforced in-process.
+Exec=factory scrape serve --host 0.0.0.0 --port 8455
+# Internal only — hub reaches factory-scrape:8455 on roxabi network.
+# Host publish optional for debug (commented):
+# PublishPort=127.0.0.1:8455:8455
+# Single-quoted python3 -c (no ") — Quadlet HealthCmd quote rule #1370.
+HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8455/ready",timeout=3); sys.exit(0 if r.status==200 else 1)'
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+TimeoutStopSec=70
+RestartSec=10
+
+[Install]
+WantedBy=default.target

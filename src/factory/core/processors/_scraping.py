@@ -49,6 +49,7 @@ async def _is_private_ip(hostname: str) -> bool:
         except ValueError:
             continue
 
+        # Tailscale CGNAT 100.64/10 is not is_private in Python — block explicitly.
         if (
             ip.is_private
             or ip.is_loopback
@@ -56,8 +57,23 @@ async def _is_private_ip(hostname: str) -> bool:
             or ip.is_multicast
             or ip.is_reserved
             or ip.is_unspecified
+            or not ip.is_global
+            or (
+                isinstance(ip, ipaddress.IPv4Address)
+                and ip in ipaddress.ip_network("100.64.0.0/10")
+            )
         ):
             return True
+        # IPv4-mapped IPv6 (::ffff:x.x.x.x)
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+            v4 = ip.ipv4_mapped
+            if (
+                v4.is_private
+                or v4.is_loopback
+                or not v4.is_global
+                or v4 in ipaddress.ip_network("100.64.0.0/10")
+            ):
+                return True
 
     return False
 

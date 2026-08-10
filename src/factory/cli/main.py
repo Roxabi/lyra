@@ -35,6 +35,7 @@ from factory.cli.user import user_app
 from factory.cli.voice_smoke import voice_smoke_app
 from factory.ingress.cli import ingress_app
 from factory.otel.cli import otel_app
+from factory.scrape_service.cli import scrape_app
 
 # Register subcommands from sub-modules (import triggers @app.command())
 # after app objects are imported. Previously at module exit in cli_bot/cli_agent.
@@ -76,6 +77,7 @@ factory_app.add_typer(voice_smoke_app, name="voice-smoke")
 factory_app.add_typer(ops_app, name="ops")
 factory_app.add_typer(secrets_app, name="secrets")
 factory_app.add_typer(blobstore_app, name="blobstore")
+factory_app.add_typer(scrape_app, name="scrape")
 factory_app.add_typer(otel_app, name="otel")
 factory_app.add_typer(ingress_app, name="ingress")
 factory_app.add_typer(user_app, name="user")

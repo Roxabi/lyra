@@ -2,6 +2,8 @@
 Description=Factory Hub
 After=factory-nats.service
 After=factory-blobstore.service
+After=factory-scrape.service
+Wants=factory-scrape.service
 Requires=factory-nats.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
@@ -45,6 +47,8 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-hub.seed
 Environment=FACTORY_BLOBSTORE_URL=http://factory-blobstore:8449
 Environment=FACTORY_BLOBSTORE_TOKEN_PATH=/run/secrets/factory_blobstore_token
 Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_blobstore_token
+# #2327: HTTP scrape provider (factory-scrape unit on roxabi network)
+Environment=FACTORY_SCRAPE_URL=http://factory-scrape:8455
 Volume=factory-data.volume:/home/factory/.roxabi/factory:z
 # #2309: hub no longer RO-binds turn-writer/ — session reads via NATS request/reply
 # to factory-turn-writer (sole SQLite owner). Hub must not open turns.db (TurnQueryClient).

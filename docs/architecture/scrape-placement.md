@@ -107,9 +107,13 @@ Heartbeat push is optional candy; pull `/ready` + CB is enough.
 ## Migration slices (suggested)
 
 1. **Done** — remove vault-add product path; bare URL → `/explain`.
-2. Package web-intel as container (or bake into a small scrape image) with `POST /scrape` + `GET /ready`.
-3. HTTP-backed `ScrapeProvider` impl; wire in agent bootstrap.
-4. Drop hub dependency on `FACTORY_WEB_INTEL_PATH` / host `~/projects`.
+2. **Done (#2327)** — scrape HTTP service: `factory scrape serve`, Quadlet
+   `factory-scrape.container` (`POST /scrape`, `GET /ready` / `/health`).
+   Extractor: httpx + HTML text (no host plugin). Playwright-heavy image optional later.
+3. **Done (#2327)** — `HttpScrapeProvider` + `build_scrape_provider()`; hub injects
+   when `FACTORY_SCRAPE_URL` is set (hub unit sets `http://factory-scrape:8455`).
+4. **Done (#2327)** — container deploy path does not require `FACTORY_WEB_INTEL_PATH`
+   / host `~/projects` for hub scrape. Host-dev still falls back to `WebIntelScraper`.
 5. Optional: MCP or skill façade for agent runtime → same HTTP API.
 6. Optional later: retire hub `/explain`/`/summarize` if product prefers pure agent tools.
 

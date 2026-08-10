@@ -28,6 +28,7 @@ EXPECTED_CONTAINERS = [
     "factory-gh-helper",
     "factory-turn-writer",
     "factory-blobstore",
+    "factory-scrape",  # #2327 HTTP scrape provider
     "factory-omp",
     # factory-socialmedia-adapter removed (#2329) — Postiz via skill/CLI.
     "factory-ingress",

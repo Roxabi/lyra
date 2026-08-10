@@ -293,6 +293,10 @@
 - **Container:** factory-promtail.container
 - **Host roles:** factory-hub
 
+### scrape
+- **Container:** factory-scrape.container
+- **Host roles:** factory-hub
+
 ### telegram
 - **Container:** factory-telegram.container
 - **Required secrets:** factory-nats-telegram, factory_blobstore_token

@@ -37,7 +37,6 @@ from factory.infrastructure.soul.soul_ops import preload_soul_caches_for_rows
 from factory.infrastructure.stores.registry.agent_store import AgentStore
 from factory.integrations.base import SessionTools
 from factory.integrations.cortex_vault import CortexVault
-from factory.integrations.web_intel import WebIntelScraper
 from factory.llm.drivers.cli import ClaudeCliDriver
 from factory.llm.registry import ProviderRegistry
 
@@ -202,8 +201,11 @@ def _create_agent(deps: CreateAgentDeps) -> AgentBase:  # noqa: C901 — 3-branc
 
         if deps.session_tools is None:
             try:
+                # #2327: FACTORY_SCRAPE_URL → HttpScrapeProvider; else host WebIntel
+                from factory.integrations.http_scrape import build_scrape_provider
+
                 session_tools = SessionTools(
-                    scraper=WebIntelScraper(), vault=CortexVault()
+                    scraper=build_scrape_provider(), vault=CortexVault()
                 )
             except (OSError, ImportError, RuntimeError, ValueError):  # <issue:1639>
                 log.warning(

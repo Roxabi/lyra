@@ -1,4 +1,8 @@
-"""Fetch URL with redirect revalidation and extract plain text."""
+"""Fetch URL with redirect revalidation and extract plain text.
+
+Transitional (#2327): prod Quadlet pins ghcr.io/roxabi/intel-scrape (#2338).
+Do not grow this into a second long-term engine.
+"""
 
 from __future__ import annotations
 

@@ -91,9 +91,10 @@ def build_app(*, token: str | None = None) -> FastAPI:
     @app.get("/ready")
     async def ready() -> JSONResponse:
         try:
-            import httpx as _hx  # noqa: F401
+            import importlib
 
-            import factory.scrape_service.extract as _ex  # noqa: F401
+            importlib.import_module("httpx")
+            importlib.import_module("factory.scrape_service.extract")
         except ImportError as exc:
             log.warning("scrape ready fail: %s", exc)
             return JSONResponse({"ready": False}, status_code=503)

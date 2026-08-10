@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
+from factory.scrape_service.app import build_app
+
 __all__ = ["build_app"]
-
-
-def __getattr__(name: str):
-    if name == "build_app":
-        from factory.scrape_service.app import build_app
-
-        return build_app
-    raise AttributeError(name)

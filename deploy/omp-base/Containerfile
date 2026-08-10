@@ -1,5 +1,5 @@
-ARG OMP_VERSION=v16.2.12
-ARG OMP_SHA256=422650ce81304d4fbabc7b7ea3cc840b718ecc57a9fb00ae71660bec072677b2
+ARG OMP_VERSION=v17.2.12
+ARG OMP_SHA256=6c75331bf09d5a9e9433bd592b3ee993d751a15d5b7450c1a334cc0684996f30
 
 # apt layer isolated from the pin ARGs so a version bump never re-runs apt-get.
 FROM debian:12-slim AS base-tools

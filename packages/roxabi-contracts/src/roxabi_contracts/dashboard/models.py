@@ -186,7 +186,7 @@ class VoiceSampleInfo(BaseModel):
 
 
 class VoiceIdInfo(BaseModel):
-    """Built-in (or account) TTS voice from engine catalogue (e.g. GET /v1/tts/voices)."""
+    """Built-in / account TTS voice (e.g. from GET /v1/tts/voices)."""
 
     voice_id: str
     name: str = ""

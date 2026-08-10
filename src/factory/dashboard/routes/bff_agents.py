@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from factory.dashboard.hub_client import DashboardHubClient
 
 
-def register_agent_routes(  # noqa: C901
+def register_agent_routes(  # noqa: C901, PLR0915
     router: APIRouter, hub: DashboardHubClient
 ) -> None:
     @router.get("/voice/capabilities")

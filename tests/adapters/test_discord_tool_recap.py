@@ -244,7 +244,7 @@ async def test_text_only_turn_does_not_send_discord_trace_placeholder() -> None:
 
 
 async def test_intermediate_edit_uses_blue_color_and_working_title() -> None:
-    """Smoke: intermediate recap (done=False) → blue embed '🔧 Working…' on placeholder."""
+    """Smoke: intermediate recap (done=False) → blue Working… embed."""
     adapter = _make_discord_adapter()
     placeholder_msg, channel = _make_channel()
     adapter._resolve_channel = AsyncMock(return_value=channel)
@@ -373,7 +373,8 @@ async def test_fat_recap_preserves_full_answer_in_embed() -> None:
         should_reply=False,
     )
     await fmt.send_placeholder()
-    fat_recap = ["\U0001f527 Done ✅"] + [f"\U0001f310 `https://example.com/{i}`" for i in range(200)]
+    urls = [f"\U0001f310 `https://example.com/{i}`" for i in range(200)]
+    fat_recap = ["\U0001f527 Done ✅"] + urls
     answer = "A" * DISCORD_MAX_LENGTH  # first emitter chunk size
     await fmt.edit_tool_recap(ph, fat_recap, done=True)
     await fmt.edit_placeholder_text(ph, answer)

@@ -387,7 +387,7 @@ class TestMultibotConfigFromStore:
 
 
 class TestDiscordDefaultConstants:
-    """Discord defaults: auto_thread follows BotStore; thread_hot_hours stays Discord-specific."""
+    """Discord defaults: auto_thread → BotStore; thread_hot_hours stays Discord-only."""
 
     def test_discord_bot_config_default_auto_thread_matches_store(self) -> None:
         # BotStore is SSoT — no Discord-only True override.

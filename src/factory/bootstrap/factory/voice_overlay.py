@@ -101,7 +101,7 @@ def init_nats_stt(nc: "NATS") -> "NatsSttClient":
     model = (
         os.environ.get("FACTORY_STT_MODEL")
         or _deprecated_env("STT_MODEL_SIZE", "FACTORY_STT_MODEL")
-        or "large-v3-turbo"
+        or "grok-stt"  # SuperGrok cloud STT (voicecli monorepo default)
     )
     spec = _NatsWorkerSpec(
         hb_subject=SUBJECTS.stt_heartbeat,

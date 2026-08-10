@@ -61,8 +61,10 @@ Volume=%h/projects/roxabi-factory/deploy/nats/acl-matrix.json:/app/deploy/nats/a
 # Bind to 0.0.0.0 inside container so PublishPort forwarding reaches uvicorn;
 # host exposure is restricted to 127.0.0.1 by PublishPort below.
 Environment=FACTORY_HEALTH_HOST=0.0.0.0
-# Cold Qwen3 TTS model load takes ~60s; default 30s fires before model is ready.
+# Cloud SuperGrok TTS (xai) is faster; keep headroom for long replies.
 Environment=FACTORY_TTS_TIMEOUT=90
+# Align Discord/Telegram/hub STT with voicecli monorepo (no local Whisper).
+Environment=FACTORY_STT_MODEL=grok-stt
 # OTel hub spans → factory-otel raw store (ADR-097, #2069).
 Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://factory-otel:4317

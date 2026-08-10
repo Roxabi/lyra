@@ -41,6 +41,8 @@ Environment=FACTORY_TYPING_ENABLED=false
 # Without these the prod assert fails and ingest silently no-ops.
 Environment=FACTORY_BLOBSTORE_URL=http://factory-blobstore:8449
 Environment=FACTORY_BLOBSTORE_TOKEN_PATH=/run/secrets/factory_blobstore_token
+# Hub owns STT; keep adapters aligned if they ever init a client.
+Environment=FACTORY_STT_MODEL=grok-stt
 Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_blobstore_token
 # Per-bot Secret= directives are rendered at install time from
 # ~/.roxabi/factory/config.toml's [[auth.<platform>_bots]] enumeration.

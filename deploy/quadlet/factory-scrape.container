@@ -24,7 +24,8 @@ Exec=factory scrape serve --host 0.0.0.0 --port 8455
 # Internal only — hub reaches factory-scrape:8455 on roxabi network.
 # Host publish optional for debug (commented):
 # PublishPort=127.0.0.1:8455:8455
-HealthCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8455/ready')"
+# No double-quotes in HealthCmd (Quadlet #1370). Process cmdline contains "scrape".
+HealthCmd=grep -q scrape /proc/1/cmdline
 HealthInterval=30s
 
 [Service]

@@ -298,3 +298,88 @@ async def test_intermediate_edit_uses_blue_color_and_working_title() -> None:
         f"Expected at least one embed call with title={working_header!r} and "
         f"color=blue. Titles: {titles}, Colors: {colors}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Unit: DiscordFormatter combined composition edges
+# ---------------------------------------------------------------------------
+
+
+async def test_mid_tools_placeholder_not_in_embed_description() -> None:
+    """Tools-only recap must not leak the bare placeholder into embed description."""
+    from factory.adapters.discord import DiscordAdapter
+    from factory.adapters.discord.discord_formatter import DiscordFormatter
+
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+    )
+    ph = MagicMock()
+    ph.id = 42
+    ph.edit = AsyncMock(return_value=None)
+
+    channel = AsyncMock()
+    channel.send = AsyncMock(return_value=ph)
+    adapter._resolve_channel = AsyncMock(return_value=channel)
+
+    fmt = DiscordFormatter(
+        adapter,
+        send_to_id=1,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        should_reply=False,
+    )
+    await fmt.send_placeholder()
+    await fmt.edit_tool_recap(
+        ph,
+        ["\U0001f527 Working…", "\U0001f4bb `ls`"],
+        done=False,
+    )
+
+    assert ph.edit.await_count >= 1
+    last = ph.edit.call_args_list[-1]
+    embed = last.kwargs.get("embed")
+    assert embed is not None
+    desc = embed.description or ""
+    assert "…" not in desc
+    assert "\U0001f4bb" in desc
+
+
+async def test_fat_recap_preserves_full_answer_in_embed() -> None:
+    """Answer is reserved in embed budget; fat recap must not mid-cut answer."""
+    from factory.adapters.discord import DiscordAdapter
+    from factory.adapters.discord.discord_formatter import DiscordFormatter
+    from factory.adapters.shared._shared import DISCORD_MAX_LENGTH
+
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+    )
+    ph = MagicMock()
+    ph.id = 42
+    ph.edit = AsyncMock(return_value=None)
+
+    channel = AsyncMock()
+    channel.send = AsyncMock(return_value=ph)
+    adapter._resolve_channel = AsyncMock(return_value=channel)
+
+    fmt = DiscordFormatter(
+        adapter,
+        send_to_id=1,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        should_reply=False,
+    )
+    await fmt.send_placeholder()
+    fat_recap = ["\U0001f527 Done ✅"] + [f"\U0001f310 `https://example.com/{i}`" for i in range(200)]
+    answer = "A" * DISCORD_MAX_LENGTH  # first emitter chunk size
+    await fmt.edit_tool_recap(ph, fat_recap, done=True)
+    await fmt.edit_placeholder_text(ph, answer)
+
+    last = ph.edit.call_args_list[-1]
+    embed = last.kwargs["embed"]
+    desc = embed.description or ""
+    assert desc.endswith(answer), "full answer must be present (not mid-truncated)"
+    assert last.kwargs.get("content") == ""

@@ -128,7 +128,8 @@ class DiscordConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     token: str = Field(repr=False)
-    auto_thread: bool = True
+    # Aligned with BotStore DEFAULT_AUTO_THREAD (False) — opt in via env / BotStore.
+    auto_thread: bool = False
 
 
 def load_discord_config() -> DiscordConfig:
@@ -140,7 +141,8 @@ def load_discord_config() -> DiscordConfig:
     if not token:
         raise SystemExit("Missing required env var: DISCORD_TOKEN")
     auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
-    auto_thread = auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else True
+    # Env opt-in only; unset → False (BotStore SSoT).
+    auto_thread = auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else False
     return DiscordConfig(token=token, auto_thread=auto_thread)
 
 

@@ -225,6 +225,10 @@ class DiscordFormatter(BaseFormatter):
           content cleared so the bubble is one visual card (recap first).
 
         Layout without tools: plain content = answer (or reasoning).
+
+        Budget: embed description ≤4096. Answer is reserved first (emitter already
+        head-chunks at DISCORD_MAX_LENGTH); recap/reasoning shrink if needed so
+        the priced answer is never silently mid-cut by a fat recap.
         """
         answer = self._answer_text
         # Hide the bare "…" placeholder once we have real body content.
@@ -236,8 +240,9 @@ class DiscordFormatter(BaseFormatter):
                 body_parts.append(self._reasoning_display)
             if show_answer:
                 body_parts.append(answer)
+            # Head-slice matches final chunk() policy (not tail).
             display = ("\n\n".join(body_parts) if body_parts else self._placeholder_text)[
-                -DISCORD_MAX_LENGTH:
+                :DISCORD_MAX_LENGTH
             ]
             await send_with_retry(
                 lambda d=display: msg.edit(content=d, embed=None),
@@ -246,21 +251,44 @@ class DiscordFormatter(BaseFormatter):
             return
 
         # Discord embed limits: title ≤256, description ≤4096.
+        _EMBED_DESC_MAX = 4096
         title = self._recap_lines[0][:256]
-        desc_parts: list[str] = []
         recap_body = "\n".join(self._recap_lines[1:])
+        reasoning = self._reasoning_display or ""
+        answer_part = answer if show_answer else ""
+
+        # Prefer full answer; shrink recap then reasoning if over budget.
+        sep = "\n\n"
+        budget = _EMBED_DESC_MAX
+        if answer_part:
+            budget -= len(answer_part)
+            if recap_body or reasoning:
+                budget -= len(sep)
+        if recap_body and reasoning:
+            budget -= len(sep)
+        if recap_body and reasoning:
+            r_budget = min(len(reasoning), max(0, budget // 4))
+            c_budget = max(0, budget - r_budget)
+            recap_body = recap_body[:c_budget]
+            reasoning = reasoning[:r_budget]
+        elif recap_body:
+            recap_body = recap_body[: max(0, budget)]
+        elif reasoning:
+            reasoning = reasoning[: max(0, budget)]
+
+        desc_parts: list[str] = []
         if recap_body:
             desc_parts.append(recap_body)
-        if self._reasoning_display:
-            desc_parts.append(self._reasoning_display)
-        if show_answer:
-            desc_parts.append(answer)
+        if reasoning:
+            desc_parts.append(reasoning)
+        if answer_part:
+            desc_parts.append(answer_part)
         # Zero-width space keeps an empty embed description valid mid-flight.
-        description = ("\n\n".join(desc_parts) or "​")[:4096]
+        description = (sep.join(desc_parts) or "​")[:_EMBED_DESC_MAX]
         color = discord.Color.green() if self._recap_done else discord.Color.blue()
         embed = discord.Embed(title=title, description=description, color=color)
-        try:
-            # content="" drops the old "…" so only the embed card shows.
-            await msg.edit(content="", embed=embed)
-        except discord.DiscordException as exc:
-            log.debug("Combined recap edit skipped: type=%s", type(exc).__name__)
+        # content="" drops the old "…" so only the embed card shows.
+        await send_with_retry(
+            lambda e=embed: msg.edit(content="", embed=e),
+            label="Combined recap edit",
+        )

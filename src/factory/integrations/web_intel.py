@@ -1,10 +1,13 @@
-"""WebIntelScraper — ScrapeProvider backed by the roxabi web-intel plugin (issue #360).
+"""WebIntelScraper — host-dev ScrapeProvider via roxabi-intel web-intel (issue #360).
 
 Invokes: uv run python scripts/scraper.py <url>
 inside the web-intel plugin directory (separate venv: playwright, trafilatura).
 
+Prod uses HttpScrapeProvider → intel-scrape image (factory#2338 / intel#27).
+This path is host-dev fallback only (when FACTORY_SCRAPE_URL is unset).
+
 Override plugin root with FACTORY_WEB_INTEL_PATH env var.
-Default: ~/projects/roxabi-plugins/plugins/web-intel
+Default: ~/projects/roxabi/roxabi-intel/plugins/web-intel
 """
 
 from __future__ import annotations
@@ -38,7 +41,12 @@ class WebIntelScraper:
             self._root = resolved
         else:
             self._root = plugin_root or (
-                Path.home() / "projects" / "roxabi-plugins" / "plugins" / "web-intel"
+                Path.home()
+                / "projects"
+                / "roxabi"
+                / "roxabi-intel"
+                / "plugins"
+                / "web-intel"
             )
 
     async def scrape(self, url: str, timeout: float = 30.0) -> str:

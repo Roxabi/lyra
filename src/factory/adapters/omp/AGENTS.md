@@ -46,6 +46,11 @@ then publishes per-job lifecycle events back to the bus.
   repo's `models.yml` is layered **read-only on top** (SSoT). The LiteLLM base URL override
   lives in `models.yml` under `providers.litellm.baseUrl` — it is NOT an env var.
 
+- **OMP 17 model selector** — CLI `--provider` is legacy and rejects models.yml providers
+  (`Unknown provider "litellm"`). `OmpPool` / `RpcBridge` start `RpcClient` with
+  `provider=None` and `model=compose_omp_cli_model(id)` → `--model litellm/<id>`.
+  Mid-turn switches still use `set_model(provider, bare_id)`.
+
 - **Writable runtime FS under `ReadOnly=true`** — omp also writes `$HOME/.omp` at boot
   (file-log transport + native modules unpacked & dlopen'd under `natives/`). It is a
   tmpfs at **`mode=1777`**: a root-owned `0755` tmpfs EACCESes for uid 1500, and `noexec`

@@ -796,11 +796,14 @@ class TestStartLifecycle:
         assert received_kwargs.get("no_session") is False, (
             "no_session=False must be passed to RpcClient"
         )
-        assert received_kwargs.get("provider") == "litellm", (
-            f"expected provider='litellm', got: {received_kwargs.get('provider')}"
+        # OMP 17+: no legacy --provider; model is the provider/id selector.
+        assert received_kwargs.get("provider") is None, (
+            f"expected provider=None (OMP 17 selector path), "
+            f"got: {received_kwargs.get('provider')}"
         )
-        assert received_kwargs.get("model") == "grok-test-non-reasoning", (
-            f"expected resolved startup model, got: {received_kwargs.get('model')}"
+        assert received_kwargs.get("model") == "litellm/grok-test-non-reasoning", (
+            "expected litellm/<startup model> selector, "
+            f"got: {received_kwargs.get('model')}"
         )
         assert received_kwargs.get("request_timeout") == _DEFAULT_REQUEST_TIMEOUT, (
             "expected default request_timeout when unset"

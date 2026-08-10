@@ -17,7 +17,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from factory.adapters.omp import _rpc_digest
-from factory.adapters.omp._model_catalogue import resolve_startup_model
+from factory.adapters.omp._model_catalogue import (
+    DEFAULT_OMP_PROVIDER,
+    compose_omp_cli_model,
+    resolve_startup_model,
+)
 from factory.adapters.omp._rpc_bridge_callbacks import RpcBridgeCallbacksMixin
 from factory.adapters.omp._rpc_bridge_steer import (
     RpcBridgeSteerMixin,
@@ -42,7 +46,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _DEFAULT_PROVIDER = (
-    "litellm"  # routes through factory LiteLLM proxy (deploy/omp/models.yml)
+    DEFAULT_OMP_PROVIDER  # models.yml providers.litellm → factory LiteLLM proxy
 )
 _OMP_BIN = _rpc_digest._OMP_BIN
 _PINNED_SHA256 = _rpc_digest._PINNED_SHA256
@@ -109,6 +113,9 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
             # provider/model are constructor kwargs only — no env axis. The runtime
             # model list comes from deploy/omp/models.yml (via PI_CODING_AGENT_DIR),
             # not from OMP_PROVIDER/OMP_MODEL env vars (#1876).
+            # OMP 17+: do not pass legacy --provider (rejects models.yml providers);
+            # pass --model provider/id selector instead. set_model() still uses
+            # split (provider, bare_id) mid-turn.
             resolved_timeout = (
                 request_timeout
                 if request_timeout is not None
@@ -116,8 +123,10 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
             )
             self._client = omp_rpc.RpcClient(
                 executable=str(omp_bin),
-                provider=resolved_provider,
-                model=resolved_model,
+                provider=None,
+                model=compose_omp_cli_model(
+                    resolved_model, provider=resolved_provider
+                ),
                 no_session=False,
                 request_timeout=resolved_timeout,
             )

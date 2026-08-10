@@ -38,6 +38,8 @@ log = logging.getLogger(__name__)
 # omp binary path — image-build constant (NEVER from env). The sha256 pin + its
 # verification live in _rpc_bridge (_verify_digest) — reused, not duplicated.
 _OMP_BIN = Path("/opt/omp/omp")
+# Provider id for models.yml / set_model — not passed as OMP CLI --provider (legacy
+# on OMP 17+; see compose_omp_cli_model).
 _DEFAULT_PROVIDER = "litellm"
 
 # max concurrent omp workers — size to available RAM (each worker ≈ one omp subprocess).
@@ -211,7 +213,10 @@ class OmpPool:
         # Deferred import — omp_rpc is a container image dep (absent from pyproject).
         import omp_rpc  # type: ignore[import-not-found]
 
-        from factory.adapters.omp._model_catalogue import resolve_startup_model
+        from factory.adapters.omp._model_catalogue import (
+            compose_omp_cli_model,
+            resolve_startup_model,
+        )
         from factory.adapters.omp._rpc_bridge import (
             RpcBridge,
             _read_request_timeout,
@@ -230,10 +235,16 @@ class OmpPool:
             if self._request_timeout is not None
             else _read_request_timeout()
         )
+        # OMP 17+: legacy --provider rejects models.yml providers ("Unknown
+        # provider litellm"). Start with --model provider/id only; keep
+        # self._provider for mid-turn set_model(provider, bare_id).
         client_kwargs: dict[str, Any] = {
             "executable": str(self._omp_bin),
-            "provider": self._provider,
-            "model": resolved_model,
+            "provider": None,
+            "model": compose_omp_cli_model(
+                resolved_model,
+                provider=self._provider or _DEFAULT_PROVIDER,
+            ),
             "no_session": False,
             "request_timeout": resolved_timeout,
         }

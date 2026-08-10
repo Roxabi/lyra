@@ -25,6 +25,7 @@ import {
   mockSessions,
   mockSoulPreview,
   mockSpans,
+  mockVoiceCapabilities,
   patchMockAdminUser,
   takeChatText,
   upsertMockAgentConfig,
@@ -477,6 +478,12 @@ async function handleMockApi(
         return;
       }
       sendJson(res, 200, result);
+      return;
+    }
+
+    // GET /api/bff/voice/capabilities (TTS engines + Grok voices)
+    if (method === "GET" && path === "/api/bff/voice/capabilities") {
+      sendJson(res, 200, mockVoiceCapabilities());
       return;
     }
 

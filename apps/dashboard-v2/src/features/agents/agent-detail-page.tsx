@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   fetchAgentConfig,
   fetchAgentSoul,
+  fetchVoiceCapabilities,
   patchAgentConfig,
   previewAgentSoul,
   putAgentSoul,
@@ -23,9 +24,17 @@ import {
 import { AgentIdentity } from "@/shared/components/agent-identity";
 import { HarnessPicker } from "@/shared/components/harness-picker";
 import { ModelPicker } from "@/shared/components/model-picker";
+import { VoicePicker } from "@/shared/components/voice-picker";
 import { SOUL_SECTIONS } from "@/shared/lib/agents-constants";
 import type { HarnessKind } from "@/shared/lib/chats-storage";
 import { formatSoulSecretWarning, scanSoulMarkdownForSecrets } from "@/shared/lib/soul-secret-lint";
+
+function readTtsField(voiceJson: Record<string, unknown> | null | undefined, key: string): string {
+  const tts = voiceJson?.tts;
+  if (!tts || typeof tts !== "object") return "";
+  const val = (tts as Record<string, unknown>)[key];
+  return typeof val === "string" ? val : "";
+}
 
 function composeSoulMarkdown(sections: SoulSections): string {
   return SOUL_SECTIONS.map((s) => {
@@ -50,6 +59,8 @@ export function AgentDetailPage() {
   const [tagline, setTagline] = useState("");
   const [harness, setHarness] = useState<HarnessKind>("claude-cli");
   const [model, setModel] = useState("sonnet");
+  const [ttsEngine, setTtsEngine] = useState("xai");
+  const [ttsVoice, setTtsVoice] = useState("eve");
 
   useEffect(() => {
     setLiteral(name);
@@ -67,6 +78,12 @@ export function AgentDetailPage() {
     enabled: !!name,
   });
 
+  const voiceCapsQ = useQuery({
+    queryKey: ["voice-capabilities"],
+    queryFn: fetchVoiceCapabilities,
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
     const cfg = configQ.data;
     if (!cfg) return;
@@ -74,7 +91,11 @@ export function AgentDetailPage() {
     setModel(cfg.model);
     setDisplayName(cfg.soul_meta_json?.header?.display_name ?? "");
     setTagline(cfg.soul_meta_json?.header?.tagline ?? "");
-  }, [configQ.data]);
+    const eng = readTtsField(cfg.voice_json, "engine");
+    const voi = readTtsField(cfg.voice_json, "voice");
+    setTtsEngine(eng || voiceCapsQ.data?.tts?.default_engine || "xai");
+    setTtsVoice(voi || "eve");
+  }, [configQ.data, voiceCapsQ.data?.tts?.default_engine]);
 
   useEffect(() => {
     if (soulQ.data?.sections) {
@@ -92,11 +113,28 @@ export function AgentDetailPage() {
   const saveMut = useMutation({
     mutationFn: async () => {
       const md = soulMarkdown;
+      const current = configQ.data;
+      const prevTts =
+        current?.voice_json?.tts && typeof current.voice_json.tts === "object"
+          ? (current.voice_json.tts as Record<string, unknown>)
+          : {};
+      const prevStt =
+        current?.voice_json?.stt && typeof current.voice_json.stt === "object"
+          ? (current.voice_json.stt as Record<string, unknown>)
+          : {};
       await patchAgentConfig(name, {
         backend: harness,
         model,
         display_name: displayName,
         tagline,
+        voice_json: {
+          tts: {
+            ...prevTts,
+            engine: ttsEngine || null,
+            voice: ttsVoice || null,
+          },
+          stt: prevStt,
+        },
       });
       await putAgentSoul(name, { markdown: md });
     },
@@ -240,6 +278,36 @@ export function AgentDetailPage() {
               }}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">{t("voiceTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">{t("voiceHint")}</p>
+          <VoicePicker
+            engines={voiceCapsQ.data?.tts?.engines ?? []}
+            voices={voiceCapsQ.data?.tts?.voices ?? []}
+            engine={ttsEngine}
+            voice={ttsVoice}
+            offline={voiceCapsQ.isLoading}
+            error={voiceCapsQ.isError || Boolean(voiceCapsQ.data?.error)}
+            onEngineChange={(v) => {
+              setTtsEngine(v);
+              setDirty(true);
+            }}
+            onVoiceChange={(v) => {
+              setTtsVoice(v);
+              setDirty(true);
+            }}
+          />
+          {ttsVoice ? (
+            <Badge variant="outline" className="font-mono">
+              {ttsEngine || "xai"} / {ttsVoice}
+            </Badge>
+          ) : null}
         </CardContent>
       </Card>
 

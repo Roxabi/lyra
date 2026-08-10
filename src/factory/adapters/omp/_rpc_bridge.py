@@ -189,9 +189,7 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
             return turn, turn_error, None
 
         attempted = requested_model or self._startup_model
-        fallback = await asyncio.to_thread(
-            resolve_fallback_model, requested=attempted
-        )
+        fallback = await asyncio.to_thread(resolve_fallback_model, requested=attempted)
         if not fallback or fallback == attempted:
             return turn, turn_error, None
 
@@ -264,8 +262,15 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
             # Publish here — guaranteed to see the completed turn value.
             # _on_agent_end fires on the stdout thread BEFORE prompt_and_wait returns
             # so it cannot safely read _last_turn; this is the only safe publish site.
-            if nc is not None and not self._result_sent:
-                self._result_sent = True
+            if nc is None:
+                log.error(
+                    "rpc_bridge: nc is None — cannot publish JobResult for job=%s "
+                    "(pool.register(nc) missing on embedded bootstrap path?)",
+                    job_id,
+                )
+            elif not self._result_sent:
+                # Set _result_sent only AFTER a successful publish so publish_error
+                # can still fire if outcome publish raises mid-flight.
                 await self._publish_turn_outcome(
                     nc,
                     job_id,
@@ -276,6 +281,7 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
                         session_file=session_file,
                     ),
                 )
+                self._result_sent = True
         finally:
             self._in_prompt_await = False
             if steer_sub is not None:

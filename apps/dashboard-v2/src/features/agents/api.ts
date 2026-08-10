@@ -62,6 +62,7 @@ export async function patchAgentConfig(
     model?: string;
     display_name?: string;
     tagline?: string;
+    voice_json?: Record<string, unknown> | null;
   },
 ): Promise<AgentConfig> {
   const res = await bffFetch(`/api/bff/agents/${encodeURIComponent(name)}`, {
@@ -71,6 +72,50 @@ export async function patchAgentConfig(
   });
   if (!res.ok) throw new Error("agent patch failed");
   return res.json() as Promise<AgentConfig>;
+}
+
+export interface VoiceEngineInfo {
+  name: string;
+  supports_voice: boolean;
+  supports_clone: boolean;
+  vram_gib_est: number | null;
+}
+
+export interface VoiceIdInfo {
+  voice_id: string;
+  name: string;
+  language?: string | null;
+  gender?: string | null;
+  engine?: string | null;
+}
+
+export interface VoiceSampleInfo {
+  id: string;
+  store_key: string | null;
+  filename: string;
+  cached: boolean;
+}
+
+export interface VoiceCapabilities {
+  tts: {
+    engines: VoiceEngineInfo[];
+    samples: VoiceSampleInfo[];
+    voices: VoiceIdInfo[];
+    max_cached_engines: number;
+    default_engine: string | null;
+    catalog_revision: string | null;
+  } | null;
+  stt: {
+    models: Record<string, string>[];
+    default_model: string | null;
+  } | null;
+  error: string | null;
+}
+
+export async function fetchVoiceCapabilities(): Promise<VoiceCapabilities> {
+  const res = await bffFetch("/api/bff/voice/capabilities");
+  if (!res.ok) throw new Error("voice capabilities failed");
+  return res.json() as Promise<VoiceCapabilities>;
 }
 
 export async function fetchAgentSoul(name: string): Promise<{

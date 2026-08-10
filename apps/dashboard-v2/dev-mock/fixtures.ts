@@ -368,6 +368,70 @@ export function mockAgentSoul(name: string) {
   };
 }
 
+export function mockVoiceCapabilities() {
+  return {
+    tts: {
+      engines: [
+        {
+          name: "xai",
+          supports_voice: true,
+          supports_clone: false,
+          vram_gib_est: 0,
+        },
+        {
+          name: "qwen",
+          supports_voice: true,
+          supports_clone: false,
+          vram_gib_est: 7.4,
+        },
+      ],
+      samples: [],
+      voices: [
+        {
+          voice_id: "ara",
+          name: "Ara",
+          language: "multilingual",
+          gender: "female",
+          engine: "xai",
+        },
+        {
+          voice_id: "eve",
+          name: "Eve",
+          language: "multilingual",
+          gender: "female",
+          engine: "xai",
+        },
+        {
+          voice_id: "leo",
+          name: "Leo",
+          language: "multilingual",
+          gender: "male",
+          engine: "xai",
+        },
+        {
+          voice_id: "rex",
+          name: "Rex",
+          language: "multilingual",
+          gender: "male",
+          engine: "xai",
+        },
+        {
+          voice_id: "luna",
+          name: "Luna",
+          language: "multilingual",
+          gender: "female",
+          engine: "xai",
+        },
+      ],
+      max_cached_engines: 1,
+      default_engine: "xai",
+      catalog_revision: "dev-mock",
+    },
+    stt: { models: [{ id: "grok-stt", label: "Grok STT" }], default_model: "grok-stt" },
+    error: null as null,
+  };
+}
+
 export function mockSoulPreview(sections: Record<string, string>) {
   const composed = Object.entries(sections)
     .filter(([, body]) => body.trim())

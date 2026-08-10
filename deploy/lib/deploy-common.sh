@@ -176,7 +176,8 @@ compute_convergence_state() {
         auth_sha="none"
     fi
 
-    VOICE_DIR="${VOICE_DIR:-${HOME}/projects/voiceCLI}"
+    # field 4: roxabi-inference monorepo HEAD (was standalone voiceCLI)
+    VOICE_DIR="${VOICE_DIR:-${HOME}/projects/roxabi/roxabi-inference}"
     if [ -d "${VOICE_DIR}/.git" ]; then
         voicecli_head=$(cd "${VOICE_DIR}" && git rev-parse HEAD 2>/dev/null || echo "none")
     else

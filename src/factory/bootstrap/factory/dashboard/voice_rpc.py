@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from roxabi_contracts.dashboard import (
     DashboardVoiceCapabilitiesResponse,
     VoiceEngineInfo,
+    VoiceIdInfo,
     VoiceSampleInfo,
     VoiceSttCapabilities,
     VoiceTtsCapabilities,
@@ -30,12 +31,18 @@ async def handle_voice_capabilities(
     tts = None
     stt = None
     if isinstance(tts_raw, dict):
+        voices_raw = tts_raw.get("voices") or []
         tts = VoiceTtsCapabilities(
             engines=[
                 VoiceEngineInfo.model_validate(e) for e in tts_raw.get("engines", [])
             ],
             samples=[
                 VoiceSampleInfo.model_validate(s) for s in tts_raw.get("samples", [])
+            ],
+            voices=[
+                VoiceIdInfo.model_validate(v)
+                for v in voices_raw
+                if isinstance(v, dict)
             ],
             max_cached_engines=int(tts_raw.get("max_cached_engines") or 1),
             default_engine=tts_raw.get("default_engine"),

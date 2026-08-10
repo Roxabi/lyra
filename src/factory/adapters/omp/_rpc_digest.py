@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 _PINNED_SHA256 = "422650ce81304d4fbabc7b7ea3cc840b718ecc57a9fb00ae71660bec072677b2"
+
 _OMP_BIN = Path("/opt/omp/omp")
 _ENV_REQUEST_TIMEOUT_KEY = "OMP_REQUEST_TIMEOUT"
 _DEFAULT_REQUEST_TIMEOUT = 30.0

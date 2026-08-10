@@ -1,4 +1,4 @@
-"""Agent config + soul BFF routes — /api/bff/agents*."""
+"""Agent config + soul BFF routes — /api/bff/agents* (+ voice capabilities)."""
 
 from __future__ import annotations
 
@@ -19,9 +19,20 @@ if TYPE_CHECKING:
     from factory.dashboard.hub_client import DashboardHubClient
 
 
-def register_agent_routes(  # noqa: C901
+def register_agent_routes(  # noqa: C901, PLR0915
     router: APIRouter, hub: DashboardHubClient
 ) -> None:
+    @router.get("/voice/capabilities")
+    async def voice_capabilities() -> dict:
+        """Dynamic TTS engines + Grok voices + clone samples from voice workers."""
+        try:
+            return (await hub.voice_capabilities()).model_dump()
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
+
     @router.get("/agents")
     async def list_agents_config() -> dict:
         try:

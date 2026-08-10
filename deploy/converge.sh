@@ -100,10 +100,10 @@ _do_converge() {
     echo "==> systemd: reloading user daemon (pick up Quadlet unit changes)..."
     systemctl --user daemon-reload
 
-    # 5) Pull voiceCLI if present (HEAD tracked in convergence stamp)
-    VOICE_DIR="${VOICE_DIR:-${HOME}/projects/voiceCLI}"
+    # 5) Pull inference monorepo (voice units; HEAD = fingerprint field 4)
+    VOICE_DIR="${VOICE_DIR:-${HOME}/projects/roxabi/roxabi-inference}"
     if [ -d "${VOICE_DIR}/.git" ]; then
-        echo "==> voiceCLI: pulling staging..."
+        echo "==> roxabi-inference: pulling staging..."
         require_clean_tree "${VOICE_DIR}"
         (cd "${VOICE_DIR}" && git pull --ff-only origin staging)
     fi
@@ -166,16 +166,12 @@ _do_converge() {
         done
         [ -z "${failed}" ] || { echo "ERROR: restart failed for:${failed}"; exit 1; }
 
-        # 10) Restart voiceCLI ONLY when its own HEAD actually changed — not on every
-        # structural drift. voiceCLI is a separate product; a factory-only change (git HEAD,
-        # image digest, or unit file) must not bounce it. field 4 of the fingerprint is
-        # voicecli-head: git-head:units:auth:VOICECLI-HEAD:img-svc:img-stg. On first run
-        # (_last="none") field 4 is empty ≠ current hash → restart, which is correct.
+        # 10) Restart voice units ONLY when monorepo HEAD changed (fingerprint field 4).
         local _last_voice _cur_voice
         _last_voice=$(printf '%s' "${_last}" | cut -d: -f4)
         _cur_voice=$(printf '%s' "${_current}" | cut -d: -f4)
         if [ -d "${VOICE_DIR}/.git" ] && [ "${_last_voice}" != "${_cur_voice}" ]; then
-            echo "==> voiceCLI: HEAD changed (fingerprint field 4) → restarting containers..."
+            echo "==> roxabi-inference: HEAD changed (field 4) → restarting voicecli-stt/tts..."
             failed=""
             for svc in voicecli-tts voicecli-stt; do
                 systemctl --user restart "${svc}" \
@@ -183,7 +179,7 @@ _do_converge() {
             done
             [ -z "${failed}" ] || { echo "ERROR: restart failed for:${failed}"; exit 1; }
         elif [ -d "${VOICE_DIR}/.git" ]; then
-            echo "==> voiceCLI: HEAD unchanged → skip restart (factory-only structural drift)."
+            echo "==> roxabi-inference: HEAD unchanged → skip voice restart."
         fi
     fi
 

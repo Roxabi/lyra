@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import signal
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -88,11 +87,12 @@ class OmpWorker(NatsAdapterBase):
     # ------------------------------------------------------------------
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:
-        """Connect to NATS, register pool, then enter the subscription loop.
+        """Connect to NATS, then enter the embedded loop (pool register + subscribe).
 
-        Overrides NatsAdapterBase.run() to inject pool.register() between
-        nats_connect() and the blocking stop.wait(); uses run_embedded() for
-        the main loop so all NatsAdapterBase bookkeeping is preserved.
+        Standalone path that owns the NATS connection lifecycle. Production
+        ``factory adapter omp`` uses ``run_embedded`` with a shared nc from
+        bootstrap; both paths must call ``pool.register(nc)`` (see
+        ``run_embedded``) so RpcBridge gets a live nc for JobResult publish.
         """
         nc = await nats_connect(
             nats_url,
@@ -100,27 +100,9 @@ class OmpWorker(NatsAdapterBase):
             inbox_prefix=self._inbox_prefix,
         )
         self._nc = nc
-        # Register pool (opens bridge sessions) BEFORE subscriptions.
-        await self._pool.register(nc)
-
-        if stop is None:
-            stop = asyncio.Event()
-            loop = asyncio.get_running_loop()
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                loop.add_signal_handler(sig, stop.set)
-
         try:
             await self.run_embedded(nc, stop)
         finally:
-            # Cancel in-flight jobs then close the pool on shutdown.
-            tasks = list(self._jobs)
-            for t in tasks:
-                if not t.done():
-                    t.cancel()
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            self._jobs.clear()
-            await self._pool.aclose()
             # Drain + close nc (our run override owns it; base _shutdown not called).
             # Suppress errors on shutdown path (best-effort, per other workers).
             if self._nc is not None:
@@ -137,6 +119,35 @@ class OmpWorker(NatsAdapterBase):
                         "omp_worker: nc.close failed on shutdown", exc_info=True
                     )  # noqa: E501
                 self._nc = None
+
+    async def run_embedded(self, nc: Any, stop: asyncio.Event | None = None) -> None:
+        """Register the OmpPool on *nc*, then enter the NATS subscription loop.
+
+        **Must** call ``pool.register(nc)`` before any job runs. Without it,
+        ``bridge.attach(None, None)`` leaves ``RpcBridge._nc`` unset and
+        ``JobResult`` is never published → hub ``omp request timed out``
+        while the worker still logs ``job_id=… done``.
+
+        Used by standalone bootstrap (shared nc + fleet reporter) and by
+        ``run()`` after connect.
+        """
+        self._nc = nc
+        # Register pool BEFORE subscriptions/jobs — attaches nc+loop to every
+        # RpcBridge so JobResult can land on factory.job.<id>.result.
+        await self._pool.register(nc)
+        try:
+            await super().run_embedded(nc, stop)
+        finally:
+            # Cancel in-flight jobs then close the pool on shutdown.
+            # Does NOT drain/close *nc* — caller owns the connection.
+            tasks = list(self._jobs)
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self._jobs.clear()
+            await self._pool.aclose()
 
     # ------------------------------------------------------------------
     # NatsAdapterBase overrides
@@ -279,9 +290,7 @@ class OmpWorker(NatsAdapterBase):
         start = time.monotonic()
         worker = None
         try:
-            worker = await self._pool.acquire(
-                session_file, system_prompt=system_prompt
-            )
+            worker = await self._pool.acquire(session_file, system_prompt=system_prompt)
             await worker.bridge.run(
                 prompt,
                 job_id,

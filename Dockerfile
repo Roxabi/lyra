@@ -135,9 +135,9 @@ ENV FACTORY_GH_BIN=/opt/factory-gh/gh
 # ── omp_rpc Python package (#1871) ─────────────────────────────────────────────
 # omp_rpc is deliberately kept OUT of uv.lock (alpha lib, pin-by-SHA pattern —
 # #1807/#1810). Install at image build time from the pinned commit that matches
-# OMP_VERSION=v16.2.12 / factory-omp-base:16.2.12. The commit SHA is locked here;
+# OMP_VERSION=v17.2.12 / factory-omp-base:16.2.12. The commit SHA is locked here;
 # a version bump must update deploy/omp-base/Containerfile OMP_VERSION+OMP_SHA256,
-# src/factory/adapters/omp/_rpc_bridge.py _PINNED_SHA256, AND this pin — in lockstep.
+# src/factory/adapters/omp/_rpc_digest.py _PINNED_SHA256, AND this pin — in lockstep.
 # uv is not present in agent-runtime (only in builder); bring the static binary from
 # the official astral-sh image so we can pip-install into /app/.venv without touching
 # the project lockfile.

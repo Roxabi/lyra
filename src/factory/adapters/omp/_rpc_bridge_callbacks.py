@@ -54,6 +54,29 @@ class RpcBridgeCallbacksMixin:
                     assistant_text = getattr(messages[-1], "assistant_text", None)
         return assistant_text if assistant_text is not None else ""
 
+    async def _publish_result(
+        self, nc: NatsClient, job_id: str, payload: bytes
+    ) -> None:
+        """Publish JobResult and flush so the hub sub observes it promptly."""
+        subject = jobs_result(job_id)
+        await nc.publish(subject, payload)
+        # Core NATS is fire-and-forget until flush; without it a fast worker exit
+        # or connection churn can drop the terminal result before it hits the wire.
+        try:
+            await nc.flush(timeout=2)
+        except Exception as exc:  # noqa: BLE001 — best-effort; publish already queued
+            log.warning(
+                "rpc_bridge: flush after JobResult failed job=%s: %s",
+                job_id,
+                type(exc).__name__,
+            )
+        log.info(
+            "rpc_bridge: JobResult published job=%s subject=%s bytes=%d",
+            job_id,
+            subject,
+            len(payload),
+        )
+
     async def _publish_turn_outcome(
         self,
         nc: NatsClient,
@@ -70,7 +93,7 @@ class RpcBridgeCallbacksMixin:
             payload = make_result(
                 job_id, trace_id=trace_id, status="error", error=ctx.turn_error
             )
-            await nc.publish(jobs_result(job_id), payload)
+            await self._publish_result(nc, job_id, payload)
             return
 
         text: str = self._derive_assistant_text(ctx.turn)
@@ -85,7 +108,7 @@ class RpcBridgeCallbacksMixin:
             payload = make_result(
                 job_id, trace_id=trace_id, status="error", error=empty_error
             )
-            await nc.publish(jobs_result(job_id), payload)
+            await self._publish_result(nc, job_id, payload)
             return
 
         data: dict[str, Any] = {"result": text}
@@ -95,7 +118,7 @@ class RpcBridgeCallbacksMixin:
             data["session_file"] = ctx.session_file
         trace_id = getattr(self, "_current_trace_id", None)
         payload = make_result(job_id, trace_id=trace_id, status="success", data=data)
-        await nc.publish(jobs_result(job_id), payload)
+        await self._publish_result(nc, job_id, payload)
 
     def _schedule_publish(self, subject: str, payload: bytes) -> None:
         """Schedule a NATS publish from an omp_rpc listener thread.

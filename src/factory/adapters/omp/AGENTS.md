@@ -10,9 +10,14 @@ then publishes per-job lifecycle events back to the bus.
 
 - **Digest gate** — `RpcBridge.__init__` calls `_verify_digest()` before constructing any
   omp_rpc RpcClient; raises `DigestMismatchError` if the sha256 of `/opt/omp/omp` does not match
-  `_PINNED_SHA256 = "422650ce81304d4fbabc7b7ea3cc840b718ecc57a9fb00ae71660bec072677b2"`.
-  Both `_OMP_BIN` and `_PINNED_SHA256` are image-build constants in `_rpc_bridge.py` —
-  never read from env. Carrier bump must land with the pin update.
+  `_PINNED_SHA256` in `_rpc_digest.py` (must match `deploy/omp-base` + Dockerfile `COPY --from`
+  carrier tag). Both `_OMP_BIN` and `_PINNED_SHA256` are image-build constants — never env.
+  Carrier bump must land with the pin update.
+
+- **`pool.register(nc)` on every path** — `run_embedded` (used by `factory adapter omp`
+  bootstrap) **and** `run()` must register the pool on the live NATS client before jobs.
+  Missing register leaves `RpcBridge._nc is None` → jobs complete but never publish
+  `factory.job.<id>.result` → hub times out.
 
 - **`tool_input` never bus-published** — `_on_tool_execution_start` receives the omp_rpc
   event but explicitly omits `tool_input` from the NATS `JobProgress` payload.

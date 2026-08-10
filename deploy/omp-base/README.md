@@ -12,7 +12,7 @@ contains exactly one file: `/opt/omp/omp` (mode 0755), copied from the official
 The image is built `FROM scratch` — no OS layer, no shell, no entrypoint. It never runs
 directly; consumer images pull the binary out via a `COPY --from=` stage.
 
-The tag is the omp version without the `v` prefix (e.g. `16.2.12`). Tags are **immutable** —
+The tag is the omp version without the `v` prefix (e.g. `17.2.12`). Tags are **immutable** —
 content changes require a version bump (see Immutability guard below).
 
 **Build trigger:** `.github/workflows/omp-base.yml` fires only on path `deploy/omp-base/**`.
@@ -49,7 +49,7 @@ Deep omp_rpc e2e validation on bump is **#1812 CI scope**, not this repo's CI.
 Consumer images (e.g. the OmpWorker stage in #1812) copy the binary out of the carrier:
 
 ```dockerfile
-COPY --from=ghcr.io/roxabi/factory-omp-base:16.2.12 /opt/omp/omp /usr/local/bin/omp
+COPY --from=ghcr.io/roxabi/factory-omp-base:17.2.12 /opt/omp/omp /usr/local/bin/omp
 ```
 
 **Runtime requirement:** the consumer image MUST be glibc-based. The `omp-linux-x64` binary

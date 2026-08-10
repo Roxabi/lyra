@@ -383,8 +383,45 @@ class TestHandleBridgeRunError:
 
 
 class TestRun:
-    async def test_run_registers_pool_before_loop(self) -> None:
-        """pool.register(nc) must be awaited before run_embedded is called."""
+    async def test_run_embedded_registers_pool_before_subscribe(self) -> None:
+        """pool.register(nc) must run before the base subscription loop.
+
+        Production bootstrap calls run_embedded directly (not run()); register
+        must live in run_embedded so RpcBridge gets a live nc for JobResult.
+        """
+        pool = _make_pool()
+        worker = _make_worker(pool)
+
+        call_order: list[str] = []
+
+        async def mock_register(nc):  # noqa: ARG001
+            call_order.append("register")
+
+        async def mock_super_embedded(nc, stop):  # noqa: ARG001
+            call_order.append("subscribe_loop")
+            if stop is not None:
+                stop.set()
+
+        async def mock_aclose():
+            call_order.append("aclose")
+
+        pool.register.side_effect = mock_register
+        pool.aclose.side_effect = mock_aclose
+
+        with patch(
+            "roxabi_nats.adapter_base.NatsAdapterBase.run_embedded",
+            side_effect=mock_super_embedded,
+        ):
+            stop = asyncio.Event()
+            stop.set()
+            await worker.run_embedded(AsyncMock(), stop=stop)
+
+        assert call_order == ["register", "subscribe_loop", "aclose"]
+        pool.register.assert_awaited_once()
+        pool.aclose.assert_awaited_once()
+
+    async def test_run_connects_then_run_embedded(self) -> None:
+        """run() owns connect/close; run_embedded owns register+loop+aclose."""
         pool = _make_pool()
         worker = _make_worker(pool)
 
@@ -394,50 +431,10 @@ class TestRun:
             call_order.append("connect")
             return AsyncMock()
 
-        async def mock_register(nc):  # noqa: ARG001
-            call_order.append("register")
-
-        async def mock_run_embedded(nc, stop):
-            call_order.append("run_embedded")
-            stop.set()
-
-        pool.register.side_effect = mock_register
-
-        with (
-            patch(
-                "factory.adapters.omp.omp_worker.nats_connect",
-                side_effect=mock_nats_connect,
-            ),
-            patch.object(worker, "run_embedded", side_effect=mock_run_embedded),
-        ):
-            stop = asyncio.Event()
-            stop.set()
-            await worker.run("nats://localhost:4222", stop=stop)
-
-        assert call_order.index("register") < call_order.index("run_embedded")
-        pool.register.assert_awaited_once()
-
-    async def test_run_closes_pool_after_loop(self) -> None:
-        """pool.aclose() must run in finally: register < run_embedded < aclose."""
-        pool = _make_pool()
-        worker = _make_worker(pool)
-
-        call_order: list[str] = []
-
-        async def mock_nats_connect(*a, **kw):  # noqa: ARG001
-            return AsyncMock()
-
-        async def mock_register(nc):  # noqa: ARG001
-            call_order.append("register")
-
         async def mock_run_embedded(nc, stop):  # noqa: ARG001
             call_order.append("run_embedded")
-
-        async def mock_aclose():
-            call_order.append("aclose")
-
-        pool.register.side_effect = mock_register
-        pool.aclose.side_effect = mock_aclose
+            if stop is not None:
+                stop.set()
 
         with (
             patch(
@@ -450,32 +447,26 @@ class TestRun:
             stop.set()
             await worker.run("nats://localhost:4222", stop=stop)
 
-        assert call_order == ["register", "run_embedded", "aclose"]
-        pool.aclose.assert_awaited_once()
+        assert call_order == ["connect", "run_embedded"]
 
-    async def test_run_closes_pool_when_loop_raises(self) -> None:
-        """pool.aclose() runs via finally even when the loop raises."""
+    async def test_run_embedded_closes_pool_when_loop_raises(self) -> None:
+        """pool.aclose() runs via run_embedded finally even when the loop raises."""
         pool = _make_pool()
         worker = _make_worker(pool)
-
-        async def mock_nats_connect(*a, **kw):  # noqa: ARG001
-            return AsyncMock()
 
         async def boom(nc, stop):  # noqa: ARG001
             raise RuntimeError("loop crashed")
 
-        with (
-            patch(
-                "factory.adapters.omp.omp_worker.nats_connect",
-                side_effect=mock_nats_connect,
-            ),
-            patch.object(worker, "run_embedded", side_effect=boom),
+        with patch(
+            "roxabi_nats.adapter_base.NatsAdapterBase.run_embedded",
+            side_effect=boom,
         ):
             stop = asyncio.Event()
             stop.set()
             with pytest.raises(RuntimeError, match="loop crashed"):
-                await worker.run("nats://localhost:4222", stop=stop)
+                await worker.run_embedded(AsyncMock(), stop=stop)
 
+        pool.register.assert_awaited_once()
         pool.aclose.assert_awaited_once()
 
     async def test_run_shutdown_swallows_nc_drain_and_close_errors(self) -> None:
@@ -505,7 +496,7 @@ class TestRun:
 
         nc.drain.assert_awaited_once()
         nc.close.assert_awaited_once()
-        pool.aclose.assert_awaited_once()
+        # aclose lives inside real run_embedded — mocked path skips it
         assert worker._nc is None
 
 

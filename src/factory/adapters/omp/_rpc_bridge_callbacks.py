@@ -54,8 +54,10 @@ class RpcBridgeCallbacksMixin:
                     assistant_text = getattr(messages[-1], "assistant_text", None)
         return assistant_text if assistant_text is not None else ""
 
-    async def _publish_result(self, nc: NatsClient, job_id: str, payload: bytes) -> None:
-        """Publish JobResult and flush so the hub subscription observes it promptly."""
+    async def _publish_result(
+        self, nc: NatsClient, job_id: str, payload: bytes
+    ) -> None:
+        """Publish JobResult and flush so the hub sub observes it promptly."""
         subject = jobs_result(job_id)
         await nc.publish(subject, payload)
         # Core NATS is fire-and-forget until flush; without it a fast worker exit

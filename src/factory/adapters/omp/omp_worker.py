@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import signal
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -121,9 +120,7 @@ class OmpWorker(NatsAdapterBase):
                     )  # noqa: E501
                 self._nc = None
 
-    async def run_embedded(
-        self, nc: Any, stop: asyncio.Event | None = None
-    ) -> None:
+    async def run_embedded(self, nc: Any, stop: asyncio.Event | None = None) -> None:
         """Register the OmpPool on *nc*, then enter the NATS subscription loop.
 
         **Must** call ``pool.register(nc)`` before any job runs. Without it,
@@ -293,9 +290,7 @@ class OmpWorker(NatsAdapterBase):
         start = time.monotonic()
         worker = None
         try:
-            worker = await self._pool.acquire(
-                session_file, system_prompt=system_prompt
-            )
+            worker = await self._pool.acquire(session_file, system_prompt=system_prompt)
             await worker.bridge.run(
                 prompt,
                 job_id,

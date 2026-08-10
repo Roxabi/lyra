@@ -189,9 +189,7 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
             return turn, turn_error, None
 
         attempted = requested_model or self._startup_model
-        fallback = await asyncio.to_thread(
-            resolve_fallback_model, requested=attempted
-        )
+        fallback = await asyncio.to_thread(resolve_fallback_model, requested=attempted)
         if not fallback or fallback == attempted:
             return turn, turn_error, None
 

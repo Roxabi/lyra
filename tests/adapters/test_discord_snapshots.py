@@ -73,6 +73,22 @@ def _last_edit_content(placeholder: AsyncMock) -> str:
     return call.kwargs.get("content", "")
 
 
+def _last_edit_visible_text(placeholder: AsyncMock) -> str:
+    """User-visible text: plain content, or embed description when content is empty.
+
+    Single-message recap path puts answer in embed.description with content=\"\".
+    """
+    call = placeholder.edit.call_args
+    assert call is not None, "placeholder.edit was never called"
+    content = call.kwargs.get("content") or ""
+    embed = call.kwargs.get("embed")
+    if embed is not None:
+        desc = getattr(embed, "description", None) or ""
+        title = getattr(embed, "title", None) or ""
+        return f"{title}\n{desc}\n{content}".strip()
+    return content
+
+
 # ---------------------------------------------------------------------------
 # Snapshot tests — v2 events (re-recorded Slice 5 / #1192)
 # ---------------------------------------------------------------------------
@@ -119,8 +135,8 @@ class TestDiscordSnapshots:
           RunStarted, ToolCallStart, ToolCallEnd, TextStart,
           TextDelta("Tests passed."), TextEnd, RunFinished
 
-        No ToolSummaryRenderEvent in stream (removed in Slice 5).
-        No embed edit expected. Final text delivered via placeholder.edit content.
+        Single-message recap: answer lives in embed description (content=\"\").
+        Visible text still includes the final answer.
         """
         adapter = _make_discord_adapter()
         _, placeholder = _attach_channel(adapter)
@@ -138,11 +154,15 @@ class TestDiscordSnapshots:
 
         await adapter.send_streaming(msg, _events())
 
-        # Final text snapshot: response placeholder edited with text content
-        final_content = _last_edit_content(placeholder)
-        assert "Tests passed" in final_content, (
-            f"Expected 'Tests passed' in final content, got: {final_content!r}"
+        visible = _last_edit_visible_text(placeholder)
+        assert "Tests passed" in visible, (
+            f"Expected 'Tests passed' in visible text, got: {visible!r}"
         )
+        # Single-message card: content cleared; answer is in the embed.
+        last = placeholder.edit.call_args
+        assert last.kwargs.get("content") == ""
+        assert last.kwargs.get("embed") is not None
+
 
     @pytest.mark.asyncio
     async def test_error_snapshot(self) -> None:

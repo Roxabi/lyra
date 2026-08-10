@@ -216,57 +216,36 @@ class DiscordFormatter(BaseFormatter):
         self._recap_done = done
         await self._render_combined(trace_obj)
 
-    async def _render_combined(self, msg: Any) -> None:
-        """Edit *msg* with recap (top) + optional reasoning + answer (bottom).
-
-        Layout when tools ran:
-          embed.title = recap header (🔧 Working… / Done ✅)
-          embed.description = tool lines, then reasoning, then answer
-          content cleared so the bubble is one visual card (recap first).
-
-        Layout without tools: plain content = answer (or reasoning).
-
-        Budget: embed description ≤4096. Answer is reserved first (emitter already
-        head-chunks at DISCORD_MAX_LENGTH); recap/reasoning shrink if needed so
-        the priced answer is never silently mid-cut by a fat recap.
-        """
+    def _compose_no_recap_display(self) -> str:
+        """Plain-content body when no tool recap is active (head-sliced)."""
         answer = self._answer_text
-        # Hide the bare "…" placeholder once we have real body content.
         show_answer = bool(answer) and answer != self._placeholder_text
+        body_parts: list[str] = []
+        if self._reasoning_display:
+            body_parts.append(self._reasoning_display)
+        if show_answer:
+            body_parts.append(answer)
+        joined = "\n\n".join(body_parts) if body_parts else self._placeholder_text
+        return joined[:DISCORD_MAX_LENGTH]
 
-        if not self._recap_lines:
-            body_parts: list[str] = []
-            if self._reasoning_display:
-                body_parts.append(self._reasoning_display)
-            if show_answer:
-                body_parts.append(answer)
-            # Head-slice matches final chunk() policy (not tail).
-            display = ("\n\n".join(body_parts) if body_parts else self._placeholder_text)[
-                :DISCORD_MAX_LENGTH
-            ]
-            await send_with_retry(
-                lambda d=display: msg.edit(content=d, embed=None),
-                label="Combined text edit",
-            )
-            return
-
-        # Discord embed limits: title ≤256, description ≤4096.
-        _EMBED_DESC_MAX = 4096
+    def _compose_recap_embed(self) -> discord.Embed:
+        """Build recap-on-top embed; answer reserved first in description budget."""
+        _embed_desc_max = 4096
+        sep = "\n\n"
+        answer = self._answer_text
+        show_answer = bool(answer) and answer != self._placeholder_text
         title = self._recap_lines[0][:256]
         recap_body = "\n".join(self._recap_lines[1:])
         reasoning = self._reasoning_display or ""
         answer_part = answer if show_answer else ""
 
-        # Prefer full answer; shrink recap then reasoning if over budget.
-        sep = "\n\n"
-        budget = _EMBED_DESC_MAX
+        budget = _embed_desc_max
         if answer_part:
             budget -= len(answer_part)
             if recap_body or reasoning:
                 budget -= len(sep)
         if recap_body and reasoning:
             budget -= len(sep)
-        if recap_body and reasoning:
             r_budget = min(len(reasoning), max(0, budget // 4))
             c_budget = max(0, budget - r_budget)
             recap_body = recap_body[:c_budget]
@@ -284,9 +263,33 @@ class DiscordFormatter(BaseFormatter):
         if answer_part:
             desc_parts.append(answer_part)
         # Zero-width space keeps an empty embed description valid mid-flight.
-        description = (sep.join(desc_parts) or "​")[:_EMBED_DESC_MAX]
+        description = (sep.join(desc_parts) or "​")[:_embed_desc_max]
         color = discord.Color.green() if self._recap_done else discord.Color.blue()
-        embed = discord.Embed(title=title, description=description, color=color)
+        return discord.Embed(title=title, description=description, color=color)
+
+    async def _render_combined(self, msg: Any) -> None:
+        """Edit *msg* with recap (top) + optional reasoning + answer (bottom).
+
+        Layout when tools ran:
+          embed.title = recap header (🔧 Working… / Done ✅)
+          embed.description = tool lines, then reasoning, then answer
+          content cleared so the bubble is one visual card (recap first).
+
+        Layout without tools: plain content = answer (or reasoning).
+
+        Budget: embed description ≤4096. Answer is reserved first (emitter already
+        head-chunks at DISCORD_MAX_LENGTH); recap/reasoning shrink if needed so
+        the priced answer is never silently mid-cut by a fat recap.
+        """
+        if not self._recap_lines:
+            display = self._compose_no_recap_display()
+            await send_with_retry(
+                lambda d=display: msg.edit(content=d, embed=None),
+                label="Combined text edit",
+            )
+            return
+
+        embed = self._compose_recap_embed()
         # content="" drops the old "…" so only the embed card shows.
         await send_with_retry(
             lambda e=embed: msg.edit(content="", embed=e),

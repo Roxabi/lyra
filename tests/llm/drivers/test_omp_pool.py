@@ -270,7 +270,9 @@ class TestOmpPool:
         assert captured_kwargs.get("no_session") is False, (
             f"Expected no_session=False, got kwargs={captured_kwargs}"
         )
-        assert captured_kwargs.get("model") == "grok-test-non-reasoning"
+        # OMP 17+: provider=None + litellm/<id> selector (legacy --provider broken)
+        assert captured_kwargs.get("provider") is None
+        assert captured_kwargs.get("model") == "litellm/grok-test-non-reasoning"
         assert captured_kwargs.get("request_timeout") == _DEFAULT_REQUEST_TIMEOUT
 
         await pool.aclose()
@@ -311,7 +313,8 @@ class TestOmpPool:
         finally:
             sys.modules.pop("omp_rpc", None)
 
-        assert captured_kwargs.get("model") == "grok-test-non-reasoning"
+        assert captured_kwargs.get("provider") is None
+        assert captured_kwargs.get("model") == "litellm/grok-test-non-reasoning"
         await pool.aclose()
 
     # -- Bonus: _read_cap falls back to default -----------------------------

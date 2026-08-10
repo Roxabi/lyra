@@ -51,8 +51,10 @@ __all__ = [
     "DiscordMultiConfig",
     "load_multibot_config",
     "multibot_config_from_store",
-    # Discord-specific defaults (#1514)
-    "DISCORD_DEFAULT_AUTO_THREAD",
+    # Discord-specific default for thread hot set window (#1514).
+    # auto_thread has no Discord-only override: BotStore / bot_models
+    # DEFAULT_AUTO_THREAD (False) is the SSoT; enable per-bot via
+    # `factory agent discord patch <id> --auto-thread`.
     "DISCORD_DEFAULT_THREAD_HOT_HOURS",
 ]
 
@@ -61,11 +63,8 @@ log = logging.getLogger(__name__)
 _ENV_PREFIX = "env:"
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
 
-# Discord-specific defaults — intentionally diverge from the generic bot_models defaults
-# (DEFAULT_AUTO_THREAD=False / DEFAULT_THREAD_HOT_HOURS=24).
-# Discord threads conversations by default; the generic store default is False for
-# non-threading platforms (e.g. Telegram). See #1514. Keep the divergence deliberate.
-DISCORD_DEFAULT_AUTO_THREAD: bool = True
+# Discord-only default for the hot-thread restore window (generic store = 24 h).
+# auto_thread deliberately uses the generic store default (False) — BotStore is SSoT.
 DISCORD_DEFAULT_THREAD_HOT_HOURS: int = 36
 
 
@@ -110,7 +109,8 @@ class DiscordBotConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     bot_id: str
-    auto_thread: bool = DISCORD_DEFAULT_AUTO_THREAD
+    # SSoT for the default is BotStore (DEFAULT_AUTO_THREAD=False). Opt in per bot.
+    auto_thread: bool = False
     agent: str = "lyra_default"
     thread_hot_hours: int = DISCORD_DEFAULT_THREAD_HOT_HOURS
     # Handle of the dedicated public bot for ADR-090 §5 deny refusals; None →
@@ -171,7 +171,7 @@ def _parse_discord_bots(raw: dict[str, Any]) -> list[DiscordBotConfig]:
     """Parse [[discord.bots]] array from raw config.
 
     Each entry requires: bot_id.
-    Optional: auto_thread (default DISCORD_DEFAULT_AUTO_THREAD),
+    Optional: auto_thread (default False — same as BotStore),
     agent (default "lyra_default").
 
     Credentials (token) are resolved at bootstrap time from
@@ -183,7 +183,7 @@ def _parse_discord_bots(raw: dict[str, Any]) -> list[DiscordBotConfig]:
     bots: list[DiscordBotConfig] = []
     for entry in bots_raw:
         bot_id: str = entry.get("bot_id", "main")
-        auto_thread: bool = entry.get("auto_thread", DISCORD_DEFAULT_AUTO_THREAD)
+        auto_thread: bool = entry.get("auto_thread", False)
         agent: str = entry.get("agent", "lyra_default")
         thread_hot_hours: int = int(
             entry.get("thread_hot_hours", DISCORD_DEFAULT_THREAD_HOT_HOURS)
@@ -241,11 +241,8 @@ def load_multibot_config(
     dc_has_bots_key = "bots" in raw.get("discord", {})
     if not dc_bots and not dc_has_bots_key and raw.get("auth", {}).get("discord"):
         auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
-        auto_thread = (
-            auto_thread_str in _AUTO_THREAD_TRUE
-            if auto_thread_str
-            else DISCORD_DEFAULT_AUTO_THREAD
-        )
+        # Env opt-in only; unset → False (aligned with BotStore DEFAULT_AUTO_THREAD).
+        auto_thread = auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else False
         log.info(
             "discord: no [[discord.bots]] found; "
             "falling back to legacy single-bot path (bot_id='main')"

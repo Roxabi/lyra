@@ -12,7 +12,6 @@ import pytest
 
 import factory.core.agent.bot_models as bot_models
 from factory.config import (
-    DISCORD_DEFAULT_AUTO_THREAD,
     DISCORD_DEFAULT_THREAD_HOT_HOURS,
     DiscordBotConfig,
     DiscordMultiConfig,
@@ -137,7 +136,7 @@ class TestParseDiscordBots:
         bot = bots[0]
         assert isinstance(bot, DiscordBotConfig)
         assert bot.bot_id == "lyra"
-        assert bot.auto_thread is True  # default
+        assert bot.auto_thread is False  # BotStore / DEFAULT_AUTO_THREAD SSoT
 
     def test_auto_thread_false(self) -> None:
         # Arrange
@@ -208,19 +207,19 @@ class TestLoadMultibotConfig:
         assert len(dc.bots) == 1
         bot = dc.bots[0]
         assert bot.bot_id == "main"
-        assert bot.auto_thread is True  # default when env var not set
+        assert bot.auto_thread is False  # default when env var not set
 
     def test_legacy_discord_auto_thread_parsing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange — DISCORD_AUTO_THREAD=false disables threading
-        monkeypatch.setenv("DISCORD_AUTO_THREAD", "false")
+        # Arrange — DISCORD_AUTO_THREAD=true opts in (env is the only opt-in)
+        monkeypatch.setenv("DISCORD_AUTO_THREAD", "true")
         raw = {"auth": {"discord": {"default": "blocked"}}}
         # Act
         _, dc = load_multibot_config(raw)
         # Assert
         assert len(dc.bots) == 1
-        assert dc.bots[0].auto_thread is False
+        assert dc.bots[0].auto_thread is True
 
     def test_new_style_wins_over_legacy(self) -> None:
         # Arrange — both [[telegram.bots]] AND [auth.telegram] present
@@ -388,38 +387,21 @@ class TestMultibotConfigFromStore:
 
 
 class TestDiscordDefaultConstants:
-    """Guard that the Discord-specific defaults are named, valued, and deliberately
-    diverge from the generic platform-agnostic defaults in bot_models.
+    """Discord defaults: auto_thread → BotStore; thread_hot_hours stays Discord-only."""
 
-    If a future "alignment" refactor changes these values, this test will trip and
-    force re-reading the decision documented in #1514 before proceeding.
-    """
-
-    def test_discord_default_auto_thread_is_true(self) -> None:
-        # Discord threads every conversation by default.
-        assert DISCORD_DEFAULT_AUTO_THREAD is True
+    def test_discord_bot_config_default_auto_thread_matches_store(self) -> None:
+        # BotStore is SSoT — no Discord-only True override.
+        cfg = DiscordBotConfig(bot_id="test")
+        assert cfg.auto_thread is bot_models.DEFAULT_AUTO_THREAD
+        assert cfg.auto_thread is False
 
     def test_discord_default_thread_hot_hours_is_36(self) -> None:
         assert DISCORD_DEFAULT_THREAD_HOT_HOURS == 36
 
-    def test_discord_bot_config_default_auto_thread(self) -> None:
-        # DiscordBotConfig() with no explicit auto_thread must use the named constant.
-        cfg = DiscordBotConfig(bot_id="test")
-        assert cfg.auto_thread is DISCORD_DEFAULT_AUTO_THREAD
-        assert cfg.auto_thread is True
-
     def test_discord_bot_config_default_thread_hot_hours(self) -> None:
-        # DiscordBotConfig() with no explicit thread_hot_hours must use the constant.
         cfg = DiscordBotConfig(bot_id="test")
         assert cfg.thread_hot_hours == DISCORD_DEFAULT_THREAD_HOT_HOURS
         assert cfg.thread_hot_hours == 36
-
-    def test_intentional_divergence_from_generic_auto_thread(self) -> None:
-        # DELIBERATE: Discord default (True) != generic default (False).
-        # bot_models.DEFAULT_AUTO_THREAD is False for non-threading platforms
-        # (e.g. Telegram). Discord is the exception.
-        # See #1514. Do NOT "fix" this divergence without re-reading that decision.
-        assert DISCORD_DEFAULT_AUTO_THREAD != bot_models.DEFAULT_AUTO_THREAD
 
     def test_intentional_divergence_from_generic_thread_hot_hours(self) -> None:
         # DELIBERATE: Discord default (36 h) != generic default (24 h). See #1514.

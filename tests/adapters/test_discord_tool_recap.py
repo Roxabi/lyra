@@ -1,13 +1,8 @@
 # pyright: reportFunctionMemberAccess=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportGeneralTypeIssues=false
-"""RED tests for Discord adapter tool recap card rendering (#1214 T11).
+"""Discord adapter tool recap — single combined message (#1214 / recap-on-top).
 
-These tests expose the gap: ``build_streaming_callbacks`` in ``discord_outbound.py``
-does NOT yet pass ``edit_tool_recap=...`` to ``PlatformCallbacks``.  The default
-no-op is used, so ``trace_obj.edit`` is never called with ``embed=...`` kwargs.
-
-Tests SC8 (multi-tool embed parity) and the intermediate-color smoke MUST FAIL
-on the unmodified codebase.  Test SC9 (text-only regression guard) will PASS
-even at RED state — that is intentional.
+Recap + answer share the answer placeholder: no second ``🔧 …`` send.
+Embed title/description hold recap (top); answer follows in description.
 """
 
 from __future__ import annotations
@@ -35,8 +30,6 @@ from tests.adapters.conftest import make_dc_inbound_msg
 # Helpers
 # ---------------------------------------------------------------------------
 
-_TRACE_MSG_ID = 999
-
 
 def _make_discord_adapter():
     """Build a DiscordAdapter with mocked internals."""
@@ -49,26 +42,13 @@ def _make_discord_adapter():
     )
 
 
-def _make_trace_obj() -> MagicMock:
-    """Return a fake trace placeholder object (simulates a discord.Message)."""
-    trace_obj = MagicMock()
-    trace_obj.edit = AsyncMock(return_value=None)
-    trace_obj.id = _TRACE_MSG_ID
-    return trace_obj
-
-
-def _make_channel(trace_obj: MagicMock) -> tuple[MagicMock, MagicMock]:
+def _make_channel() -> tuple[MagicMock, MagicMock]:
     """Return (placeholder_msg, channel) mocked for streaming tests.
 
-    build_streaming_callbacks uses ``msg_obj.reply()`` (via get_partial_message)
-    for the response placeholder (because message_id=555, should_reply=True),
-    and ``messageable.send("🔧 …")`` for the trace placeholder.
-
-    Call order:
-    1. _send_placeholder() → channel.get_partial_message(555).reply(...) → placeholder
-    2. _send_trace_placeholder() → channel.send("🔧 …") → trace_obj
-    3. _deliver_final / edit_placeholder_text → placeholder.edit(content=...,
-       embed=None)
+    Single-message path:
+    1. send_placeholder → reply() → placeholder
+    2. send_trace_placeholder → reuses placeholder (no channel.send)
+    3. edits (recap + answer) → placeholder.edit(content=..., embed=...)
     """
     placeholder_msg = MagicMock()
     placeholder_msg.id = 42
@@ -78,12 +58,10 @@ def _make_channel(trace_obj: MagicMock) -> tuple[MagicMock, MagicMock]:
     trigger_msg.reply = AsyncMock(return_value=placeholder_msg)
 
     channel = AsyncMock()
-    # channel.send is used only for the trace placeholder
-    channel.send = AsyncMock(return_value=trace_obj)
-    # get_partial_message returns the trigger msg whose reply() returns the placeholder
+    # Must not be used for a second recap bubble on tool turns.
+    channel.send = AsyncMock(return_value=None)
     channel.get_partial_message = MagicMock(return_value=trigger_msg)
 
-    # typing() must be an async context manager
     typing_cm = AsyncMock()
     typing_cm.__aenter__ = AsyncMock(return_value=None)
     typing_cm.__aexit__ = AsyncMock(return_value=False)
@@ -103,41 +81,33 @@ async def _gen(*items: RenderEvent) -> AsyncIterator[RenderEvent]:
 
 
 async def test_multi_tool_turn_renders_recap_card_via_embed() -> None:
-    """SC8: a turn with edit + bash tool calls must call trace_obj.edit at least
-    once with an embed= kwarg whose title is '🔧 Done ✅', color is green,
-    and description contains both '✏️' and '💻'.
+    """SC8: edit+bash tools → one message; embed title Done ✅, green, both icons.
 
-    This test FAILS on the unmodified codebase because ``edit_tool_recap`` is
-    the default no-op, so trace_obj.edit is never called with embed= kwargs.
+    Answer text lands in the same embed description below the recap lines.
+    No second channel.send for a separate recap bubble.
     """
-    # Arrange
     adapter = _make_discord_adapter()
-    trace_obj = _make_trace_obj()
-    _placeholder_msg, channel = _make_channel(trace_obj)
+    placeholder_msg, channel = _make_channel()
     adapter._resolve_channel = AsyncMock(return_value=channel)
 
     original_msg = make_dc_inbound_msg()
 
-    # Act — drive a streaming session with edit + bash tool calls
     await adapter.send_streaming(
         original_msg,
         _gen(
             RunStartedRenderEvent(run_id="r1"),
-            # Tool 1: edit call
             ToolCallStartRenderEvent(tool_call_id="t1", tool_name="edit"),
             ToolCallArgsRenderEvent(
                 tool_call_id="t1",
                 delta=json.dumps({"path": "src/x.py"}),
             ),
             ToolCallEndRenderEvent(tool_call_id="t1"),
-            # Tool 2: bash call
             ToolCallStartRenderEvent(tool_call_id="t2", tool_name="bash"),
             ToolCallArgsRenderEvent(
                 tool_call_id="t2",
                 delta=json.dumps({"command": "ls"}),
             ),
             ToolCallEndRenderEvent(tool_call_id="t2"),
-            # Text response
             TextStartRenderEvent(message_id="msg-1"),
             TextDeltaRenderEvent(message_id="msg-1", delta="ok"),
             TextEndRenderEvent(message_id="msg-1"),
@@ -146,16 +116,19 @@ async def test_multi_tool_turn_renders_recap_card_via_embed() -> None:
         outbound=None,
     )
 
-    # Assert — trace_obj.edit was called at least once with embed= kwarg
-    all_calls = trace_obj.edit.call_args_list
+    # No second bubble for recap
+    assert channel.send.await_count == 0, (
+        f"expected no separate recap send, got {channel.send.call_args_list}"
+    )
+
+    all_calls = placeholder_msg.edit.call_args_list
     embed_calls = [c for c in all_calls if c.kwargs.get("embed") is not None]
 
     assert len(embed_calls) >= 1, (
-        f"trace_obj.edit must be called at least once with embed= kwarg. "
+        f"placeholder.edit must be called with embed= at least once. "
         f"All calls: {all_calls}"
     )
 
-    # At least one call must have title='🔧 Done ✅' and color=green
     done_header = "\U0001f527 Done ✅"  # 🔧 Done ✅
     done_calls = [
         c
@@ -169,8 +142,7 @@ async def test_multi_tool_turn_renders_recap_card_via_embed() -> None:
         f"Embed titles: {embed_titles}"
     )
 
-    # The description of the done embed must contain both tool icons
-    edit_icon = "✏️"  # ✏️
+    edit_icon = "✏️"
     bash_icon = "\U0001f4bb"  # 💻
     matching = [
         c
@@ -181,6 +153,17 @@ async def test_multi_tool_turn_renders_recap_card_via_embed() -> None:
     descriptions = [getattr(c.kwargs["embed"], "description", None) for c in done_calls]
     assert len(matching) >= 1, (
         f"Done embed description must contain both '✏️' and '💻'. "
+        f"Descriptions: {descriptions}"
+    )
+
+    # Answer is in the same embed (recap on top, answer below)
+    with_answer = [
+        c
+        for c in done_calls
+        if "ok" in (getattr(c.kwargs["embed"], "description", "") or "")
+    ]
+    assert len(with_answer) >= 1, (
+        f"Done embed description must include answer text 'ok'. "
         f"Descriptions: {descriptions}"
     )
 
@@ -261,36 +244,21 @@ async def test_text_only_turn_does_not_send_discord_trace_placeholder() -> None:
 
 
 async def test_intermediate_edit_uses_blue_color_and_working_title() -> None:
-    """Smoke: at least one intermediate recap edit (done=False) fires with
-    embed.color == discord.Color.blue() and embed.title == '🔧 Working…'.
-
-    Time is monkeypatched so the first ToolCallEnd always passes the debounce
-    threshold, guaranteeing an intermediate edit before the final done=True.
-
-    This test FAILS on the unmodified codebase because edit_tool_recap is a
-    no-op and trace_obj.edit is never called with embed= kwargs.
-    """
-    # Arrange
+    """Smoke: intermediate recap (done=False) → blue Working… embed."""
     adapter = _make_discord_adapter()
-    trace_obj = _make_trace_obj()
-    _placeholder_msg, channel = _make_channel(trace_obj)
+    placeholder_msg, channel = _make_channel()
     adapter._resolve_channel = AsyncMock(return_value=channel)
     original_msg = make_dc_inbound_msg()
 
-    # Patch time.monotonic so that the debounce always fires:
-    # first call returns 0.0 (last_recap_edit is None → always fires on first event),
-    # subsequent calls return large values to guarantee the interval is exceeded.
     _call_count = 0
 
     def _fake_monotonic() -> float:
         nonlocal _call_count
         _call_count += 1
-        # 10s gap between each call → always past debounce interval
         return float(_call_count * 10)
 
     _patch_target = "factory.outbound.emitter.time.monotonic"
     with patch(_patch_target, _fake_monotonic):
-        # Act — drive tool events; debounce is bypassed by time patch
         await adapter.send_streaming(
             original_msg,
             _gen(
@@ -309,12 +277,11 @@ async def test_intermediate_edit_uses_blue_color_and_working_title() -> None:
             outbound=None,
         )
 
-    # Assert — at least one embed call with blue color and "Working…" title
-    all_calls = trace_obj.edit.call_args_list
+    all_calls = placeholder_msg.edit.call_args_list
     embed_calls = [c for c in all_calls if c.kwargs.get("embed") is not None]
 
     assert len(embed_calls) >= 1, (
-        f"trace_obj.edit must be called at least once with embed= kwarg. "
+        f"placeholder.edit must be called with embed= at least once. "
         f"All calls: {all_calls}"
     )
 
@@ -331,3 +298,89 @@ async def test_intermediate_edit_uses_blue_color_and_working_title() -> None:
         f"Expected at least one embed call with title={working_header!r} and "
         f"color=blue. Titles: {titles}, Colors: {colors}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Unit: DiscordFormatter combined composition edges
+# ---------------------------------------------------------------------------
+
+
+async def test_mid_tools_placeholder_not_in_embed_description() -> None:
+    """Tools-only recap must not leak the bare placeholder into embed description."""
+    from factory.adapters.discord import DiscordAdapter
+    from factory.adapters.discord.discord_formatter import DiscordFormatter
+
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+    )
+    ph = MagicMock()
+    ph.id = 42
+    ph.edit = AsyncMock(return_value=None)
+
+    channel = AsyncMock()
+    channel.send = AsyncMock(return_value=ph)
+    adapter._resolve_channel = AsyncMock(return_value=channel)
+
+    fmt = DiscordFormatter(
+        adapter,
+        send_to_id=1,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        should_reply=False,
+    )
+    await fmt.send_placeholder()
+    await fmt.edit_tool_recap(
+        ph,
+        ["\U0001f527 Working…", "\U0001f4bb `ls`"],
+        done=False,
+    )
+
+    assert ph.edit.await_count >= 1
+    last = ph.edit.call_args_list[-1]
+    embed = last.kwargs.get("embed")
+    assert embed is not None
+    desc = embed.description or ""
+    assert "…" not in desc
+    assert "\U0001f4bb" in desc
+
+
+async def test_fat_recap_preserves_full_answer_in_embed() -> None:
+    """Answer is reserved in embed budget; fat recap must not mid-cut answer."""
+    from factory.adapters.discord import DiscordAdapter
+    from factory.adapters.discord.discord_formatter import DiscordFormatter
+    from factory.adapters.shared._shared import DISCORD_MAX_LENGTH
+
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+    )
+    ph = MagicMock()
+    ph.id = 42
+    ph.edit = AsyncMock(return_value=None)
+
+    channel = AsyncMock()
+    channel.send = AsyncMock(return_value=ph)
+    adapter._resolve_channel = AsyncMock(return_value=channel)
+
+    fmt = DiscordFormatter(
+        adapter,
+        send_to_id=1,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        should_reply=False,
+    )
+    await fmt.send_placeholder()
+    urls = [f"\U0001f310 `https://example.com/{i}`" for i in range(200)]
+    fat_recap = ["\U0001f527 Done ✅"] + urls
+    answer = "A" * DISCORD_MAX_LENGTH  # first emitter chunk size
+    await fmt.edit_tool_recap(ph, fat_recap, done=True)
+    await fmt.edit_placeholder_text(ph, answer)
+
+    last = ph.edit.call_args_list[-1]
+    embed = last.kwargs["embed"]
+    desc = embed.description or ""
+    assert desc.endswith(answer), "full answer must be present (not mid-truncated)"
+    assert last.kwargs.get("content") == ""

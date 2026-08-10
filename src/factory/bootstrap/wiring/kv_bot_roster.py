@@ -18,13 +18,13 @@ from typing import Literal, NoReturn, overload
 from pydantic import ValidationError
 
 from factory.config import (
-    DISCORD_DEFAULT_AUTO_THREAD,
     DISCORD_DEFAULT_THREAD_HOT_HOURS,
     DiscordBotConfig,
     DiscordMultiConfig,
     TelegramBotConfig,
     TelegramMultiConfig,
 )
+from factory.core.agent.bot_models import DEFAULT_AUTO_THREAD
 from factory.infrastructure.kv.bot_roster import publish_bot_roster
 from factory.infrastructure.kv.factory_state import FACTORY_STATE_BUCKET
 from roxabi_contracts.state.bot_roster import (
@@ -60,9 +60,7 @@ def _entry_to_discord_bot(entry: RosterBotEntry) -> DiscordBotConfig:
         agent=entry.agent,
         public_bot=entry.public_bot,
         auto_thread=(
-            entry.auto_thread
-            if entry.auto_thread is not None
-            else DISCORD_DEFAULT_AUTO_THREAD
+            entry.auto_thread if entry.auto_thread is not None else DEFAULT_AUTO_THREAD
         ),
         thread_hot_hours=(
             entry.thread_hot_hours

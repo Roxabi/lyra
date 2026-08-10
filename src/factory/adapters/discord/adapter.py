@@ -93,7 +93,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         intents: discord.Intents | None = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        auto_thread: bool = True,
+        auto_thread: bool = False,
         thread_hot_hours: int = 36,
         thread_store: ThreadStoreProtocol | None = None,
         watch_channels: frozenset[int] = frozenset(),

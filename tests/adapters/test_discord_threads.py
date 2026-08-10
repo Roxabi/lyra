@@ -257,15 +257,15 @@ class TestDiscordAutoThread:
         assert hub_msg.platform_meta.thread_id == 8888
         assert 8888 in adapter._owned_threads
 
-    def test_discord_config_auto_thread_default_true(self) -> None:
-        """DiscordConfig() has auto_thread=True by default (S5-5)."""
+    def test_discord_config_auto_thread_default_false(self) -> None:
+        """DiscordConfig() has auto_thread=False by default (BotStore SSoT)."""
         from factory.adapters.discord.discord_config import DiscordConfig
 
         # Arrange / Act
         config = DiscordConfig(token="dummy-token")
 
         # Assert
-        assert config.auto_thread is True
+        assert config.auto_thread is False
 
 
 # ---------------------------------------------------------------------------

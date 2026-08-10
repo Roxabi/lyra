@@ -52,6 +52,12 @@ container = "factory-blobstore.container"
 required_secrets = ["factory-nats-blobstore", "factory_blobstore_token"]
 host_roles = ["factory-hub"]
 
+# #2327 HTTP scrape provider — hub FACTORY_SCRAPE_URL=http://factory-scrape:8455
+[component.scrape]
+container = "factory-scrape.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
 [component.omp]
 container = "factory-omp.container"
 host_roles = ["factory-hub"]

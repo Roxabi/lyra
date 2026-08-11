@@ -401,4 +401,4 @@ L’ordre construit les **contrats**, pas le YAML final.
 | ADR-096 | Ingress connector / tenant | ADR |
 | ADR-084 | WorkEnvelope / job_id (≠ **Work** Dev Factory) | ADR |
 
-> **Homonyme** : dans le job-model historique, « work » apparaît via WorkEnvelope. Ici **Work** = unité durable Dev Factory. En cas de doute dans le code, préférer `DevWork` / `work_id` documenté dans ce domaine.
+> **Homonyme** : dans le job-model historique, « work » apparaît via WorkEnvelope. Ici **Work** = unité durable Dev Factory. En cas de doute dans le code, préférer `DevWork` / `work_id` documenté dans ce domaine. <!-- drift-ignore -->

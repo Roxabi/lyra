@@ -35,7 +35,7 @@ Règle d’or (terminology) : **1 exécution de step = 1 Job** (retry = nouveau 
 
 ### WorkContext (entrée runner)
 
-Données lues par le runner — **lecture** principalement ; mutations Work via engine après `StepResult`.
+Données lues par le runner — **lecture** principalement ; mutations Work via engine après `StepResult`. <!-- drift-ignore -->
 
 | Champ (indicatif) | Contenu |
 |---|---|
@@ -144,7 +144,7 @@ Préférence réflexion : **A** (séparation claire) — non figé.
 | Mint | engine crée Job avant `runner.run` |
 | Meta | `{ work_id, step_id, attempt, workflow_id, runner_type }` |
 | Progress | optionnel pour `agent` long (`factory.job.<id>.progress`) |
-| Result | `StepResult` sérialisé dans JobResult / side-channel engine |
+| Result | `StepResult` sérialisé dans JobResult / side-channel engine | <!-- drift-ignore -->
 
 Steps purement locaux ultra-courts (`switch`) peuvent **ne pas** mint de Job — exception documentée (R3). Sinon uniformité : tout step = Job.
 
@@ -178,7 +178,7 @@ Steps purement locaux ultra-courts (`switch`) peuvent **ne pas** mint de Job —
 
 Ratification → :
 
-- interfaces Python dans `src/factory/…`
+- interfaces Python dans `src/factory/…` <!-- drift-ignore -->
 - table `type` stable (semver breaking si rename)
 - tests contrat par runner
 - page living ou section de `dev-factory.md` / workers-tooling

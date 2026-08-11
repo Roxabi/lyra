@@ -161,7 +161,7 @@ Le Work **n’est pas** un job longue durée unique (voir job-model).
 | W2 | Re-readiness autorisée après `waiting_blocked` sans reset branch ? |
 | W3 | Champ `attempt` global vs seulement par step dans `loop_counts` / jobs ? |
 | W4 | Exposition dashboard / CLI (`factory work list`) — MVP champs minimaux ? |
-| W5 | Homonyme code : type `DevWork` vs `Work` pour éviter collision WorkEnvelope ? |
+| W5 | Homonyme code : type `DevWork` vs `Work` pour éviter collision WorkEnvelope ? | <!-- drift-ignore -->
 
 ---
 

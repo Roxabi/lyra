@@ -20,7 +20,17 @@
 | [workers-tooling.md](architecture/workers-tooling.md) | Tool taxonomy & runtime vocabulary, CliPool, processor registry, tool integration, importlinter |
 | [scrape-placement.md](architecture/scrape-placement.md) | Web scrape placement — hub subprocess → HTTP service / agent tool; vault-add removed |
 | [job-model.md](architecture/job-model.md) | Job model — `job_id`=run, lifecycle, active-jobs registry, `factory.job.<id>.*` taxonomy, transport tiers, sub-jobs, runtime control |
+| [dev-factory.md](architecture/dev-factory.md) | **Dev Factory** (design) — usine de dev Gosilex/Spark : architecture, flow, Work vs Job, sandboxes ; vocabulaire → [dev-factory-terminology.md](architecture/dev-factory-terminology.md) |
 | [observability.md](architecture/observability.md) | Observability planes, control-plane dashboard, trace + log engines, operator audit, fleet/pipeline read models, ingress |
+
+**Dev Factory — bases de réflexion** (`status: reflection`, non-normative — ¬SSoT runtime) :
+
+| Note | What it explores |
+|---|---|
+| [dev-factory-work-contract.md](architecture/dev-factory-work-contract.md) | Champs & états du Work |
+| [dev-factory-runners.md](architecture/dev-factory-runners.md) | Catalogue runners + StepResult |
+| [dev-factory-spark-ingress.md](architecture/dev-factory-spark-ingress.md) | Ingress Spark + Outbound |
+| [dev-factory-implementation-slices.md](architecture/dev-factory-implementation-slices.md) | Ordre de build / slices |
 | [engineering-standards.md](architecture/engineering-standards.md) | **Cross-repo doctrine** (all Roxabi repos) — Clean/Hexagonal/Kernel layering, error contract, testing conventions, CI quality gates |
 | [CURRENT.generated.md](architecture/CURRENT.generated.md) | **Generated** — machine-generated inventory SSoT: layers, subjects, topology, entry points |
 

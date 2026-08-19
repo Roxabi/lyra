@@ -1,8 +1,9 @@
 name: publish
 on:
-  # Gate staging pushes on CI success: fires after the CI workflow completes
-  # on the staging branch. workflow_run does NOT fire on tag pushes, so the
-  # release-tag path is preserved via the separate push:tags trigger below.
+  # Gate staging pushes on CI success. After landing-path classify, a processed
+  # PR merge still concludes CI success (suite skipped; aggregate `ci` stays green)
+  # so images still publish — no second suite. workflow_run does NOT fire on tag
+  # pushes; the release-tag path is the separate push:tags trigger below.
   workflow_run:
     workflows: ["CI"]
     types: [completed]
